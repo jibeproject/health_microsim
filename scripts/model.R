@@ -65,15 +65,11 @@ v.Trt <- c("No Treatment", "Treatment") # store the strategy names
 p.HD    <- 0.005               # probability to die when healthy
 p.HS1   <- 0.15          	     # probability to become sick when healthy
 p.S1H   <- 0.5           	     # probability to become healthy when sick
-# p.S1S2  <- 0.105         	     # probability to become sicker when sick
 rr.S1   <- 3             	     # rate ratio of death when sick vs healthy
-# rr.S2   <- 10            	     # rate ratio of death when sicker vs healthy 
 r.HD    <- -log(1 - p.HD) 	   # rate of death when healthy 
 r.S1D   <- rr.S1 * r.HD  	     # rate of death when sick
-# r.S2D   <- rr.S2 * r.HD  	     # rate of death when sicker
 p.S1D   <- 1 - exp(- r.S1D)    # probability to die when sick
-# p.S2D   <- 1 - exp(- r.S2D)    # probability to die when sicker
-rp.S1S2 <- 0.2                 # increase of the mortality rate with every additional year being sick
+rp.S1 <- 0.2                 # increase of the mortality rate with every additional year being sick
 
 # Cost and utility inputs 
 c.H     <- 2000                # cost of remaining one cycle healthy
@@ -207,14 +203,11 @@ Probs <- function(M_it, dur) {
   
   # update probabilities of death after first converting them to rates and applying the rate ratio
   r.S1D <-  - log(1 - p.S1D)
-  # r.S2D <-  - log(1 - p.S2D)
-  p.S1D <- 1 - exp(- r.S1D * (1 + dur[M_it == "S1"] * rp.S1S2)) # calculate p.S1D conditional on duration of being sick/sicker
-  # p.S2D <- 1 - exp(- r.S2D * (1 + dur[M_it == "S2"] * rp.S1S2)) # calculate p.S2D conditional on duration of being sick/sicker
+  p.S1D <- 1 - exp(- r.S1D * (1 + dur[M_it == "S1"] * rp.S1)) # calculate p.S1D conditional on duration of being sick/sicker
   
   # update the v.p with the appropriate probabilities   
   m.p.it[,M_it == "H"]  <- c(1 - p.HS1 - p.HD, p.HS1, p.HD)                  # transition probabilities when healthy
   m.p.it[,M_it == "S1"] <- rbind(p.S1H, 1- p.S1H - p.S1D, p.S1D)   # transition probabilities when sick
-  # m.p.it[,M_it == "S2"] <- rbind(0, 0, 1 - p.S2D, p.S2D)                            # transition probabilities when sicker
   m.p.it[,M_it == "D"]  <- c(0, 0, 1)                                        # transition probabilities when dead   
   ifelse(colSums(m.p.it) == 1, return(t(m.p.it)), print("Probabilities do not sum to 1")) # return the transition probabilities or produce an error
 }       
@@ -282,7 +275,6 @@ Effs <- function (M_it, dur, Trt = FALSE, cl = 1, X = NULL) {
   u.it               <- 0        # by default the utility for everyone is zero
   u.it[M_it == "H"]  <- u.H      # update the utility if healthy
   u.it[M_it == "S1"] <- X * Trt * (u.Trt - dur * ru.S1S2) + (1 - Trt) * u.S1 # update the utility if sick conditional on treatment and duration of being sick/sicker
-  # u.it[M_it == "S2"] <- u.S2     # update the utility if sicker
   u.it[M_it == "D"]  <- 0        # update the utility if dead
   
   QALYs <-  u.it * cl            # calculate the QALYs during cycle t
