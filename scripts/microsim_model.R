@@ -8,14 +8,14 @@ library(furrr)     ## defines %<-%
 plan(multisession)
 
 # Read pp health dataset (of Munich) using read_csv_arrow from arrow library
-synth_pop <- arrow::read_csv_arrow("../../siloMitoMatsim_modelOutput/pp_health_2012.csv")
+synth_pop <- arrow::read_csv_arrow("data/siloMitoMatsim_modelOutput/pp_health_2012.csv")
 synth_pop <- synth_pop |> dplyr::select(id, age, gender, rr_all) |> rename (sex = gender)
 
 # slice 10k rows
 synth_pop <- synth_pop |> slice_sample(n = 10000)
 
 # Read probability dataset by age and sex for Australia
-back_hdata <- arrow::read_csv_arrow("../../data/sample/mslt_df.csv")
+back_hdata <- arrow::read_csv_arrow("data/sample/mslt_df.csv")
 back_hdata <-  back_hdata |>  mutate(sex = case_when(sex == 'male' ~ 1, sex == 'female' ~ 2)) |> dplyr::select(age, sex, deaths_rate_allc)
 
 # Combine baseline demographics and exposure data with background health data
