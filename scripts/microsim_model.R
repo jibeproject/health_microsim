@@ -21,36 +21,29 @@ back_hdata <-  back_hdata |>  mutate(sex = case_when(sex == 'male' ~ 1, sex == '
 # Combine baseline demographics and exposure data with background health data
 synth_pop <- left_join(synth_pop, back_hdata)
 
-prob_age_sex <- function(data, num_simulations = 10000, seed = 1) {
+# Mutate columns
+synth_pop <- synth_pop |> mutate(sick_prob = 1-(exp(-deaths_rate_allc)), est_prob = 0)
+
+prob_age_sex <- function(data, num_simulations = 10, seed = 1) {
   set.seed(seed)
   
-  # Extract the sickness probability #Here we should also adjust for RRs for exposures and behaviours
-  data["sickness_probability"] <- 1-(exp(-data["deaths_rate_allc"]))
-  
-  data["est_prob"] <- 0
-  # for (nr in 1:nrow(data)){
-    
-    # Initialize a variable to store the count of sick individuals
-    sick_count <- 0
-    
-    # Perform Monte Carlo simulations
-    for (i in 1:num_simulations) {
-      # Simulate sickness for the individual based on probability
-      if (runif(1) < data["sickness_probability"]) {
-        sick_count <- sick_count + 1
-      }
+  # Initialize a variable to store the count of sick individuals
+  sick_count <- 0
+  # Perform Monte Carlo simulations
+  for (i in 1:num_simulations) {
+    # Simulate sickness for the individual based on probability
+    if (runif(1) < data["sick_prob"]) {
+      sick_count <- sick_count + 1
     }
-    
-    # Calculate the estimated probability of getting sick
-    data["est_prob"] <- sick_count / num_simulations
-  # }
-  
+  }
+  # Calculate the estimated probability of getting sick
+  data["est_prob"] <- sick_count / num_simulations
   return(data)
 }
-# require(tictoc)
-# tic()
-synth_pop <- prob_age_sex(synth_pop)
-# toc()
+require(tictoc)
+tic()
+td <- t(apply(synth_pop,1,prob_age_sex))
+toc()
 # # Model input
 # n.i   <- round(synth_pop |> nrow()/10^2)   # number of simulated individuals
 # n.t   <- 30                    # time horizon, 30 cycles
