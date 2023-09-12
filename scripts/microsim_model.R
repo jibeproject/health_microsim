@@ -4,7 +4,7 @@ rm(list = ls())  # remove any variables in R's memory
 library(tidyverse)
 # For efficient dealing of large datases
 library(arrow)
-library(future)     ## defines %<-%
+library(furrr)     ## defines %<-%
 plan(multisession)
 
 # Read pp health dataset (of Munich) using read_csv_arrow from arrow library
@@ -25,10 +25,10 @@ prob_age_sex <- function(data, num_simulations = 10000, seed = 1) {
   set.seed(seed)
   
   # Extract the sickness probability #Here we should also adjust for RRs for exposures and behaviours
-  data$sickness_probability <- 1-(exp(-data$deaths_rate_allc))
+  data["sickness_probability"] <- 1-(exp(-data["deaths_rate_allc"]))
   
-  data$est_prob <- 0
-  for (nr in 1:nrow(data)){
+  data["est_prob"] <- 0
+  # for (nr in 1:nrow(data)){
     
     # Initialize a variable to store the count of sick individuals
     sick_count <- 0
@@ -36,14 +36,14 @@ prob_age_sex <- function(data, num_simulations = 10000, seed = 1) {
     # Perform Monte Carlo simulations
     for (i in 1:num_simulations) {
       # Simulate sickness for the individual based on probability
-      if (runif(1) < data$sickness_probability[nr]) {
+      if (runif(1) < data["sickness_probability"]) {
         sick_count <- sick_count + 1
       }
     }
     
     # Calculate the estimated probability of getting sick
-    data[nr,]$est_prob <- sick_count / num_simulations
-  }
+    data["est_prob"] <- sick_count / num_simulations
+  # }
   
   return(data)
 }
