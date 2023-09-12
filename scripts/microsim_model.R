@@ -5,6 +5,7 @@ library(tidyverse)
 # For efficient dealing of large datases
 library(arrow)
 library(furrr)     ## defines %<-%
+library(future.apply)
 plan(multisession)
 
 # Read pp health dataset (of Munich) using read_csv_arrow from arrow library
@@ -24,7 +25,7 @@ synth_pop <- left_join(synth_pop, back_hdata)
 # Mutate columns
 synth_pop <- synth_pop |> mutate(sick_prob = 1-(exp(-deaths_rate_allc)), est_prob = 0)
 
-prob_age_sex <- function(data, num_simulations = 10, seed = 1) {
+prob_age_sex <- function(data, num_simulations = 1000, seed = 1) {
   set.seed(seed)
   
   # Initialize a variable to store the count of sick individuals
@@ -42,7 +43,7 @@ prob_age_sex <- function(data, num_simulations = 10, seed = 1) {
 }
 require(tictoc)
 tic()
-td <- t(apply(synth_pop,1,prob_age_sex))
+td <- t(future_apply(synth_pop,1,prob_age_sex, future.seed = T))
 toc()
 # # Model input
 # n.i   <- round(synth_pop |> nrow()/10^2)   # number of simulated individuals
