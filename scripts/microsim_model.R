@@ -29,36 +29,20 @@ back_hdata <-  back_hdata |>
 # Combine baseline demographics and exposure data with background health data
 synth_pop <- left_join(synth_pop, back_hdata)
 
-# # Mutate columns
-# synth_pop <- synth_pop |> 
-#   mutate(sick_prob = 1-(exp(-deaths_rate_allc)))#, est_prob = 0)
-
 prob_age_sex <- function(data, hdata, num_simulations = 1000, seed = 1, cycle = 1) {
   set.seed(seed)
-  
   res <- list()
-  
-  # if (cycle == 1){
-  #   # Initialize a variable to store the count of sick individuals
-  #   sick_count <- 0
-  #   # Perform Monte Carlo simulations
-  #   for (i in 1:num_simulations) {
-  #     # Simulate sickness for the individual based on probability
-  #     if (runif(1) < data["sick_prob"]) {
-  #       sick_count <- sick_count + 1
-  #     }
-  #   }
-  #   # Calculate the estimated probability of getting sick
-  #   res <- sick_count / num_simulations
-  # }else{
+  # Get age and sex specific sick_prob from background death rate
   nsick_prob <- hdata |> 
     filter(age == (data["age"] |> as.numeric()) + cycle - 1, sex == c(data["sex"] |> as.numeric())) |> 
     dplyr::select(sick_prob) |> 
     pull()
+  # If sick_prob is undefined then return 0
   if (is.na(nsick_prob)){
     nsick_prob <- 0
     res <- 0
   }else{
+    # Run monte_carlo sim to calcualte sick_prob for each individual
     # Initialize a variable to store the count of sick individuals
     sick_count <- 0
     # Perform Monte Carlo simulations
@@ -78,16 +62,12 @@ prob_age_sex <- function(data, hdata, num_simulations = 1000, seed = 1, cycle = 
   return(res)
 }
 
-synth_pop_wprob <- synth_pop#[1:10,]
+synth_pop_wprob <- synth_pop
 require(tictoc)
 tic()
 for (i in 1:10){
-  # i <- 1
-  # td <- apply(synth_pop_wprob, 1, prob_age_sex, hdata = back_hdata, cycle = i)
-  # print(td)
   td <- future_apply(synth_pop_wprob, 1, prob_age_sex, future.seed = T, hdata = back_hdata, cycle = i)
   if (sum(td) == 0){
-    # print("Stopping at index ", i)
     break
   }
   synth_pop_wprob <- bind_cols(synth_pop_wprob, td)
