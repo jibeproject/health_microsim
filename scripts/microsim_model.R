@@ -8,57 +8,164 @@ library(furrr)     ## defines %<-%
 library(future.apply)
 plan(multisession)
 
+# Transition probabilities (per cycle)
+p.HD    <- 0.005  # probability to die
+
 # Read pp health dataset (of Munich) using read_csv_arrow from arrow library
 synth_pop <- arrow::read_csv_arrow("data/siloMitoMatsim_modelOutput/pp_health_2012.csv")
-synth_pop <- synth_pop |> dplyr::select(id, age, gender, rr_all) |> rename (sex = gender)
+synth_pop <- synth_pop |> dplyr::select(id, age, gender, rr_all) |> 
+  rename (sex = gender)
 
 # slice 10k rows
 synth_pop <- synth_pop |> slice_sample(n = 10000)
 
 # Read probability dataset by age and sex for Australia
 back_hdata <- arrow::read_csv_arrow("data/sample/mslt_df.csv")
-back_hdata <-  back_hdata |>  mutate(sex = case_when(sex == 'male' ~ 1, sex == 'female' ~ 2)) |> dplyr::select(age, sex, deaths_rate_allc)
+back_hdata <-  back_hdata |>  
+  mutate(sex = case_when(sex == 'male' ~ 1, sex == 'female' ~ 2),
+         sick_prob = 1 - (exp(-deaths_rate_allc))) |> 
+  dplyr::select(age, sex, sick_prob)
 
 # Combine baseline demographics and exposure data with background health data
 synth_pop <- left_join(synth_pop, back_hdata)
 
-# Mutate columns
-synth_pop <- synth_pop |> mutate(sick_prob = 1-(exp(-deaths_rate_allc)), est_prob = 0)
+# # Mutate columns
+# synth_pop <- synth_pop |> 
+#   mutate(sick_prob = 1-(exp(-deaths_rate_allc)))#, est_prob = 0)
 
-prob_age_sex <- function(data, num_simulations = 1000, seed = 1) {
+prob_age_sex <- function(data, hdata, num_simulations = 1000, seed = 1, cycle = 1) {
   set.seed(seed)
   
-  # Initialize a variable to store the count of sick individuals
-  sick_count <- 0
-  # Perform Monte Carlo simulations
-  for (i in 1:num_simulations) {
-    # Simulate sickness for the individual based on probability
-    if (runif(1) < data["sick_prob"]) {
-      sick_count <- sick_count + 1
+  res <- list()
+  
+  # if (cycle == 1){
+  #   # Initialize a variable to store the count of sick individuals
+  #   sick_count <- 0
+  #   # Perform Monte Carlo simulations
+  #   for (i in 1:num_simulations) {
+  #     # Simulate sickness for the individual based on probability
+  #     if (runif(1) < data["sick_prob"]) {
+  #       sick_count <- sick_count + 1
+  #     }
+  #   }
+  #   # Calculate the estimated probability of getting sick
+  #   res <- sick_count / num_simulations
+  # }else{
+  nsick_prob <- hdata |> 
+    filter(age == (data["age"] |> as.numeric()) + cycle - 1, sex == c(data["sex"] |> as.numeric())) |> 
+    dplyr::select(sick_prob) |> 
+    pull()
+  if (is.na(nsick_prob)){
+    nsick_prob <- 0
+    res <- 0
+  }else{
+    # Initialize a variable to store the count of sick individuals
+    sick_count <- 0
+    # Perform Monte Carlo simulations
+    for (i in 1:num_simulations) {
+      # Simulate sickness for the individual based on probability
+      if (runif(1) < nsick_prob) {
+        sick_count <- sick_count + 1
+      }
     }
+    
+    # Calculate the estimated probability of getting sick
+    res <- sick_count / num_simulations
   }
-  # Calculate the estimated probability of getting sick
-  data["est_prob"] <- sick_count / num_simulations
-  return(data)
+  # # Reduce prob by a fixed probability of 0.005 
+  # res <- ifelse(data[paste0("est_prob", cycle - 1)] - p.HD < 0, 0, 
+  #                                           data[paste0("est_prob", cycle - 1)] - p.HD)
+  return(res)
 }
+
+synth_pop_wprob <- synth_pop#[1:10,]
 require(tictoc)
 tic()
-td <- t(future_apply(synth_pop,1,prob_age_sex, future.seed = T))
+for (i in 1:10){
+  # i <- 1
+  # td <- apply(synth_pop_wprob, 1, prob_age_sex, hdata = back_hdata, cycle = i)
+  # print(td)
+  td <- future_apply(synth_pop_wprob, 1, prob_age_sex, future.seed = T, hdata = back_hdata, cycle = i)
+  if (sum(td) == 0){
+    # print("Stopping at index ", i)
+    break
+  }
+  synth_pop_wprob <- bind_cols(synth_pop_wprob, td)
+  names(synth_pop_wprob)[synth_pop_wprob |> length()] <- paste0("est_prob", i)
+}
 toc()
-# # Model input
-# n.i   <- round(synth_pop |> nrow()/10^2)   # number of simulated individuals
-# n.t   <- 30                    # time horizon, 30 cycles
-# v.n   <- c("H","D")            # the model states: Healthy (H), Sick (S1), Dead (D)
-# n.s   <- length(v.n)           # the number of health states
-# v.M_1 <- rep("H", n.i)         # everyone begins in the healthy state 
-# v.Trt <- c("No Treatment", "Treatment") # store the strategy names
+
+#################################################
+## Matrix implementation which is a little faster
+#################################################
+# m <- synth_pop |> as.matrix()
+# require(tictoc)
+# tic()
+# for (i in 1:10){
+#   td <- future_apply(m,1,prob_age_sex, future.seed = T, cycle = i)
+#   if (sum(td) == 0){
+#     # print("Stopping at index ", i)
+#     break
+#   }
+#   m <- bind_cols(m, td)
+#   colnames(m)[m |> ncol()] <- paste0("est_prob", i)
+# }
+# toc()
+
+
 # 
-# # Transition probabilities (per cycle)
-# p.HD    <- 0.005               # probability to die when healthy
-# r.HD    <- -log(1 - p.HD) 	   # rate of death when healthy 
-# p.S1D   <- 1 - exp(- r.S1D)    # probability to die when sick
-# # rp.S1 <- 0.2                   # increase of the mortality rate with every additional year being sick
-
-
-
-
+# tic()
+# td1 <- t(future_apply(synth_pop,1,prob_age_sex, future.seed = T, cycle = 2)) |> as.data.frame()
+# toc()
+# 
+# df <- list()
+# df[[1]] <- td
+# for (i in 2:10){
+# df[[i]] <- t(future_apply(df[[i - 1]],1,prob_age_sex, future.seed = T, cycle = i)) |> as.data.frame()
+# }
+# 
+# n.i <- td |> nrow()
+# n.t <- 1000
+# 
+# # Create the matrix capturing the state name/costs/health outcomes for all individuals at each time point 
+# m.M <- matrix(nrow = n.i, ncol = n.t + 2,
+#                             dimnames = list(paste("ind", 1:n.i, sep = " "), 
+#                                             c("est_prob", paste("cycle", 0:n.t, sep = " "))))  
+# 
+# m.M[, 1] <- td$est_prob1
+# td$temp <-  apply(td, 1, function(x)
+# {
+#   result <- 0
+#   if((x["est_prob1"] - p.HD) < 0) result <- 0
+#   else result <- x["est_prob1"] - p.HD
+#   return(result)
+# })
+# 
+# for (t in 1:1000){#n.t) { # t <- 3
+#   m.p <- apply(m.M, 1, function(x, cycle)
+#   {
+#     if (sum(m.M[, 1]) == 0)
+#       break
+#     # print(cycle)
+#     result <- 0
+#     if((x[cycle] - p.HD) < 0) result <- 0
+#     else result <- x[cycle] - p.HD
+#     return(result)
+#   }, cycle = t)
+#   m.M[, t + 1] <- m.p
+# }
+# 
+# # # Model input
+# # n.i   <- round(synth_pop |> nrow()/10^2)   # number of simulated individuals
+# # n.t   <- 30                    # time horizon, 30 cycles
+# # v.n   <- c("H","D")            # the model states: Healthy (H), Sick (S1), Dead (D)
+# # n.s   <- length(v.n)           # the number of health states
+# # v.M_1 <- rep("H", n.i)         # everyone begins in the healthy state 
+# # v.Trt <- c("No Treatment", "Treatment") # store the strategy names
+# # 
+# # p.S1D   <- 1 - exp(- r.S1D)    # probability to die when sick
+# # # rp.S1 <- 0.2                   # increase of the mortality rate with every additional year being sick
+# 
+# 
+# 
+# 
