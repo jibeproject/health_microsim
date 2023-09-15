@@ -6,13 +6,11 @@ library(tidyverse)
 library(arrow)
 library(furrr)     ## defines %<-%
 library(future.apply)
+options(future.apply.debug = F)
 plan(multisession)
 
-# Transition probabilities (per cycle)
-p.HD    <- 0.005  # probability to die
-
 # Define global number of sims
-num_sim <- 100
+num_sim <- 10
 
 # Read pp health dataset (of Munich) using read_csv_arrow from arrow library
 synth_pop <- arrow::read_csv_arrow("data/siloMitoMatsim_modelOutput/pp_health_2012.csv")
@@ -26,7 +24,7 @@ synth_pop <- synth_pop |> slice_sample(n = 1000)
 n.i <- synth_pop |> nrow()
 
 # Number of cycles
-n.c <- 100
+n.c <- 10
 
 # everyone begins in the healthy state 
 v.M_1 <- rep("H", n.i)
@@ -76,17 +74,29 @@ prob_age_sex <- function(data, hdata, num_simulations = 100, seed = 1, cycle = 1
   return(res)
 }
 
-get_state <- function(data, seed = 1, cycle = 1) {
+get_state <- function(rd, seed = 1, cycle = 1, cm) {
   set.seed(seed)
-  if (data[paste0("est_prob", cycle)] == 0)
+  vi <- rd["rowname"] |> as.numeric()
+  vcm <-  cm[vi] |> as.character()
+  if (vcm == 'D' || rd[paste0("est_prob", cycle)] |> as.numeric() == 0)
     return('D')
   else{
-    return(ifelse(runif(1) > data[paste0("est_prob", cycle)], 'H', 'D'))
+    return(ifelse(runif(1) > rd[paste0("est_prob", cycle)] |> as.numeric(), 'H', 'D'))
   }
-}
   
+  # print(class(rd))
+  # print(rd[paste0("est_prob", cycle)] |> as.numeric())
+  # if (rd[paste0("est_prob", cycle)] |> as.numeric() == 0)
+  #   return('D')
+  # else{
+  #   return(ifelse(runif(1) > rd[paste0("est_prob", cycle)] |> as.numeric(), 'H', 'D'))
+  # }
+  
+}  
 
 synth_pop_wprob <- synth_pop
+
+synth_pop_wprob <- synth_pop_wprob |> rownames_to_column()
 
 # Matrix to save current states
 m <- matrix(nrow = n.i, ncol = n.c + 1, 
@@ -103,24 +113,20 @@ for (i in 1:n.c){
   # synth_pop_wprob <- bind_cols(synth_pop_wprob, td)
   # names(synth_pop_wprob)[synth_pop_wprob |> length()] <- paste0("est_prob", i)
   # i <- 1
-  
-  td1 <- future_apply(synth_pop_wprob, 1, get_state, cycle = i, future.seed = T)
-  m[, i + 1] <- td1
-  df <- cbind(m[, i], td1) |> as.data.frame()
-  if (df[df[,1] == 'D', ] |> nrow() > 0){
-    df[df[,1] == 'D', ][,2] <- 'D'
-    m[, i + 1] <- df[,2]
-  }
+  cstate <- future_apply(synth_pop_wprob, 1, get_state, cycle = i, cm = m[, i], future.seed = T)
+  m[, i + 1] <- cstate
+  print(paste("cycle ", i))
+  print(table(m[, i + 1]))
+  if (cstate |> table() |> as.data.frame() |> dplyr::select(Freq) |> nrow() == 1)
+    break
+  # df <- cbind(m[, i], cstate) |> as.data.frame()
+  # if (df[df[,1] == 'D', ] |> nrow() > 0){
+  #   df[df[,1] == 'D', ][,2] <- 'D'
+  #   m[, i + 1] <- df[,2]
+  # }
 }
 toc()
-# set.seed(1)
-# for (i in n.i){
-  np <- synth_pop_wprob[i, "est_prob1"] |> as.numeric()
-  m[, 2] <- 'H'
-  if (np < runif(1)){
-    m[i, 2] <- 'D'
-  }
-}
+
 
 
 #################################################
