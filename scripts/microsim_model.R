@@ -11,13 +11,25 @@ plan(multisession)
 # Transition probabilities (per cycle)
 p.HD    <- 0.005  # probability to die
 
+# Define global number of sims
+num_sim <- 100
+
 # Read pp health dataset (of Munich) using read_csv_arrow from arrow library
 synth_pop <- arrow::read_csv_arrow("data/siloMitoMatsim_modelOutput/pp_health_2012.csv")
 synth_pop <- synth_pop |> dplyr::select(id, age, gender, rr_all) |> 
   rename (sex = gender)
 
-# slice 10k rows
-synth_pop <- synth_pop |> slice_sample(n = 10000)
+# slice 1k rows
+synth_pop <- synth_pop |> slice_sample(n = 1000)
+
+# Number of individuals
+n.i <- synth_pop |> nrow()
+
+# Number of cycles
+n.c <- 100
+
+# everyone begins in the healthy state 
+v.M_1 <- rep("H", n.i)
 
 # Read probability dataset by age and sex for Australia
 back_hdata <- arrow::read_csv_arrow("data/sample/mslt_df.csv")
@@ -29,16 +41,18 @@ back_hdata <-  back_hdata |>
 # Combine baseline demographics and exposure data with background health data
 synth_pop <- left_join(synth_pop, back_hdata)
 
-prob_age_sex <- function(data, hdata, num_simulations = 1000, seed = 1, cycle = 1) {
+prob_age_sex <- function(data, hdata, num_simulations = 100, seed = 1, cycle = 1) {
   set.seed(seed)
   res <- list()
   # Get age and sex specific sick_prob from background death rate
+  # The cycle is the current year and is added to the baseline's age of an individuals to get the current age
+  # So age = baseline_age + cycle - 1 - as cycle starts with 1 hence subtracting 1 from it
   nsick_prob <- hdata |> 
     filter(age == (data["age"] |> as.numeric()) + cycle - 1, sex == c(data["sex"] |> as.numeric())) |> 
     dplyr::select(sick_prob) |> 
     pull()
   # If sick_prob is undefined then return 0
-  if (is.na(nsick_prob)){
+  if (length(nsick_prob) == 0){
     nsick_prob <- 0
     res <- 0
   }else{
@@ -62,18 +76,52 @@ prob_age_sex <- function(data, hdata, num_simulations = 1000, seed = 1, cycle = 
   return(res)
 }
 
+get_state <- function(data, seed = 1, cycle = 1) {
+  set.seed(seed)
+  if (data[paste0("est_prob", cycle)] == 0)
+    return('D')
+  else{
+    return(ifelse(runif(1) > data[paste0("est_prob", cycle)], 'H', 'D'))
+  }
+}
+  
+
 synth_pop_wprob <- synth_pop
+
+# Matrix to save current states
+m <- matrix(nrow = n.i, ncol = n.c + 1, 
+            dimnames = list(paste0("id", 1:n.i, sep = " "), 
+                            paste0("c", 0:n.c, sep = " ")))
+m[,1] <- v.M_1
 require(tictoc)
 tic()
-for (i in 1:10){
-  td <- future_apply(synth_pop_wprob, 1, prob_age_sex, future.seed = T, hdata = back_hdata, cycle = i)
-  if (sum(td) == 0){
-    break
+for (i in 1:n.c){
+  # td <- future_apply(synth_pop_wprob, 1, prob_age_sex, future.seed = T, hdata = back_hdata, cycle = i)
+  # if (sum(td) == 0){
+  #   break
+  # }
+  # synth_pop_wprob <- bind_cols(synth_pop_wprob, td)
+  # names(synth_pop_wprob)[synth_pop_wprob |> length()] <- paste0("est_prob", i)
+  # i <- 1
+  
+  td1 <- future_apply(synth_pop_wprob, 1, get_state, cycle = i, future.seed = T)
+  m[, i + 1] <- td1
+  df <- cbind(m[, i], td1) |> as.data.frame()
+  if (df[df[,1] == 'D', ] |> nrow() > 0){
+    df[df[,1] == 'D', ][,2] <- 'D'
+    m[, i + 1] <- df[,2]
   }
-  synth_pop_wprob <- bind_cols(synth_pop_wprob, td)
-  names(synth_pop_wprob)[synth_pop_wprob |> length()] <- paste0("est_prob", i)
 }
 toc()
+# set.seed(1)
+# for (i in n.i){
+  np <- synth_pop_wprob[i, "est_prob1"] |> as.numeric()
+  m[, 2] <- 'H'
+  if (np < runif(1)){
+    m[i, 2] <- 'D'
+  }
+}
+
 
 #################################################
 ## Matrix implementation which is a little faster
