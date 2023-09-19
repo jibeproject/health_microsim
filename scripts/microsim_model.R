@@ -3,11 +3,9 @@ rm(list = ls())
 
 # Load libraries
 library(tidyverse)
-# For efficient dealing of large datases
-# library(arrow)
-# library(furrr)     ## defines %<-%
+# For parallel processing
 library(future.apply)
-#options(future.apply.debug = F)
+
 plan(multisession)
 
 # For reproducibility set seed
@@ -37,11 +35,14 @@ v.M_1 <- rep("H", n.i)
 
 # Read probability dataset by age and sex for Australia
 back_hdata <- read_csv("data/sample/mslt_df.csv")
+
+# Mutate sex to numeric values with male ~ 1 and female ~ 2
+# Also modify all columns with deaths rate into prob by 1 - exp(-deaths_rate)
 back_hdata <-  back_hdata |>  
+  rename_with(~ gsub("deaths_rate", "sick_prob", .x, fixed = TRUE)) |> 
   mutate(sex = case_when(sex == 'male' ~ 1, sex == 'female' ~ 2),
-         sick_prob_allc = 1 - (exp(-deaths_rate_allc)),
-         sick_prob_ishd = 1 - (exp(-deaths_rate_ishd))) |> 
-  dplyr::select(age, sex, sick_prob_allc, sick_prob_ishd)
+         across(starts_with("sick_prob"), ~(1 - (exp(-.))))) |> 
+  dplyr::select(age, sex, starts_with("sick_prob"))
 
 # Combine baseline demographics and exposure data with background health data
 synth_pop <- left_join(synth_pop, back_hdata)
