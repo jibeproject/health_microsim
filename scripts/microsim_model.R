@@ -12,7 +12,7 @@ plan(multisession)
 set.seed(1)
 
 # Define global number of monte-carlo sims
-num_sims <- 100
+num_sims <- 1000
 
 # Read pp health dataset (of Munich) using read_csv_arrow from arrow library
 synth_pop <- read_csv("data/siloMitoMatsim_modelOutput/pp_health_2012.csv")
@@ -28,7 +28,7 @@ synth_pop <- synth_pop |> dplyr::select(id, age, gender, rr_all) |>
 n.i <- synth_pop |> nrow()
 
 # Number of cycles
-n.c <- 10
+n.c <- 5
 
 # everyone begins in the healthy state 
 v.M_1 <- rep("H", n.i)
@@ -78,19 +78,19 @@ prob_age_sex <- function(data, hdata, colname = "sick_prob_allc", num_sims = 100
   return(res)
 }
 
-get_state <- function(rd, cycle = 1, cm) {
+get_state <- function(rd, cycle = 1, cause = "allc", cm) {
   vi <- rd["rowname"] |> as.numeric()
   prev_state <-  cm[vi] |> as.character()
   if (prev_state == 'D' || rd[paste0("prob_allc_", cycle)] |> as.numeric() == 0)
     return('D')
   else{
     prob <- runif(1)
-    if (prob < rd[paste0("prob_ishd_", cycle)] |> as.numeric())
-      return('S_ISHD')
-    else if (prob < rd[paste0("prob_allc_", cycle)] |> as.numeric())
+    if (cause != 'allc' && prob < rd[paste0("prob_", cause, "_", cycle)] |> as.numeric())
+      return(paste0('S_', toupper(cause)))
+    else if (cause == 'allc' && prob < rd[paste0("prob_allc_", cycle)] |> as.numeric())
       return('D')
-    else if (prev_state == 'S_ISHD')
-      return('S_ISHD')
+    else if (prev_state == paste0('S_', toupper(cause)))
+      return(paste0('S_', toupper(cause)))
     else
       return('H')
   }
@@ -106,32 +106,32 @@ m <- matrix(nrow = n.i, ncol = n.c + 1,
 
 # The default state is healthy for everyone - before simulation starts
 m[,1] <- v.M_1
-
+diseases <- sapply(strsplit(back_hdata |> dplyr::select(starts_with("sick")) |> names(), "\\_"), "[", 3)
 require(tictoc)
 tic()
 for (i in 1:n.c){
-  ind_prob <- future_apply(synth_pop_wprob, 1, prob_age_sex, future.seed = T,
-                           hdata = back_hdata, cycle = i, num_sims = num_sims, colname = "sick_prob_allc")
-  if (sum(ind_prob) == 0){
-    break
+  for (dis in diseases[1:5]){#diseases){
+    # i <- 1; dis <- "adaod"
+    # dis <- diseases[i]
+    ind_prob <- future_apply(synth_pop_wprob, 1, prob_age_sex, future.seed = T,
+                             hdata = back_hdata, cycle = i, num_sims = num_sims, colname = paste0("sick_prob_", dis))
+    # if (sum(ind_prob) == 0){
+    #   break
+    # }
+    synth_pop_wprob <- bind_cols(synth_pop_wprob, ind_prob)
+    names(synth_pop_wprob)[synth_pop_wprob |> length()] <- paste0("prob_", dis, "_", i)
+    # print(dis)
   }
-  synth_pop_wprob <- bind_cols(synth_pop_wprob, ind_prob)
-  names(synth_pop_wprob)[synth_pop_wprob |> length()] <- paste0("prob_allc_", i)
-
-  ind_prob <- future_apply(synth_pop_wprob, 1, prob_age_sex, future.seed = T,
-                           hdata = back_hdata, cycle = i, num_sims = num_sims, colname = "sick_prob_ishd")
-  if (sum(ind_prob) == 0){
-    break
-  }
-  synth_pop_wprob <- bind_cols(synth_pop_wprob, ind_prob)
-  names(synth_pop_wprob)[synth_pop_wprob |> length()] <- paste0("prob_ishd_", i)
   
-  cstate <- future_apply(synth_pop_wprob, 1, get_state, cycle = i, cm = m[, paste0("c", i - 1)], future.seed = T)
-  m[, i + 1] <- cstate
-  print(paste("cycle ", i))
-  print(table(m[, i + 1]))
+  for (dis in diseases[1:5]){
+    cstate <- future_apply(synth_pop_wprob, 1, get_state, cycle = i, cause = dis, cm = m[, paste0("c", i - 1)], future.seed = T)
+    m[, i + 1] <- cstate
+    print(paste("cycle ", i))
+    print(table(m[, i + 1]))
+  }
   # Break the loop if everyone has died
-  if (cstate |> table() |> as.data.frame() |> dplyr::select(Freq) |> nrow() == 1)
-    break
+  # if (cstate |> table() |> as.data.frame() |> dplyr::select(Freq) |> nrow() == 1)
+  #   break
 }
+
 toc()
