@@ -139,3 +139,10 @@ for (i in 1:n.c){
   #   break
 }
 toc()
+
+# Print ggplot over cycles across all states - including healthy, deceased and individual diseases
+ggplot(m |> as.data.frame() |> rownames_to_column("id") |> pivot_longer(cols = -id)) +
+  aes(x = name, fill = value) +
+  geom_bar() +
+  scale_fill_hue(direction = 1) +
+  theme_minimal()
