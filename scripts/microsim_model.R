@@ -12,7 +12,7 @@ plan(multisession)
 set.seed(1)
 
 # Define global number of monte-carlo sims
-num_sims <- 1000
+num_sims <- 100
 
 # Read pp health dataset (of Munich) using read_csv_arrow from arrow library
 synth_pop <- read_csv("data/siloMitoMatsim_modelOutput/pp_health_2012.csv")
@@ -110,20 +110,20 @@ diseases <- sapply(strsplit(back_hdata |> dplyr::select(starts_with("sick")) |> 
 require(tictoc)
 tic()
 for (i in 1:n.c){
-  for (dis in diseases[1:5]){#diseases){
-    # i <- 1; dis <- "adaod"
-    # dis <- diseases[i]
-    ind_prob <- future_apply(synth_pop_wprob, 1, prob_age_sex, future.seed = T,
-                             hdata = back_hdata, cycle = i, num_sims = num_sims, colname = paste0("sick_prob_", dis))
-    # if (sum(ind_prob) == 0){
-    #   break
-    # }
-    synth_pop_wprob <- bind_cols(synth_pop_wprob, ind_prob)
-    names(synth_pop_wprob)[synth_pop_wprob |> length()] <- paste0("prob_", dis, "_", i)
-    # print(dis)
-  }
+  # for (dis in diseases){#diseases){
+  #   # i <- 1; dis <- "adaod"
+  #   # dis <- diseases[i]
+  #   ind_prob <- future_apply(synth_pop_wprob, 1, prob_age_sex, future.seed = T,
+  #                            hdata = back_hdata, cycle = i, num_sims = num_sims, colname = paste0("sick_prob_", dis))
+  #   # if (sum(ind_prob) == 0){
+  #   #   break
+  #   # }
+  #   synth_pop_wprob <- bind_cols(synth_pop_wprob, ind_prob)
+  #   names(synth_pop_wprob)[synth_pop_wprob |> length()] <- paste0("prob_", dis, "_", i)
+  #   # print(dis)
+  # }
   
-  for (dis in diseases[1:5]){
+  for (dis in diseases){
     cstate <- future_apply(synth_pop_wprob, 1, get_state, cycle = i, cause = dis, cm = m[, paste0("c", i - 1)], future.seed = T)
     m[, i + 1] <- cstate
     print(paste("cycle ", i))
