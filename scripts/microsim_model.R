@@ -80,9 +80,14 @@ prob_age_sex <- function(data, hdata, colname = "sick_prob_allc", num_sims = 100
 
 get_state <- function(rd, cycle = 1, cause = "allc", cm) {
   vi <- rd["rowname"] |> as.numeric()
-  prev_state <-  cm[vi] |> as.character()
-  if (prev_state == 'D' || rd[paste0("prob_allc_", cycle)] |> as.numeric() == 0)
+  prev_state <-  cm[vi, 1] |> as.character()
+  curr_state <-  cm[vi, 2] |> as.character()
+  if (prev_state == 'D' || 
+      (!is.na(curr_state) && curr_state == 'D') || 
+      rd[paste0("prob_allc_", cycle)] |> as.numeric() == 0)
     return('D')
+  if (!is.na(curr_state) && !curr_state %in% c('D','H'))
+    return(curr_state)
   else{
     prob <- runif(1)
     if (cause != 'allc' && prob < rd[paste0("prob_", cause, "_", cycle)] |> as.numeric())
@@ -110,21 +115,21 @@ diseases <- sapply(strsplit(back_hdata |> dplyr::select(starts_with("sick")) |> 
 require(tictoc)
 tic()
 for (i in 1:n.c){
-  # for (dis in diseases){#diseases){
-  #   # i <- 1; dis <- "adaod"
-  #   # dis <- diseases[i]
-  #   ind_prob <- future_apply(synth_pop_wprob, 1, prob_age_sex, future.seed = T,
-  #                            hdata = back_hdata, cycle = i, num_sims = num_sims, colname = paste0("sick_prob_", dis))
-  #   # if (sum(ind_prob) == 0){
-  #   #   break
-  #   # }
-  #   synth_pop_wprob <- bind_cols(synth_pop_wprob, ind_prob)
-  #   names(synth_pop_wprob)[synth_pop_wprob |> length()] <- paste0("prob_", dis, "_", i)
-  #   # print(dis)
-  # }
+  for (dis in diseases){#diseases){
+    # i <- 1; dis <- "adaod"
+    # dis <- diseases[i]
+    ind_prob <- future_apply(synth_pop_wprob, 1, prob_age_sex, future.seed = T,
+                             hdata = back_hdata, cycle = i, num_sims = num_sims, colname = paste0("sick_prob_", dis))
+    # if (sum(ind_prob) == 0){
+    #   break
+    # }
+    synth_pop_wprob <- bind_cols(synth_pop_wprob, ind_prob)
+    names(synth_pop_wprob)[synth_pop_wprob |> length()] <- paste0("prob_", dis, "_", i)
+    # print(dis)
+  }
   
   for (dis in diseases){
-    cstate <- future_apply(synth_pop_wprob, 1, get_state, cycle = i, cause = dis, cm = m[, paste0("c", i - 1)], future.seed = T)
+    cstate <- future_apply(synth_pop_wprob, 1, get_state, cycle = i, cause = dis, cm = m[, c(paste0("c", i - 1), paste0("c", i))], future.seed = T)
     m[, i + 1] <- cstate
     print(paste("cycle ", i))
     print(table(m[, i + 1]))
@@ -133,5 +138,4 @@ for (i in 1:n.c){
   # if (cstate |> table() |> as.data.frame() |> dplyr::select(Freq) |> nrow() == 1)
   #   break
 }
-
 toc()
