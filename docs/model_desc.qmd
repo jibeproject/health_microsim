@@ -1,7 +1,9 @@
 ---
 title: "Health Microsimulation"
 author: "Ali Abbas, Belen Zapata"
-format: html
+format: 
+  html:
+    self-contained: true
 editor: visual
 ---
 
