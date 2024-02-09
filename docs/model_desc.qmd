@@ -8,9 +8,37 @@ editor: visual
 
 ## Health Microsimulation
 
-This document explains the details of the `health microsimulation` model. It is inspired by the [Microsimulation-tutorial](https://github.com/DARTH-git/Microsimulation-tutorial). The model is an individual based model, where it remembers each individual's characteritics and their behaviours and exposures over time, while keeping the overall count of health statistics using incidence and mortality rates. The model is flexible and generlizable to any setting - location, diseases and demographics.
+This document explains the details of the `health microsimulation` model. It is inspired by the [Microsimulation-tutorial](https://github.com/DARTH-git/Microsimulation-tutorial). The model is an individual based model, where it remembers each individual's characteristics and their behaviours and exposures over time, while keeping the overall count of health statistics using incidence and mortality rates. The model is flexible and generlizable to any setting - location, diseases and demographics.
 
 ## Running Code
+
+Mention the code and data structure. Also the main script to run the model and generate the outputs.
+
+## Running Code
+
+The individual data for a synthetic population, with demographic information (such as age and gender), as well as the exposure (relative risk for physical activity - like walking/cycling, and Air Pollution - exposure to PM2.5 and so on) comes from a transport model (build with MatSim) in a single csv file.
+
+We use this data - with slight modifications as our `synthetic population`
+
+### Reduction of size of synthetic population
+
+In order to quickly run the model, we reduce the size of the `synthetic population`. This allows us to deal with a much smaller dataset.
+
+### Select variables of interest
+
+We then select the variables of interest comprising of individual demographics (such as age and gender), and exposure (`rr_all` - a combined exposure variable) and use these as our columns.
+
+### Background health burden
+
+We have processed the burden data and generated age and gender specific deaths rates for a variety of causes/diseases. These may include: `all-cause-mortality`, `Ischaemic Heart Disease`, `Stroke`, `Lung Cancer` and so on. As we have mentioned before, the model is agnostic about the diseases being used. We may develop interactions and also hierarchy on a well-defined disease/cause structure later on, but as of now, the model does not care about the diseases one may use.
+
+### From death rates to sick probability
+
+We then use a generalized formula to convert death rates of a disease into `sick_prob` (or sickness probability) by: sick_prob = 1 - exp(-deaths_rate). In this step we convert all death rates of all diseases into sick_prob by the same formula.
+
+Read background health data with death_rates by diseases/cause and age and sex Convert death_rate to sick_probablity using formula: 1 - exp(-deaths_rate)
+
+Combine synthetic population with background sick_probability (by cause, age and sex)
 
 When you click the **Render** button a document will be generated that includes both content and the output of embedded code. You can embed code like this:
 
