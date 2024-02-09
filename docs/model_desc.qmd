@@ -27,13 +27,11 @@ We then select the variables of interest comprising of individual demographics (
 
 ### Background health burden
 
-We have processed the burden data and generated age and gender specific deaths rates for a variety of causes/diseases. These may include: `all-cause-mortality`, `Ischaemic Heart Disease`, `Stroke`, `Lung Cancer` and so on (Belen, you may like to add more details here). As we have mentioned before, the model is agnostic about the diseases being used. We may develop interactions and also hierarchy on a well-defined disease/cause structure later on, but as of now, the model does not care about the diseases one may use.
+We have processed the burden data and generated age and gender specific death rates for a variety of causes/diseases. These may include: `all-cause-mortality`, `Ischaemic Heart Disease`, `Stroke`, `Lung Cancer` and so on (Belen, you may like to add more details here). As we have mentioned before, the model is agnostic about the diseases being used. We may develop interactions and also hierarchy on a well-defined disease/cause structure later on, but as of now, the model does not care about the diseases one may use.
 
 ### From death rates to sick probability
 
-We then use a generalized formula to convert death rates of a disease into `sick_prob` (or sickness probability) by: sick_prob = 1 - exp(-deaths_rate). In this step we convert all death rates of all diseases into sick_prob by the same formula.
-
-Combine synthetic population with background sick_probability (by cause, age and sex)
+We then use a generalized formula to convert death rates of a disease into `sick_prob` (or sickness probability) by: sick_prob = 1 - exp(-death_rate). In this step we convert all death rates of all diseases into sick_prob by the same formula.
 
 ### Combine health burden data to synthetic population
 
@@ -45,8 +43,8 @@ The model has two main functions:
 
 1.  `prob_age_sex` takes in age, gender and cause (or disease name) and returns the `sick_prob`
 
-2.  `get_state` returns the next state for each individual in the `synthetic population`. Essentially this function performs state transitions such as depicted below in the diagram:
+2.  `get_state` returns the next state for each individual agent in the `synthetic population`. Essentially this function performs state transitions such as depicted below in the diagram:
 
     ![State Transitions](images/state_transitions.drawio.png)
 
-Each individual of the `synthetic population` starts in a `healthy` state and at each step, she may transition to any of the N disease state. Since `all-cause-mortality` is a specific kind of a cause, the individual transitions to the death state `D`. The decision for any of the disease transition boils down to: if the random uniform distribution (`` runif(1)` ``) is greater than disease, age and gender specific `sick_prob`, then the transition occurs, otherwise the previous states are preserved. So imagine if at cycle *i*, an individual agent *a* had two states (S1 and S2) and now at cycling *i + 1,* we would like to know that for S3 the random uniform number (a random number between 0 and 1), is greater than `sick_prob` for S3 (for a given age and gender) then the new states for the agent *a* becomes (S1, S2 and S3). If S3 was a special kind of cause (`all-cause-mortality`), then the new state for the agent *a* would be death (`D`).
+Each individual of the `synthetic population` starts in a `healthy` state and at each step, she may transition to any of the N disease state. Since `all-cause-mortality` is a specific kind of a cause, the individual transitions to the death state `D`. The decision for any of the disease transition boils down to: if the random uniform distribution (`runif(1)`) is greater than disease, age and gender specific `sick_prob`, then the transition occurs, otherwise the previous states are preserved. So imagine if at cycle *i*, an individual agent *a* had two states (`S1` and `S2`) and now at cycling *i + 1,* we would like to know that for `S3` the random uniform number (a random number between 0 and 1), is greater than `sick_prob` for `S3` (for a given age and gender) then the new states for the agent *a* becomes (`S1`, `S2` and `S3`). If `S3` was a special kind of cause (`all-cause-mortality`), then the new state for the agent *a* would be death (`D`). Once an agent *a* dies, then she may not transition to any other state.
