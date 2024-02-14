@@ -32,7 +32,7 @@ synth_pop <- synth_pop |> dplyr::select(id, age, gender, base_rr_all) |>
 n.i <- synth_pop |> nrow()
 
 # Number of cycles
-n.c <- 10
+n.c <- 50
 
 # everyone begins in the healthy state 
 v.M_1 <- rep("H", n.i)
@@ -137,15 +137,15 @@ m[,1] <- v.M_1
 # Read the names of all columns starting with the 'sick' word, so that list of causes (or diseases) can be generated
 diseases <- sapply(strsplit(back_hdata |> dplyr::select(starts_with("sick")) |> names(), "\\_"), "[", 3)
 # Select only a handful of cause for now, which are: all-cause-mortality, ischaemic heart disease", stroke and lung Cancer
-diseases <- c("allc", "ishd", "tbalc", "strk")
+# diseases <- c("allc", "ishd", "tbalc", "strk")
 
-diseases <- c( "allc", "npls", "ishd", "tbalc", "carc", "strk", "hanc", "copd", "dmt2", "lvrc", "stmc",
-               "kdnc", "espc", "lwri", "mltm", "adaod", "brsc", "bldc", "prkd", "chml", "dprd", "prsc",
-               "utrc" )
-
-diseases <- c("allc", "utrc")
-diseases <- c("npls", "ishd")
-diseases <- c("ishd", "npls")
+# diseases <- c( "allc", "npls", "ishd", "tbalc", "carc", "strk", "hanc", "copd", "dmt2", "lvrc", "stmc",
+#                "kdnc", "espc", "lwri", "mltm", "adaod", "brsc", "bldc", "prkd", "chml", "dprd", "prsc",
+#                "utrc" )
+# 
+# diseases <- c("allc", "utrc")
+# diseases <- c("npls", "ishd")
+# diseases <- c("ishd", "npls")
 # Assign an easily understandable label to each of the causes/diseases
 # lbls <- c("Dead", "Healthy", "All-cause mortality", "Ischaemic Heart Disease", "Stroke", "Lung Cancer")
 
@@ -194,6 +194,7 @@ for (i in 1:n.c){
   for (dis in diseases){
     ind_prob <- future_apply(synth_pop_wprob, 1, prob_age_sex, future.seed = T,
                              hdata = back_hdata, cycle = i, colname = paste0("sick_prob_", dis))
+    print(ind_prob |> summary())
     synth_pop_wprob <- bind_cols(synth_pop_wprob, ind_prob)
     names(synth_pop_wprob)[synth_pop_wprob |> length()] <- paste0("prob_", dis, "_", i)
   }
@@ -203,10 +204,10 @@ for (i in 1:n.c){
     print(table(cstate))
     m[, i + 1] <- cstate
     
-    if (cstate |> table() |> as.data.frame() |> dplyr::select(Freq) |> nrow() == 1){
-      stop <- T
-      break
-    }
+    # if (cstate |> table() |> as.data.frame() |> dplyr::select(Freq) |> nrow() == 1){
+    #   stop <- T
+    #   break
+    # }
     
   }
 }
@@ -240,9 +241,9 @@ ggplot(l) +
   labs(x = "Years", y = "Frequency (%)", title = "State transitions over the years") +
   theme_minimal()
 
-# ggsave(paste0("diagrams/state_trans-n.c-",n.c, "-n.i-", n.i, ".png"), height = 5, width = 10, units = "in", dpi = 600, scale = 1)
+ggsave(paste0("diagrams/state_trans-n.c-",n.c, "-n.i-", n.i, "-n.d-", length(diseases), ".png"), height = 5, width = 10, units = "in", dpi = 600, scale = 1)
 
-# write_csv(m |> as.data.frame(), paste0("data/state_trans-n.c-",n.c, "-n.i-", n.i, ".csv"))
+write_csv(m |> as.data.frame(), paste0("data/state_trans-n.c-",n.c, "-n.i-", n.i, "-n.d-", length(diseases), ".csv"))
 
 # # Print ggplot over cycles across all states - including healthy, deceased and individual diseases
 # ggplot(m |> as.data.frame() |> rownames_to_column("id") |> pivot_longer(cols = -id)) +
