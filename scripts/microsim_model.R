@@ -23,8 +23,6 @@ synth_pop <- read_csv("data/siloMitoMatsim_modelOutput/pp_health_2012.csv")
 # slice 1k rows
 synth_pop <- synth_pop |> slice_sample(n = 100) |> rename(base_rr_all = rr_all)
 
-# rm (cdf, synth_pop_scen, synth_pop_base)
-#synth_pop <- synth_pop |> dplyr::select(id, age, gender, base_rr_all, scen_rr_all) |> 
 synth_pop <- synth_pop |> dplyr::select(id, age, gender, base_rr_all) |> 
   rename (sex = gender)
 
@@ -32,7 +30,7 @@ synth_pop <- synth_pop |> dplyr::select(id, age, gender, base_rr_all) |>
 n.i <- synth_pop |> nrow()
 
 # Number of cycles
-n.c <- 10
+n.c <- 50
 
 # everyone begins in the healthy state 
 v.M_1 <- rep("H", n.i)
@@ -72,11 +70,6 @@ prob_age_sex <- function(data, hdata, colname = "sick_prob_allc", seed = 1, cycl
 # If transition probability is less than sick_prob, then it happens, otherwise the agent (or the individual)
 # remain in the same state
 get_state <- function(rd, cycle = 1, cause = "allc", cm) {
-  # rd <- synth_pop_wprob[1,]
-  # cycle <- 1
-  # c <- 1
-  # cm = m[, c(paste0("c", i - 1), paste0("c", i))]
-  # cause <- "utrc"
   # Get unique index for the agent
   vi <- rd["rowname"] |> as.numeric()
   # Get previous state of the agent
@@ -86,7 +79,6 @@ get_state <- function(rd, cycle = 1, cause = "allc", cm) {
   # Create cause specific state name
   curr_cause <- paste0('S_', toupper(cause))
   
-  # print(vi)
   # If the agent has already died, then they remain in the same 'dead' state
   if (prev_state == 'D' ||
       (!is.na(curr_state) && curr_state == 'D') ||
@@ -137,52 +129,15 @@ m[,1] <- v.M_1
 # Read the names of all columns starting with the 'sick' word, so that list of causes (or diseases) can be generated
 diseases <- sapply(strsplit(back_hdata |> dplyr::select(starts_with("sick")) |> names(), "\\_"), "[", 3)
 # Select only a handful of cause for now, which are: all-cause-mortality, ischaemic heart disease", stroke and lung Cancer
-diseases <- c("allc", "ishd", "tbalc", "strk")
+# diseases <- c("allc", "ishd", "tbalc", "strk")
 
-diseases <- c( "allc", "npls", "ishd", "tbalc", "carc", "strk", "hanc", "copd", "dmt2", "lvrc", "stmc",
-               "kdnc", "espc", "lwri", "mltm", "adaod", "brsc", "bldc", "prkd", "chml", "dprd", "prsc",
-               "utrc" )
-
-diseases <- c("allc", "utrc")
-diseases <- c("npls", "ishd")
-diseases <- c("ishd", "npls")
-# Assign an easily understandable label to each of the causes/diseases
-# lbls <- c("Dead", "Healthy", "All-cause mortality", "Ischaemic Heart Disease", "Stroke", "Lung Cancer")
-
-# Record the time it takes to run the piece of code with tic()
-# require(tictoc)
-# tic()
-# stop <- F
-# for (i in 1:n.c){
-#   if (stop)
-#     break
-#   # for (dis in diseases){
-#   foreach(dis %in% diseases, .export = c("synth_pop_wprob", "back_hdata", "i", "dis")) %dorng% {
-#   for (dis in diseases){
-#     ind_prob <- future_apply(synth_pop_wprob, 1, prob_age_sex, future.seed = T,
-#                              hdata = back_hdata, cycle = i, colname = paste0("sick_prob_", dis))
-#     synth_pop_wprob <- bind_cols(synth_pop_wprob, ind_prob)
-#     names(synth_pop_wprob)[synth_pop_wprob |> length()] <- paste0("prob_", dis, "_", i)
-#     # print(dis)
-#     # print(summary(ind_prob))
-#   }
-#   
-#   for (dis in diseases){
-#     cstate <- future_apply(synth_pop_wprob, 1, get_state, cycle = i, cause = dis, cm = m[, c(paste0("c", i - 1), paste0("c", i))], future.seed = T)
-#     print(table(cstate))
-#     m[, i + 1] <- cstate
-#     
-#     if (cstate |> table() |> as.data.frame() |> filter(cstate == 'D' & Freq == 100) |> nrow() == 1){
-#       stop <- T
-#       break
-#     }
-#        
-#   }
-# }
-# # Stop recording of time spent running the code
+# diseases <- c( "allc", "npls", "ishd", "tbalc", "carc", "strk", "hanc", "copd", "dmt2", "lvrc", "stmc",
+#                "kdnc", "espc", "lwri", "mltm", "adaod", "brsc", "bldc", "prkd", "chml", "dprd", "prsc",
+#                "utrc" )
 # 
-# }
-# toc()
+# diseases <- c("allc", "utrc")
+# diseases <- c("npls", "ishd")
+# diseases <- c("ishd", "npls")
 
 # Record the time it takes to run the piece of code with tic()
 require(tictoc)
@@ -203,10 +158,11 @@ for (i in 1:n.c){
     print(table(cstate))
     m[, i + 1] <- cstate
     
-    if (cstate |> table() |> as.data.frame() |> dplyr::select(Freq) |> nrow() == 1){
-      stop <- T
-      break
-    }
+    # Remove this piece of code
+    # if (cstate |> table() |> as.data.frame() |> dplyr::select(Freq) |> nrow() == 1){
+    #   stop <- T
+    #   break
+    # }
     
   }
 }
@@ -233,20 +189,15 @@ l$c <- as.factor(l$c)
 
 l <- l |> filter(!is.na(Var1))
 
+# Generate historic state transitions of all diseases + death
 ggplot(l) +
   aes(x = c, y = freq, fill = Var1) +
   geom_col() +
-  # scale_fill_manual(name = "State", labels = lbls, values = c('#66c2a5','#fc8d62','#8da0cb','#e78ac3','#a6d854','#ffd92f')) + 
   labs(x = "Years", y = "Frequency (%)", title = "State transitions over the years") +
   theme_minimal()
 
-# ggsave(paste0("diagrams/state_trans-n.c-",n.c, "-n.i-", n.i, ".png"), height = 5, width = 10, units = "in", dpi = 600, scale = 1)
+# Save the diagram
+ggsave(paste0("diagrams/state_trans-n.c-",n.c, "-n.i-", n.i, "-n.d-", length(diseases), ".png"), height = 5, width = 10, units = "in", dpi = 600, scale = 1)
 
-# write_csv(m |> as.data.frame(), paste0("data/state_trans-n.c-",n.c, "-n.i-", n.i, ".csv"))
-
-# # Print ggplot over cycles across all states - including healthy, deceased and individual diseases
-# ggplot(m |> as.data.frame() |> rownames_to_column("id") |> pivot_longer(cols = -id)) +
-#   aes(x = name, fill = value) +
-#   geom_bar() +
-#   scale_fill_hue(direction = 1) +
-#   theme_minimal()
+# Also save state transitions as a CSV
+write_csv(m |> as.data.frame(), paste0("data/state_trans-n.c-",n.c, "-n.i-", n.i, "-n.d-", length(diseases), ".csv"))
