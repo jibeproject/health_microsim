@@ -13,6 +13,8 @@ set.seed(2)
 
 # Read pp health dataset (of Munich) using read_csv_arrow from arrow library
 # synth_pop_base <- read_csv("data/siloMitoMatsim_modelOutput/pp_health_2012.csv")
+
+### Belen 7.03.24: change folder to Jibe working group
 synth_pop <- read_csv("data/siloMitoMatsim_modelOutput/pp_health_2012.csv")
 
 # # Read pp health dataset (of Munich) using read_csv_arrow from arrow library

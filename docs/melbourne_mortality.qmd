@@ -15,8 +15,12 @@ editor: visual
 ```{r setup, echo=FALSE, message=FALSE}
 library(readxl)
 library(tidyverse)
+library(knitr)
+library(jsonlite)
 options(scipen = 4)
+
 knitr::opts_chunk$set(echo=TRUE)
+knitr::opts_chunk$set(root.dir = "C:/Users/beluz/OneDrive - RMIT University/JIBE/JIBE-WP6/healthmicrosim/")
 ```
 
 This document shows how mortality data for the JIBE Melbourne microsimulation is obtained and processed, giving the R code to reproduce the analysis.
@@ -36,7 +40,8 @@ Statistical Areas level 2 (SA2), as defined for the 2016 census, are used as the
 [Source](https://www.abs.gov.au/ausstats/abs@.nsf/mf/1270.0.55.001)
 
 ```{r}
-sa2 <- read_csv("mortality/original/SA2_2016_AUST.csv", col_types = "cccccccccccd")
+setwd("C:/Users/beluz/OneDrive - RMIT University/JIBE/JIBE-WP6/healthmicrosim/")
+sa2 <- read_csv("health/original/ABS/SA2_2016_AUST.csv", col_types = "cccccccccccd")
 ```
 
 ## Mortality by year of age and sex, for Victoria state (not by smaller areas)
@@ -46,7 +51,8 @@ sa2 <- read_csv("mortality/original/SA2_2016_AUST.csv", col_types = "ccccccccccc
 The mortality rate here, `rate`, is defined as "the proportion of persons dying between exact age x and exact age x+1". For presentation, this is converted to a rate per 1000 people.
 
 ```{r}
-dats <- read.csv("original/3302055001do001_20162018_Table_1.2.csv",skip=6,
+setwd("C:/Users/beluz/OneDrive - RMIT University/JIBE/JIBE-WP6/healthmicrosim/")
+dats <- read.csv("health/original/ABS/3302055001do001_20162018_Table_1.2.csv",skip=6,
          na=c("","np"), nrows=101)[,1:9]
 mf <- rep(c("male","female"),each=4)
 names1 <- rep(c("denom","rate","personyears","le"), 2)
@@ -75,7 +81,8 @@ An area-specific relative rate, relative to the average in the state, is compute
 
 ```{r}
 #| cache: true
-deaths_sa2 <- rjson::fromJSON(file="original/au-govt-abs-abs-deaths-sa2-2012-2020-sa2-2016.json") |>
+setwd("C:/Users/beluz/OneDrive - RMIT University/JIBE/JIBE-WP6/healthmicrosim/")
+deaths_sa2 <- rjson::fromJSON(file="health/original/aurin/au-govt-abs-abs-deaths-sa2-2012-2020-sa2-2016.json") |>
   pluck("features") |>
   tibble() |>
   set_names("area") |>
@@ -96,7 +103,8 @@ In these cases, the standardised death rate for the equivalent SA3 area is used 
 
 ```{r}
 #| cache: true
-deaths_sa3 <- rjson::fromJSON(file="original/au-govt-abs-abs-deaths-sa3-2012-2020-sa3-2016.json") |>
+setwd("C:/Users/beluz/OneDrive - RMIT University/JIBE/JIBE-WP6/healthmicrosim/")
+deaths_sa3 <- rjson::fromJSON(file="health/original/aurin/au-govt-abs-abs-deaths-sa3-2012-2020-sa3-2016.json") |>
   pluck("features") |>
   tibble() |>
   set_names("area") |>
@@ -155,7 +163,8 @@ Proportion in each area who have completed the equivalent of secondary-school ("
 This data will be required to appropriately produce mortality rates disagreggated by both area and education (see below).
 
 ```{r}
-educarea <- read.csv("original/education_sa2_aurin.csv") |>
+setwd("C:/Users/beluz/OneDrive - RMIT University/JIBE/JIBE-WP6/healthmicrosim/")
+educarea <- read.csv("health/original/aurin/education_sa2_aurin.csv") |>
   filter(yr==2016) |>
   select(sa2_maincode_2016, 
          sa2_name_2016, 
@@ -169,7 +178,6 @@ educarea <- read.csv("original/education_sa2_aurin.csv") |>
   left_join(sa2, join_by(sa2_code == SA2_MAINCODE_2016)) |>
   filter(sa2_code %in% sa2$SA2_MAINCODE_2016[sa2$GCCSA_NAME_2016=="Greater Melbourne"]) |>
   select(sa2_code, high, medium, low)
-
 missing_areas <- unique(c(setdiff(melbourne_sa2_deaths$sa2_code, 
                                   educarea$sa2_code), 
                           educarea$sa2_code[is.na(educarea$high)]))
@@ -283,6 +291,7 @@ We have previously estimated mortality by age, sex and area. We use this method 
 The effects of education on mortality are published for three age groups (25-44, 45-64 and 65-84). Outside these age groups, mortality effects are assumed to be independent of education level.
 
 ```{r}
+setwd("C:/Users/beluz/OneDrive - RMIT University/JIBE/JIBE-WP6/healthmicrosim/")
 mort_disagg <- deaths_age_sa2 |> 
   left_join(educarea, by="sa2_code") |>
   pivot_longer(cols = c("high","medium","low"), 
@@ -305,7 +314,7 @@ mort_disagg <- mort_disagg |>
     prob = 1 - exp(-rate/1000)
   ) |>  select(age, sex, sa2_code, sa2_name, educ, rate, prob) |>
   filter(sa2_code %in% sa2$SA2_MAINCODE_2016[sa2$GCCSA_NAME_2016=="Greater Melbourne"])
-saveRDS(mort_disagg, file="processed/mort_disagg.rds")
+saveRDS(mort_disagg, file="health/processed/mort_disagg.rds")
 ```
 
 The final dataset produced contains the following columns
