@@ -30,20 +30,73 @@ will be to include prevalence of disease at baseline (as opposed to all
 individuals being healthy) and add a differential all cause mortality
 risk for individuals who have one or more diseases.
 
-## Diseases
+## Data needs
 
 We need data for all cause mortality and diseases incidence. For disease
 incidence, data is required for the list of diseases below, which
 correspond to the included risk factors in the model (PM2.5, NO2,
 physical activity).
 
-ADD diseases list here. TO DO.
+```{r}
+library(tibble)
+library(kableExtra)
+
+library(tibble)
+library(kableExtra)
+
+diseases_risks <- tibble::tribble(
+  ~"Disease", ~"Risk",
+  "Stroke", "PA",
+  "Coronary heart disease", "PA",
+  "Breast cancer", "PA",
+  "Endometrial cancer", "PA",
+  "Lung cancer", "PA",
+  "Colon cancer", "PA",
+  "Esophageal cancer", "PA",
+  "Liver cancer", "PA",
+  "Kidney cancer", "PA",
+  "Gastric cardia cancer", "PA",
+  "Myeloid leukemia", "PA",
+  "Myeloma", "PA",
+  "Head and neck cancer", "PA",
+  "Rectum cancer", "PA",
+  "Bladder cancer", "PA",
+  "Prostate cancer", "PA",
+  "Malignant melanoma", "PA",
+  "Depressive disorders", "PA",
+  "Major depression", "PA",
+  "All cause dementia", "PA",
+  "Diabetes type 2", "PA",
+  "Chronic obstructive pulmonary disease", "PA"
+)
+
+inputs <- kableExtra::kable(
+  diseases_risks, 
+  booktabs = TRUE, 
+  caption = "Diseases", 
+  longtable = TRUE
+)
+
+inputs
+
+```
 
 ## Inequalities in health
 
 In Jibe we aim to represent inequalities in health, thus, we include
 inequalities in our estimates of health to the extend of this being
-possible using publicly available data.
+possible using publicly available data. We need data by age and sex at
+the minimum, and additional data representing inequalities will be used
+as much as possible. The initial data is then by age and sex with
+additional data sources used to further dissaggregate, for example, by
+area, level of socioeconomic deprivation and education. Data to
+dissaggregate is available in different formats, for example, a relative
+risk to indicate the increased/decrease risk for a given group in
+comparison to a reference group or rates comparing different population
+groups. If relative risks are supplied, we apply those to modify the
+data, if not, we need to derive a RR, for the second, we use the below
+methods (BELEN TO CHECK TEXT ONCE WE Finish to reflect on methods, a
+table with what we used for what would be useful for the paper).
 
 We use the following method to disaggregate an event rate (for example,
 incidence or mortality by age and sex) by a further risk factor (such as
@@ -68,13 +121,13 @@ categories $i=1,2,3...$, such as a area socioeconomic indicator. Suppose
 $r_1$ is the mortality rate in some reference group $i$, $p_i$ is the
 proportion of people in group $i$, and $RR_i$ is the relative risk
 associated with being in this group compared to group $i=1$, so that
-$RR_1=0$. **[SP note: is this right?  Or does $RR_1=1$?]** Given
+$RR_1=0$. **\[SP note: is this right? Or does** $RR_1=1$?\] Given
 
 $r_{ave} = r_1 \sum_{i=1}^G p_i RR_i$
 
-we can compute $r_1$ given $r_{ave}$, the relative rates for the risk factor
-$RR_i$ and  opulation proportions for the risk factor $p_i$. Hence we can
-compute the remaining $r_i$ by multiplying $r_1$ by $RR_i$.
+we can compute $r_1$ given $r_{ave}$, the relative rates for the risk
+factor $RR_i$ and opulation proportions for the risk factor $p_i$. Hence
+we can compute the remaining $r_i$ by multiplying $r_1$ by $RR_i$.
 
 ```{r setup, include=FALSE}
 library(tidyverse)
@@ -87,6 +140,13 @@ options("scipen"=100, "digits"=4)
 
 # set root directory one level up from current 'docs' directory
 knitr::opts_knit$set(root.dir = dirname(getwd()))
+
+knitr::opts_chunk$set(
+  echo = FALSE,          # Hide code by default
+  results = "hide",      # Hide results by default
+  message = FALSE,       # Suppress messages
+  warning = FALSE)        # Suppress warnings
+
 ```
 
 # Incidence data
@@ -95,8 +155,7 @@ knitr::opts_knit$set(root.dir = dirname(getwd()))
 
 We use GBD data as the age and sex data for incidence estimates except
 for cancers. For cancers we use Australian Institute of Health and
-Welfare (AIHW) data and for mortality Australian Bureau of statistic
-(ABS) data.
+Welfare (AIHW) data.
 
 ### Global Burden of disease data for Australia: data interpolation
 
@@ -363,13 +422,15 @@ for (page in 1:n_pages) {
 
 ### Australian Institute of Health and Welfare data for Australia: data interpolation
 
-For cancers, we use data from AIHW, which similar to GBD, will be
-interpolated.
-
 #### Harmonise definitions of cancer sites
 
 The cancer sites are reported differently between the AIHW tables on
-incidence by age/sex and incidence by socioeconomic quintiles.
+incidence by age/sex and incidence by socioeconomic quintiles. While the
+final data uses ATLAS, as opposed to AIHW, initial code from Chris used
+AIHW so we still harmonise, also to match standard names used across
+different inputs (i.e. health data, dose response functions). We also
+use the table for other purposes (TO COMPLETE, USED SOMEWHERE IN
+PREPARATIONADN INTERPOLATION OF THE DATA).
 
 This table details the assumptions that are made in order to match the
 corresponding rates between the tables. The sites that we intend to use
@@ -575,7 +636,7 @@ following groups of diseases or single diseases: cancer, cardiovascular
 diseases and diabetes, COPD. For depression we did not find any data
 representing inequalities. Data sources are outlined here (Steve maybe
 there is a better way to share a file):
-https://rmiteduau.sharepoint.com/:x:/r/sites/JIBEworkinggroup/Shared%20Documents/General/health/diseases%20data.xlsx?d=w39d6dfa0db7c4a3294a89cf8ad3f71ee&csf=1&web=1&e=do8erQ
+[health](https://rmiteduau.sharepoint.com/:f:/r/sites/JIBEworkinggroup/Shared%20Documents/General/health?csf=1&web=1&e=BaifAr)
 
 ### Cancers
 
@@ -594,7 +655,6 @@ difference in population between SA2 and differences in age structure of
 the population with an SA2.
 
 ```{r}
-
 # Get sheet with SA2 areas by SES and filter Victoria
 
 library(readxl)
@@ -903,7 +963,10 @@ Similar pattern with liver cancer and lung cancer.
 cardiovascular_incidence.RDM. Please replace ensure that the incidence
 by age and sex is from the interpolated file (incyr (feel free to change
 to a better name accross the file). \[SP note: done, below; using GBD
-for this, so I've used the interpolated file 'gbdpyr'.  And please also note that I've included COPD here along with the other non-cancer diseases, as the structure of the two original .rmd files was so similar.\]**
+for this, so I've used the interpolated file 'gbdpyr'. And please also
+note that I've included COPD here along with the other non-cancer
+diseases, as the structure of the two original .rmd files was so
+similar.\]**
 
 This script produces estimates of incidence for stroke, ischemic heart
 disease , type 2 diabetes and chronic obstructive pulmonary disease
@@ -1060,7 +1123,8 @@ cvd_dia_copd_socio <- bind_rows(cvd_inc, diabetes_inc, stroke_inc, copd_inc) %>%
 
 #### Combining socioeconomic status with age and sex
 
-We use the method outlined in `Inequalities in health` above to disaggregate the age and sex data by socioeconomic status.
+We use the method outlined in `Inequalities in health` above to
+disaggregate the age and sex data by socioeconomic status.
 
 We assume that $p_i = 1/5$ is the proportion of people in each of the
 five quintiles of socioeconomic status, and these proportions are the
@@ -1451,7 +1515,8 @@ accounted for in the standardised rates.
 
 ### Including other predictors of mortality
 
-We use the method outlined in `Inequalities in health` above to disaggregate the age and sex data by socioeconomic status.
+We use the method outlined in `Inequalities in health` above to
+disaggregate the age and sex data by socioeconomic status.
 
 We have previously estimated mortality by age, sex and area. We use this
 method to further disaggregate mortality rates by level of education,
