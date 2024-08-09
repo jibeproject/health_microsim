@@ -30,6 +30,30 @@ will be to include prevalence of disease at baseline (as opposed to all
 individuals being healthy) and add a differential all cause mortality
 risk for individuals who have one or more diseases.
 
+```{r setup, include=FALSE}
+library(tidyverse)
+library(readxl)
+library(knitr)
+library(jsonlite)
+library(kableExtra)
+library(gt)
+
+# functions
+source("functions/interpolation.R")
+
+# Avoid scientific notation
+options("scipen"=100, "digits"=4)
+
+# set root directory one level up from current 'docs' directory
+knitr::opts_knit$set(root.dir = dirname(getwd()))
+
+knitr::opts_chunk$set(
+  echo = FALSE,          # Hide code by default
+  # results = "hide",      # Hide results by default
+  message = FALSE,       # Suppress messages
+  warning = FALSE)        # Suppress warnings
+```
+
 ## Data needs
 
 We need data for all cause mortality and diseases incidence. For disease
@@ -38,12 +62,6 @@ correspond to the included risk factors in the model (PM2.5, NO2,
 physical activity).
 
 ```{r}
-library(tibble)
-library(kableExtra)
-
-library(tibble)
-library(kableExtra)
-
 diseases_risks <- tibble::tribble(
   ~"Disease", ~"Risk",
   "Stroke", "PA",
@@ -129,25 +147,6 @@ we can compute $r_1$ given $r_{ave}$, the relative rates for the risk
 factor $RR_i$ and opulation proportions for the risk factor $p_i$. Hence
 we can compute the remaining $r_i$ by multiplying $r_1$ by $RR_i$.
 
-```{r setup, include=FALSE}
-library(tidyverse)
-library(readxl)
-library(knitr)
-library(jsonlite)
-
-# Avoid scientific notation
-options("scipen"=100, "digits"=4)
-
-# set root directory one level up from current 'docs' directory
-knitr::opts_knit$set(root.dir = dirname(getwd()))
-
-knitr::opts_chunk$set(
-  echo = FALSE,          # Hide code by default
-  results = "hide",      # Hide results by default
-  message = FALSE,       # Suppress messages
-  warning = FALSE)        # Suppress warnings
-
-```
 
 # Incidence data
 
@@ -201,143 +200,6 @@ gbdpyrd5 <- gbdpyrd5 %>%
   select(measure, ageyr, sex, agegroup, from_age, to_age, cause, year, val1yr,rate_1) 
 
 
-# Interpolation function to create smooth data (Steve: Might move to a function folder, but need to ensure all data to interpolate has the same format)
-
-# Spline
-
-library(splines)
-
-disagg_spline <- function(dat, key) {
-  epsilon <- 1e-6  # Small constant to avoid log(0)
-  
-  with(dat, {
-    # Define the x and y for interpolation
-    x <- seq(from = floor(min(from_age)/5) * 5, to = 100, by = 5)
-    
-    # browser() #useful for checking that x is what we expect. Can be used at any steps that we want 
-    # to check the data and works when running the function by stoping the process.
-    
-    # Add epsilon and log-transform the rates
-    y <- log(rate_1 + epsilon)
-    
-    # Generate new x points (high-frequency), constrained to be at most 99
-    new_x <- seq(min(x), min(99, max(x)), length.out = min(100, max(x) - min(x) + 1))
-    
-     # browser()
-    
-    # Perform spline interpolation on the log-transformed data
-    log_interpolated <- spline(x, y, xout = new_x)$y
-    
-    # Transform back from log scale by exponentiating
-    interpolated <- exp(log_interpolated) 
-    
-    # Ensure that negative values do not occur after transformation
-    interpolated[interpolated < 0] <- 0
-    
-    # Create a data frame with the interpolated values
-    data.frame(
-      ageyr = new_x,
-      val_interpolated = interpolated
-    )
-  })
-}
-
-# Polinomial
-
-disagg_polynomial <- function(dat, key) {
-  with(dat, {
-    x <- seq(from = floor(min(from_age)/5) * 5, to = 100, by = 5)
-    y <- rate_1
-    
-    # Fit a polynomial model
-    fit <- lm(y ~ poly(x, 3))  # 3rd-degree polynomial (adjust degree as needed)
-    
-    # Generate new x points
-    new_x <- seq(min(x), min(99, max(x)), length.out = min(100, max(x) - min(x) + 1))
-    
-    # Predict values
-    interpolated <- predict(fit, newdata = data.frame(x = new_x))
-    
-    # Ensure that negative values do not occur
-    interpolated[interpolated < 0] <- 0
-    
-    # Create a data frame with the interpolated values
-    data.frame(
-      ageyr = new_x,
-      val_interpolated = interpolated
-    )
-  })
-}
-
-##Loess
-
-disagg_loess <- function(dat, key) {
-  with(dat, {
-    x <- seq(from = floor(min(from_age)/5) * 5, to = 100, by = 5)
-    y <- rate_1
-    
-    # Fit a loess model
-    fit <- loess(y ~ x)
-    
-    # Generate new x points
-    new_x <- seq(min(x), min(99, max(x)), length.out = min(100, max(x) - min(x) + 1))
-    
-    # Predict values
-    interpolated <- predict(fit, newdata = data.frame(x = new_x))
-    
-    # Ensure that negative values do not occur
-    interpolated[interpolated < 0] <- 0
-    
-    # Create a data frame with the interpolated values
-    data.frame(
-      ageyr = new_x,
-      val_interpolated = interpolated
-    )
-  })
-}
-
-
-# Smooth spline
-
-disagg_smooth_spline <- function(dat, key) {
-  epsilon <- 1e-6
-  
-  with(dat, {
-    x <- seq(from = floor(min(from_age)/5) * 5, to = 99, by = 5) 
-    y <- log(rate_1 + epsilon)
-    
-    # browser()
-    
-    # Fit a smooth spline model
-    fit <- smooth.spline(x, y)
-    
-    # browser()
-    
-    # Generate new x points
-    new_x <- seq(min(x), min(99, max(x)), length.out = min(100, max(x) - min(x) + 1))
-    
-    # browser()
-    
-    # Predict values
-    log_interpolated <- predict(fit, new_x)$y
-    
-      # browser()
-    
-    # Transform back from log scale
-    interpolated <- exp(log_interpolated)
-    
-    # Ensure that negative values do not occur
-    interpolated[interpolated < 0] <- 0
-    
-    # Create a data frame with the interpolated values
-    data.frame(
-      ageyr = new_x,
-      val_interpolated = interpolated
-    )
-  })
-}
-
-
 # Apply the disaggregation function
 
 # Group data for dissaggregation
@@ -346,7 +208,7 @@ gbdp_grp <- gbdp %>%
   group_by(measure, sex, cause) %>%
   arrange(measure, sex, cause, from_age)
 
-# Apply function (select one of the above). Smooth_spline does a good job.
+# Apply function (select a function from 'functions/interpolation.R'). Smooth_spline does a good job.
 gbdpyr <- group_modify(gbdp_grp, disagg_smooth_spline) %>%
   ungroup()
 
@@ -362,62 +224,13 @@ plot_data <- gbdpyr %>%
   select(measure, cause, sex, ageyr, rate_1, val_interpolated) %>%
   pivot_longer(cols = c(rate_1, val_interpolated), names_to = "type", values_to = "value")
 
-# Define how many plots per page
-nrow <- 3
-ncol <- 2
-
-# Create a combined cause and sex variable for faceting
-plot_data <- plot_data %>%
-  mutate(cause_sex = interaction(cause, sex))
-
-# Define the number of unique facets
-n_facets <- length(unique(plot_data$cause_sex))
-
-# Calculate the number of pages needed
-n_pages <- ceiling(n_facets / (nrow * ncol))
-
-# Function to generate a plot for a specific page
-plot_page <- function(page) {
-  # Calculate the start and end index for the current page
-  start <- (page - 1) * nrow * ncol + 1
-  end <- min(page * nrow * ncol, n_facets)
-  
-  # Subset the data for the current page
-  plot_data_subset <- plot_data %>%
-    filter(cause_sex %in% unique(plot_data$cause_sex)[start:end])
-  
-  # Create the plot for the current page
-  ggplot(plot_data_subset, aes(x = ageyr, y = value, color = type, linetype = type)) +
-    geom_line() +
-    facet_wrap(~ cause_sex, nrow = nrow, ncol = ncol, labeller = label_wrap_gen(width = 30)) +
-    labs(title = "Original and Interpolated Rates",
-         x = "Age",
-         y = "Rate",
-         color = "Rate Type",
-         linetype = "Rate Type") +
-    theme_minimal() +
-    theme(
-      legend.title = element_blank(),
-      panel.background = element_rect(fill = "white"),
-      plot.background = element_rect(fill = "white"),
-      panel.grid.major = element_line(color = "gray80"),
-      panel.grid.minor = element_line(color = "gray90")
-    )
-}
-
 # Generate and save all pages
-output_dir <- "docs/images/cancer_gbd_age_sex/"
+output_dir <- "docs/images/inc_gbd_age_sex/"
 if (!dir.exists(output_dir)) {
   dir.create(output_dir, recursive = TRUE)
 }
 
-
-for (page in 1:n_pages) {
-  p <- plot_page(page)
-  file_path <- file.path(output_dir, paste0("plot_page_", page, ".png"))
-  ggsave(filename = file_path, plot = p, width = 12, height = 8, bg = "white")
-}
-
+plot_interpolation_pages(plot_data, output_dir)
 ```
 
 ### Australian Institute of Health and Welfare data for Australia: data interpolation
@@ -475,8 +288,6 @@ stopifnot(!any(duplicated(sites$agesexname)))
 ### Interpolate incidence by age and sex
 
 ```{r pressure, echo=FALSE}
-
-library(readxl)
 
 inc <- read_xlsx("health/original/AIHW/cancer-incidence.xlsx", sheet="Table S1a.1", skip=5, col_names=TRUE) %>% 
     filter(Year==2016) %>% # here 2016 to match inequality data.
@@ -537,7 +348,7 @@ inc_grp <- inc %>%
   group_by(site, sex) %>%
   arrange(site, sex, from_age)
 
-# Apply function (select one of the above). Smooth_spline does a good job.
+# Apply function (select a function from 'functions/interpolation.R'). Smooth_spline does a good job.
 incyr <- group_modify(inc_grp, disagg_smooth_spline) %>%
   ungroup()
 
@@ -567,64 +378,16 @@ incyr <-incyr %>%
 
 # Melt the data to long format for ggplot
 plot_data <- incyr %>%
+  rename(cause = site) %>%
   pivot_longer(cols = c(rate_1, val_interpolated), names_to = "type", values_to = "value")
 
-# Define how many plots per page
-nrow <- 3
-ncol <- 2
-
-# Create a combined site and sex variable for faceting
-plot_data <- plot_data %>%
-  mutate(site_sex = interaction(site, sex))
-
-# Define the number of unique facets
-n_facets <- length(unique(plot_data$site_sex))
-
-# Calculate the number of pages needed
-n_pages <- ceiling(n_facets / (nrow * ncol))
-
-# Function to generate a plot for a specific page
-plot_page <- function(page) {
-  # Calculate the start and end index for the current page
-  start <- (page - 1) * nrow * ncol + 1
-  end <- min(page * nrow * ncol, n_facets)
-  
-  # Subset the data for the current page
-  plot_data_subset <- plot_data %>%
-    filter(site_sex %in% unique(plot_data$site_sex)[start:end])
-  
-  # Create the plot for the current page
-  ggplot(plot_data_subset, aes(x = ageyr, y = value, color = type, linetype = type)) +
-    geom_line() +
-    facet_wrap(~ site_sex, nrow = nrow, ncol = ncol, labeller = label_wrap_gen(width = 30)) +
-    labs(title = "Original and Interpolated Rates",
-         x = "Age",
-         y = "Rate",
-         color = "Rate Type",
-         linetype = "Rate Type") +
-    theme_minimal() +
-    theme(
-      legend.title = element_blank(),
-      panel.background = element_rect(fill = "white"),
-      plot.background = element_rect(fill = "white"),
-      panel.grid.major = element_line(color = "gray80"),
-      panel.grid.minor = element_line(color = "gray90")
-    )
-}
-
 # Generate and save all pages
-output_dir <- "docs/images/cancer_aihw_age_sex/"
+output_dir <- "docs/images/inc_aihw_age_sex/"
 if (!dir.exists(output_dir)) {
   dir.create(output_dir, recursive = TRUE)
 }
 
-
-for (page in 1:n_pages) {
-  p <- plot_page(page)
-  file_path <- file.path(output_dir, paste0("plot_page_", page, ".png"))
-  ggsave(filename = file_path, plot = p, width = 12, height = 8, bg = "white")
-}
-
+plot_interpolation_pages(plot_data, output_dir)
 ```
 
 ## Inequalities
@@ -656,8 +419,6 @@ the population with an SA2.
 
 ```{r}
 # Get sheet with SA2 areas by SES and filter Victoria
-
-library(readxl)
 
 excel_file <- "health/original/ATLAS/Atlas_estimates_95CIs.xlsx"
 
@@ -863,7 +624,6 @@ and rates by age and sex (rate_area).
 
 ```{r}
 
-library(ggplot2)
 rates_compare_long <- compare_socio %>% 
   mutate(socio = factor(socio, 
                         levels = c("Most disadvantaged", "Disadvantaged", 
@@ -878,7 +638,7 @@ rates_compare_long <- compare_socio %>%
 
 
 # Create folder if it doesn't exist
-folder_path <- file.path("docs", "images", "cancer_inc_compare")
+folder_path <- file.path("docs", "images", "inc_cancer_compare")
 if (!file.exists(folder_path)) {
   dir.create(folder_path, recursive = TRUE)
 }
@@ -892,7 +652,7 @@ for (site_val in unique(rates_compare_long$site)) {
     # Skip certain combinations of sex and site
     if ((sex_val == "Male" && site_val %in% c("breast cancer", "endometrial cancer")) ||
         (sex_val == "Female" && site_val == "prostate cancer")) {
-      cat("Skipping graph for sex:", sex_val, "and site:", site_val, "\n")
+      cat("Skipping graph for sex:", sex_val, "and site:", site_val, "\n\n")
       next  # Skip to the next iteration of the loop
     }
     
@@ -1210,7 +970,7 @@ p <- ggplot(cvd_dia_copd_inc,
 
 # save plot
 # Generate and save all pages
-output_dir <- "docs/images/cvd_dia_copd_inc/"
+output_dir <- "docs/images/inc_cvd_dia_copd/"
 if (!dir.exists(output_dir)) {
   dir.create(output_dir, recursive = TRUE)
 }
@@ -1595,7 +1355,6 @@ For each age group, sex and education level, this table shows the median
 
 ```{r}
 #| rows.print: 30
-library(gt)
 agecut <- c(0, 18, 45, 65, 80, Inf)
 mort_disagg |> 
   mutate(agegroup = cut(age, agecut, right=FALSE, include.lowest = TRUE)) |>
