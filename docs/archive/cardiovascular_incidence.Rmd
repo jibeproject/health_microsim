@@ -30,7 +30,7 @@ The data is obtained from the Global Burden of Disease for disease incidence by 
 
 1.  Stroke incidence: by sex and socioeconomic area for 2016: Table S2
 
-2.  Cardiovascular disease death: by sex and socioeconomic area for 2016: Table S2
+2.  Cardiovascular disease death: by sex and socioeconomic area for 2016: Table S3
 
 3.  Type 2 diabetes prevalence: by sex and socioeconomic area for 2016: Table S7
 
@@ -42,7 +42,7 @@ library(readxl)
 ```
 
 ```{r setup, include=FALSE}
-knitr::opts_knit$set(root.dir = "C:/Users/beluz/OneDrive - RMIT University/JIBE/JIBE-WP6/healthmicrosim/")
+knitr::opts_knit$set(root.dir = "C:/Users/steve/Documents/MEGAsync/Steve/RMIT JIBE/health_microsim/")
 knitr::opts_chunk$set(cache = TRUE)
 ```
 

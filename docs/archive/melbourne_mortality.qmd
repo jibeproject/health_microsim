@@ -20,7 +20,7 @@ library(jsonlite)
 options(scipen = 4)
 
 knitr::opts_chunk$set(echo=TRUE)
-knitr::opts_chunk$set(root.dir = "C:/Users/beluz/OneDrive - RMIT University/JIBE/JIBE-WP6/healthmicrosim/")
+knitr::opts_chunk$set(root.dir = "C:/Users/steve/Documents/MEGAsync/Steve/RMIT JIBE/health_microsim/")
 ```
 
 This document shows how mortality data for the JIBE Melbourne microsimulation is obtained and processed, giving the R code to reproduce the analysis.
@@ -40,7 +40,7 @@ Statistical Areas level 2 (SA2), as defined for the 2016 census, are used as the
 [Source](https://www.abs.gov.au/ausstats/abs@.nsf/mf/1270.0.55.001)
 
 ```{r}
-setwd("C:/Users/beluz/OneDrive - RMIT University/JIBE/JIBE-WP6/healthmicrosim/")
+setwd("C:/Users/steve/Documents/MEGAsync/Steve/RMIT JIBE/health_microsim/")
 sa2 <- read_csv("health/original/ABS/SA2_2016_AUST.csv", col_types = "cccccccccccd")
 ```
 
@@ -51,7 +51,7 @@ sa2 <- read_csv("health/original/ABS/SA2_2016_AUST.csv", col_types = "cccccccccc
 The mortality rate here, `rate`, is defined as "the proportion of persons dying between exact age x and exact age x+1". For presentation, this is converted to a rate per 1000 people.
 
 ```{r}
-setwd("C:/Users/beluz/OneDrive - RMIT University/JIBE/JIBE-WP6/healthmicrosim/")
+setwd("C:/Users/steve/Documents/MEGAsync/Steve/RMIT JIBE/health_microsim/")
 dats <- read.csv("health/original/ABS/3302055001do001_20162018_Table_1.2.csv",skip=6,
          na=c("","np"), nrows=101)[,1:9]
 mf <- rep(c("male","female"),each=4)
@@ -81,7 +81,7 @@ An area-specific relative rate, relative to the average in the state, is compute
 
 ```{r}
 #| cache: true
-setwd("C:/Users/beluz/OneDrive - RMIT University/JIBE/JIBE-WP6/healthmicrosim/")
+setwd("C:/Users/steve/Documents/MEGAsync/Steve/RMIT JIBE/health_microsim/")
 deaths_sa2 <- rjson::fromJSON(file="health/original/aurin/au-govt-abs-abs-deaths-sa2-2012-2020-sa2-2016.json") |>
   pluck("features") |>
   tibble() |>
@@ -103,7 +103,7 @@ In these cases, the standardised death rate for the equivalent SA3 area is used 
 
 ```{r}
 #| cache: true
-setwd("C:/Users/beluz/OneDrive - RMIT University/JIBE/JIBE-WP6/healthmicrosim/")
+setwd("C:/Users/steve/Documents/MEGAsync/Steve/RMIT JIBE/health_microsim/")
 deaths_sa3 <- rjson::fromJSON(file="health/original/aurin/au-govt-abs-abs-deaths-sa3-2012-2020-sa3-2016.json") |>
   pluck("features") |>
   tibble() |>
@@ -163,7 +163,7 @@ Proportion in each area who have completed the equivalent of secondary-school ("
 This data will be required to appropriately produce mortality rates disagreggated by both area and education (see below).
 
 ```{r}
-setwd("C:/Users/beluz/OneDrive - RMIT University/JIBE/JIBE-WP6/healthmicrosim/")
+setwd("C:/Users/steve/Documents/MEGAsync/Steve/RMIT JIBE/health_microsim/")
 educarea <- read.csv("health/original/aurin/education_sa2_aurin.csv") |>
   filter(yr==2016) |>
   select(sa2_maincode_2016, 
@@ -291,7 +291,7 @@ We have previously estimated mortality by age, sex and area. We use this method 
 The effects of education on mortality are published for three age groups (25-44, 45-64 and 65-84). Outside these age groups, mortality effects are assumed to be independent of education level.
 
 ```{r}
-setwd("C:/Users/beluz/OneDrive - RMIT University/JIBE/JIBE-WP6/healthmicrosim/")
+setwd("C:/Users/steve/Documents/MEGAsync/Steve/RMIT JIBE/health_microsim/")
 mort_disagg <- deaths_age_sa2 |> 
   left_join(educarea, by="sa2_code") |>
   pivot_longer(cols = c("high","medium","low"), 

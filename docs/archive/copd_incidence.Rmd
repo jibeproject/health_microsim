@@ -37,8 +37,8 @@ library(readxl)
 ```
 
 ```{r setup, include=FALSE}
-knitr::opts_knit$set(root.dir = "C:/Users/beluz/OneDrive - RMIT University/JIBE/JIBE-WP6/healthmicrosim/")
-# knitr::opts_knit$set(root.dir = "C:/Users/steve/Documents/MEGAsync/Steve/RMIT JIBE/health_microsim/")
+# knitr::opts_knit$set(root.dir = "C:/Users/beluz/OneDrive - RMIT University/JIBE/JIBE-WP6/healthmicrosim/")
+knitr::opts_knit$set(root.dir = "C:/Users/steve/Documents/MEGAsync/Steve/RMIT JIBE/health_microsim/")
 knitr::opts_chunk$set(cache = TRUE)
 ```
 
@@ -118,6 +118,8 @@ We assume that $p_i = 1/5$ is the proportion of people in each of the five quint
 The code to perform this disaggregation works by stretching out the age/sex incidence data vertically to create a dataset with one row per combination of age, sex and socioeconomic quintile. This is then joined with the dataset `copd_socio` on relative incidence by socioeconomic quintiles. The term $\sum_{i=1}^G p_i RR_i$ is then computed as `sum_pRR`, and joined to the streched dataset `copdinc`.  This allows the disaggregated rates `rate` to be computed in a vectorised way.
 
 
+
+
 ```{r}
 copdinc <- copdinc_agesex %>% 
     slice(rep(row_number(), each=5)) %>%
@@ -139,10 +141,8 @@ copdinc <- copdinc %>%
                                              "2","3","4",
                                              "5 (least deprived)")),
            sex = factor(sex)) 
-saveRDS(copdinc, file="cancer_incidence_test.rds")
+saveRDS(copdinc, file="cvd_dia_copd_incidence_test.rds")
 ```
-
-
 We are left with the incidence by age, sex and socioeconomic status in the variable `rate`. The final dataset is saved in the file `cancer_incidence.rds`, and the first few rows are shown here.
 
 ```{r}
