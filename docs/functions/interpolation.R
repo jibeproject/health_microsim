@@ -10,14 +10,12 @@ disagg_spline <- function(dat, key) {
   epsilon <- 1e-6  # Small constant to avoid log(0)
   
   with(dat, {
-    # Define the x and y for interpolation
-    x <- seq(from = floor(min(from_age)/5) * 5, to = 100, by = 5)
+    # Define the x and y for interpolation, adding epsilon and log-transforming the rates
+    y <- log(rate_1 + epsilon)
+    x <- seq(from = floor(min(from_age)/5) * 5, by = 5, length.out = length(y))
     
     # browser() #useful for checking that x is what we expect. Can be used at any steps that we want 
     # to check the data and works when running the function by stoping the process.
-    
-    # Add epsilon and log-transform the rates
-    y <- log(rate_1 + epsilon)
     
     # Generate new x points (high-frequency), constrained to be at most 99
     new_x <- seq(min(x), min(99, max(x)), length.out = min(100, max(x) - min(x) + 1))
@@ -46,8 +44,8 @@ disagg_spline <- function(dat, key) {
 
 disagg_polynomial <- function(dat, key) {
   with(dat, {
-    x <- seq(from = floor(min(from_age)/5) * 5, to = 100, by = 5)
     y <- rate_1
+    x <- seq(from = floor(min(from_age)/5) * 5, by = 5, length.out = length(y))
     
     # Fit a polynomial model
     fit <- lm(y ~ poly(x, 3))  # 3rd-degree polynomial (adjust degree as needed)
@@ -74,8 +72,8 @@ disagg_polynomial <- function(dat, key) {
 
 disagg_loess <- function(dat, key) {
   with(dat, {
-    x <- seq(from = floor(min(from_age)/5) * 5, to = 100, by = 5)
     y <- rate_1
+    x <- seq(from = floor(min(from_age)/5) * 5, by = 5, length.out = length(y))
     
     # Fit a loess model
     fit <- loess(y ~ x)
