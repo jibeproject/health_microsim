@@ -147,7 +147,6 @@ we can compute $r_1$ given $r_{ave}$, the relative rates for the risk
 factor $RR_i$ and opulation proportions for the risk factor $p_i$. Hence
 we can compute the remaining $r_i$ by multiplying $r_1$ by $RR_i$.
 
-
 # Incidence data
 
 ## Incidence data by age and sex
@@ -161,8 +160,8 @@ Welfare (AIHW) data.
 Prepare incidence data by sex and single year of age. To do so, we
 interpolate the data between age groups. Four interpolation functions
 are available below to test which one fits the data best. Graphs are
-created and saved in docs/images/data_prep to visually check the fit of
-the interpolation to the original data.
+created and saved in docs/images/inc_gbd_age_sex to visually check the
+fit of the interpolation to the original data.
 
 ```{r}
 # GBD data for Melbourne. 
@@ -977,6 +976,150 @@ if (!dir.exists(output_dir)) {
 
 ggsave(filename = paste0(output_dir, "cvd_dia_copd_incidence.png"), plot = p, 
        width = 12, height = 12, bg = "white")
+
+```
+
+# Prevalence data
+
+## Prevalence data by age and sex
+
+We use GBD data as the age and sex data for prevalence estimates. **Any
+exceptions?**
+
+### Global Burden of disease data for Australia: data interpolation
+
+Prepare prevalence data by sex and single year of age. To do so, we
+interpolate the data between age groups. Four interpolation functions
+are available below to test which one fits the data best. Graphs are
+created and saved in docs/images/prev_gbd_age_sex to visually check the
+fit of the interpolation to the original data.
+
+```{r}
+# GBD data for Melbourne. 
+gbd <- read.csv("health/original/GBD/gbd_prevalence.csv")
+
+# Filter data to needed variables and remove strings from GBD age variable and create from_age and to_age needed for interpolation. 
+
+gbdp <- gbd %>%
+  filter(measure %in% "Prevalence") %>%
+  filter(metric %in% "Rate") %>%
+  filter(year %in% 2018) %>%
+  select(-c(location, upper, lower)) %>%
+  filter(!cause %in% "All causes") %>%
+  mutate(rate_1=val/100000) %>% 
+  # some ages have 'years' (eg 5-9 years), while others don't (eg 80-84); omit 'years'
+  mutate(age = gsub(" years", "", age)) %>%
+  tidyr::extract(age, c("from_age", "to_age"), "(.+)-(.+)", remove=FALSE, convert=TRUE) %>%
+  mutate(from_age = case_when(age=="95+"  ~  95L,
+                              age=="<5"  ~  0L,
+                              TRUE  ~  from_age),
+         to_age = case_when(age=="95+"  ~  99L,
+                            age=="<5"  ~  4L,
+                            TRUE  ~  to_age),
+         agediff = to_age - from_age + 1,
+          val1yr = rate_1) %>% 
+  #we do not distribute amongst age groups as it is a rate but assume same within age group
+ rename(agegroup = age) 
+
+# Now stretch the data out using an index, to create a data frame with 1 row per year of age and create a variable for year of age. The age group rate repeats within single years of age in the group. 
+index <- rep(1:nrow(gbdp), gbdp$agediff)
+gbdpyrd5 <- gbdp[index,] %>%
+  mutate(ageyr = from_age + sequence(gbdp$agediff) - 1)
+gbdpyrd5 <- gbdpyrd5 %>% 
+  select(measure, ageyr, sex, agegroup, from_age, to_age, cause, year, val1yr,rate_1) 
+
+
+# Apply the disaggregation function
+
+# Group data for dissaggregation
+
+gbdp_grp <- gbdp %>%
+  group_by(measure, sex, cause) %>%
+  arrange(measure, sex, cause, from_age)
+
+# Apply function (select a function from 'functions/interpolation.R'). Smooth_spline does a good job (so do spline and loess, but not polynomial).
+gbdpyr <- group_modify(gbdp_grp, disagg_smooth_spline) %>%
+# gbdpyr <- group_modify(gbdp_grp, disagg_spline) %>%
+# gbdpyr <- group_modify(gbdp_grp, disagg_loess) %>%
+# gbdpyr <- group_modify(gbdp_grp, disagg_polynomial) %>%
+  ungroup()
+
+#Join with original data where rates are the same within groups to validate interpolated data
+gbdpyr <- gbdpyr %>%
+  left_join(gbdpyrd5, by = c("measure", "ageyr", "sex", "cause"))
+
+# Plot data to check interpolated values against 5-year age group values (original data)
+## Four interpolation function could be use, the best fit should be used. For now, best fit to the data assessed visually.
+
+# Melt the data to long format for ggplot
+plot_data <- gbdpyr %>%
+  select(measure, cause, sex, ageyr, rate_1, val_interpolated) %>%
+  pivot_longer(cols = c(rate_1, val_interpolated), names_to = "type", values_to = "value")
+
+# Generate and save all pages
+# output_dir <- "docs/images/prev_gbd_age_sex_smooth_spline/"
+# output_dir <- "docs/images/prev_gbd_age_sex_spline/"
+# output_dir <- "docs/images/prev_gbd_age_sex_loess/"
+# output_dir <- "docs/images/prev_gbd_age_sex_polynomial/"
+output_dir <- "docs/images/prev_gbd_age_sex_smooth/"
+if (!dir.exists(output_dir)) {
+  dir.create(output_dir, recursive = TRUE)
+}
+
+plot_interpolation_pages(plot_data, output_dir)
+```
+
+### Incidence by age and sex, with adjustments for specific diseases
+
+Some specific cancers need adjustment to match GBD data to standardised
+JIBE disease list.  Apart from name changes, the following cancers need transformation:
+
+- Head and neck cancer: sum of Larynx cancer + Lip and oral cavity cancer + Nasopharynx cancer + Other pharynx cancer
+
+- Colon cancer, Rectum cancer: Colon and rectum cancer, apportioned based on AIHW incidence rates
+
+- [Lung cancer?]
+
+- [any others, to consider]
+
+```{r}
+prec_agesex <- gbdpyr %>%
+  filter (cause %in% c("Stroke", "Ischemic heart disease", "Breast cancer", 
+                       "Uterine cancer", "Tracheal, bronchus, and lung cancer", 
+                       "Colon and rectum cancer", "Esophageal cancer", 
+                       "Liver cancer", "Kidney cancer", 
+                       "Stomach cancer", "Chronic myeloid leukemia", "Multiple myeloma", 
+                       "Larynx cancer", "Lip and oral cavity cancer", "Nasopharynx cancer",
+                       "Other pharynx cancer", "Bladder cancer", "Prostate cancer", 
+                       "Malignant skin melanoma", "Depressive disorders", 
+                       "Major depressive disorder", "Alzheimer's disease and other dementias", 
+                       "Diabetes mellitus type 2", "Chronic obstructive pulmonary disease")) %>%
+  dplyr::select(cause, age = ageyr, sex, rate = val_interpolated) %>%
+  mutate(cause = case_when(
+    cause == "Ischemic heart disease"    ~ "Coronary heart disease",
+    cause == "Uterine cancer"            ~ "Endometrial cancer",
+    cause == "Stomach cancer"            ~ "Gastric cardia cancer",
+    cause == "Chronic myeloid leukemia"  ~ "Myeloid leukemia",
+    cause == "Multiple myeloma"          ~ "Myeloma",
+    cause == "Malignant skin melanoma"   ~ "Malignant melanoma",
+    cause == "Major depressive disorder" ~ "Major depression",
+    cause == "Alzheimer's disease and other dementias" ~ "All cause dementia",
+    cause == "Diabetes mellitus type 2"  ~ "Diabetes type 2",
+    .default = cause
+  ))
+
+## NEXT, combine the head and neck cancers, split colorectal, etc
+
+```
+
+
+### Adjust for specific cancers
+
+
+```{r}
+gbd_hanc <- gbd %>%
+  filter(cause %in% c("Larynx cancer", "Lip and oral cavity cancer",
+                      "Nasopharynx cancer", "Other pharynx cancer"))
 
 ```
 
