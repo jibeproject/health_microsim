@@ -876,7 +876,7 @@ copd_inc <- read_xlsx("health/original/AIHW/copd-prevalence.xlsx", sheet="Table 
 
 # Combined database with all four diseases
 
-cvd_dia_copd_socio <- bind_rows(cvd_inc, diabetes_inc, stroke_inc, copd_inc) %>%
+inc_cvd_dia_copd_socio <- bind_rows(cvd_inc, diabetes_inc, stroke_inc, copd_inc) %>%
   arrange(cause, sex, socio)
 ```
 
@@ -905,7 +905,7 @@ to the streched incidence dataset. This allows the disaggregated rates
 cvd_dia_copd_inc <- inc_cvd_dia_copd_agesex %>% 
     slice(rep(row_number(), each=5)) %>%
     mutate(socio = rep(1:5, length.out=n())) %>%
-    left_join(cvd_dia_copd_socio %>% select(cause, sex, socio, rr_socio = rr), 
+    left_join(inc_cvd_dia_copd_socio %>% select(cause, sex, socio, rr_socio = rr), 
               by = c("cause", "sex", "socio")) %>%
     mutate(p_socio = 1/5,    # assumption
            pRR = p_socio * rr_socio,
@@ -983,8 +983,7 @@ ggsave(filename = paste0(output_dir, "cvd_dia_copd_incidence.png"), plot = p,
 
 ## Prevalence data by age and sex
 
-We use GBD data as the age and sex data for prevalence estimates. **Any
-exceptions?**
+We use GBD data as the age and sex data for prevalence estimates. 
 
 ### Global Burden of disease data for Australia: data interpolation
 
@@ -1175,13 +1174,6 @@ prev_agesex <- prev_agesex %>%
 
 ```
 
-```{r}
-gbd_hanc <- gbd %>%
-  filter(cause %in% c("Larynx cancer", "Lip and oral cavity cancer",
-                      "Nasopharynx cancer", "Other pharynx cancer"))
-
-```
-
 ## Inequalities
 
 We disaggregate the above age and sex data by socioeconomic status, to
@@ -1196,13 +1188,13 @@ The data used is as follows.
     quintile) and sex, as described under 'Incidence data'.
 
 -   Stroke and Coronary heart disease:
-    `AIHW/cvd-diabetes-comorbidities.xlsx`, Tables 'Stroke' and 'CHD'.
+    `AIHW/cvd-diabetes-comorbidities.xlsx`, Tables 'Stroke Table 2' and 'CHD Table 2'.
     This is prevalence data from AIHW, by socioeconomic quintile and
     sex, for 2017-18.
 
--   All cause dementia: `AIHW/dementia-prevalence.xlsx`, Table S2.6.
+-   [All cause dementia: `AIHW/dementia-prevalence.xlsx`, Table S2.6.
     This is prevalence data (Australians living with dementia) from
-    AIHW, by socioeconomic quintile and sex, for 2021.
+    AIHW, by socioeconomic quintile and sex, for 2021. **SP note: I don't think we can use after all; it's numbers of people, not rates.**
 
 -   Diabetes type 2: `AIHW/cdv_dia_kid_socioeconomic.csv`, Table S7.
     This is prevalence data from AIHW, by socioeconomic quintile and
@@ -1212,7 +1204,7 @@ The data used is as follows.
     Table 1.2. This is prevalence data from AIHW, by socioeconomic
     quintile and sex, for 2017-18.
 
-We did not identify relevant socioeconomic data for Depressive disorders
+We did not identify relevant socioeconomic data for [All cause dementia,] Depressive disorders
 or Major depression.
 
 ### Cancers
@@ -1222,7 +1214,7 @@ above), processed in the same way as described in section 2.2 above for
 incidence, but applied to the age and sex prevalence data from GBD
 rather than the age and sex incidence data from AIHW. The resulting
 output table is saved as `health/processed/cancer_prevalence_area.rds`,
-and output plots are saved in the \`docs/images/prev_cancer' folder.
+and output plots are saved in the `docs/images/prev_cancer' folder.
 
 ```{r}
 # Cancers, using 'data_sa2_sex_age' as calculated for incidence, 
@@ -1250,73 +1242,261 @@ saveRDS(cancer_prevalence_area, file="health/processed/cancer_prevalence_area.rd
 
 ```
 
-======working here
+#### Illustration of prevalence estimates
+
+Each graph created below for each site and sex combinations depicts five
+graphs within representing each socioeconomic group, and within each
+graph by socioeconomic group a line called rate_ave_agae_sex which
+represents the rate by age and sex for Australia wide (black), and a
+line called rate_area which is the rate derived from data by sex and SA2
+and rates by age and sex (red).
+
+Most graphs show the expected pattern of most disadvantaged having incidence above average through to most advantaged having incidence below average. Following are the exceptions:
+
+-   breast cancer (F) and prostate cancer (M) show the reverse
+    pattern, with most disadvantaged having lowest incidence.
+-   gastric cancer (F&M) have all groups being below average.
+-   liver cancer (F) has all groups below average.
+-   malignant melanoma (F&M) show an inconsistent pattern with most
+    results above average.
+-   myeloid leukemia (F&M) show little differentiation between socio
+    economic groups.
+-   myeloma (F&M) have most groups at or below average.
+
+These are the same exceptions as were identified above for cancer incidence (not
+surprisingly, as the same Cancer Atlas socioeconomic incidence data is applied
+to both incidence and prevalence figures by sex and age).
+
+
+```{r}
+## take mean of groups by socio area, and summarise
+cancer_prev_socio <- cancer_prevalence_area %>%
+  group_by(age, sex, site, socio, rate_ave_age_sex) %>%
+  summarise(rate_area = round(mean(rate_area, na.rm = TRUE), 7), .groups = "drop") %>% 
+  filter(socio != "Not classified") %>%
+  mutate(socio = factor(socio, 
+                        levels = c("Most disadvantaged", "Disadvantaged", 
+                                   "Middle SES", "Advantaged", 
+                                   "Most advantaged", "Not classified"))) %>%
+  mutate(rate_area = rate_area * 100000) %>%
+  na.omit(.) %>%  # omit na values, eg female prostate cancer
+  #pivot longer
+  pivot_longer(cols = c(rate_area, rate_ave_age_sex),
+               values_to = "rate", names_to = "rate_type")
+
+
+# Create folder if it doesn't exist
+folder_path <- file.path("docs", "images", "prev_cancer_compare")
+if (!file.exists(folder_path)) {
+  dir.create(folder_path, recursive = TRUE)
+}
+
+# Define colors for rate types
+rate_type_colors <- c("black", "red")
+
+# Loop over each combination of site and sex
+for (site_val in unique(cancer_prev_socio$site)) {
+  for (sex_val in unique(cancer_prev_socio$sex)) {
+    # Skip certain combinations of sex and site
+    if ((sex_val == "Male" && site_val %in% c("Breast cancer", "Endometrial cancer")) ||
+        (sex_val == "Female" && site_val == "Prostate cancer")) {
+      cat("Skipping graph for sex:", sex_val, "and site:", site_val, "\n\n")
+      next  # Skip to the next iteration of the loop
+    }
+    
+    cat("Processing site:", site_val, "and sex:", sex_val, "\n")  # Debug print statement
+    
+    # Subset data for the current combination of site and sex
+    plot_data <- subset(cancer_prev_socio, site == site_val & sex == sex_val)
+    
+    # Check if there are data for the current combination
+    if (nrow(plot_data) > 0) {
+      max_rate <- max(plot_data$rate, na.rm = TRUE)
+      cat("Maximum rate:", max_rate, "\n")  # Debug print statement
+      
+      # Create ggplot for the current combination
+      p <- ggplot(plot_data, aes(x = age, y = rate, col = rate_type)) +
+        geom_line(lwd = 1, aes(linetype = NULL)) +
+        scale_color_manual(values = rate_type_colors) +
+        facet_wrap(~socio, scales = "free_y", ncol = 1) + # Nested facet wrap for socio-economic status
+        ylab("Incidence rate (per 100,000)") +
+        xlab("Age (years)") +
+        coord_cartesian(xlim = c(25, 90)) +
+        scale_y_continuous(breaks = seq(0, max_rate, by = 400)) +  # Adjust y-axis breaks
+        guides(alpha = FALSE, col = guide_legend(title = "Rate Type")) +
+        theme(legend.position = "bottom", legend.box = "horizontal", legend.box.just = "center",
+              legend.margin = margin(t = 5, unit = "pt"), legend.spacing = unit(0.2, "cm"))
+      
+      # Save the ggplot for the current combination
+      png_name <- file.path(folder_path, paste0(site_val, "_", sex_val, ".png"))
+      ggsave(png_name, plot = p + labs(title = paste("| Site:", site_val, "| Sex:", sex_val)), device = "png")
+    } else {
+      cat("No data for site:", site_val, "and sex:", sex_val, "\n")  # Debug print statement
+    }
+  }
+}
+
+
+```
+
+
+### Other diseases
+
+We use socioeconomic prevalence data for stroke, coronary heart disease,
+[dementia - **probably not, see below**], diabetes and COPD from AIHW (see sources above), processed in
+a similar way to that described in section 2.2 above for incidence, but
+applying the socioeconomic prevalence data from AIHW to the age and sex
+prevalence data from GBD. The resulting output table is saved as
+`health/processed/cvd_dia_copd_prevalence.rds`, and output
+plots are saved in the `docs/images/prev_cvd_dia_copd' folder.
+
+```{r}
+# Stroke
+stroke_prev <- read_xlsx("health/original/AIHW/cvd-diabetes-comorbidities.xlsx", sheet = "Stroke", 
+                         skip = 30, col_names = TRUE, n_max = 6) %>%
+  slice(-1) %>%
+  rename_with( ~ c("socio", "MaleNo", "FemaleNo", "PersonNo", "blank1",
+                   "MaleCrudeRate", "MaleCrudeCI", "FemaleCrudeRate", "FemaleCrudeCI",
+                   "PersonCrudeRate", "PersonCrudeCI", "blank2",
+                   "Male", "MaleCI", "Female", "FemaleCI", "Person", "PersonCI")) %>%
+  dplyr::select(socio, Male, Female) %>%
+  pivot_longer(cols = c("Male", "Female"), names_to = "sex") %>%
+  rename(rate = value) %>%
+  mutate(socio = case_when(socio=="Group 1 (lowest)" ~ "1", # 1: lowest, to 5: highest
+                           socio=="Group 2" ~ "2",
+                           socio=="Group 3" ~ "3",
+                           socio=="Group 4" ~ "4",
+                           socio=="Group 5 (highest)" ~ "5",
+                           .default = socio),
+         socio = as.numeric(socio)) %>%
+  group_by(sex) %>%
+  mutate(rr = rate / first(rate)) |>
+  ungroup() %>%
+  select(socio, sex, rate, rr) %>%
+  mutate(cause = "Stroke")
+
+# Coronary heart disease
+chd_prev <- read_xlsx("health/original/AIHW/cvd-diabetes-comorbidities.xlsx", sheet = "CHD", 
+                         skip = 25, col_names = TRUE, n_max = 9) %>%
+  slice(-c(1:4)) %>%
+  rename_with( ~ c("socio", "MaleNo", "FemaleNo", "PersonNo", "blank1",
+                   "MaleCrudeRate", "MaleCrudeCI", "FemaleCrudeRate", "FemaleCrudeCI",
+                   "PersonCrudeRate", "PersonCrudeCI", "blank2",
+                   "Male", "MaleCI", "Female", "FemaleCI", "Person", "PersonCI")) %>%
+  dplyr::select(socio, Male, Female) %>%
+  pivot_longer(cols = c("Male", "Female"), names_to = "sex") %>%
+  rename(rate = value) %>%
+  mutate(socio = case_when(socio=="Group 1 (lowest)" ~ "1", # 1: lowest, to 5: highest
+                           socio=="Group 2" ~ "2",
+                           socio=="Group 3" ~ "3",
+                           socio=="Group 4" ~ "4",
+                           socio=="Group 5 (highest)" ~ "5",
+                           .default = socio),
+         socio = as.numeric(socio)) %>%
+  group_by(sex) %>%
+  mutate(rr = rate / first(rate)) |>
+  ungroup() %>%
+  select(socio, sex, rate, rr) %>%
+  mutate(cause="Coronary heart disease")
+
+# Diabetes and COPD - same as for incidence (diabetes incidence data and COPD prevalence data)
+diabetes_prev <- diabetes_inc %>% mutate(cause = "Diabetes type 2")
+copd_prev <- copd_inc
+
+# Combine all four diseases
+prev_cvd_dia_copd_socio <- bind_rows(chd_prev, diabetes_prev, stroke_prev, copd_prev) %>%
+  arrange(cause, sex, socio)
+
+```
+
+#### Combining socioeconomic status with age and sex
+
+We use the method outlined in `Inequalities in health` above to
+disaggregate the age and sex data by socioeconomic status, following the same approach as outlined above for incidence of these diseases.
+
+```{r}
+prev_cvd_dia_copd_agesex <- prev_agesex %>%
+  filter(cause %in% c("Stroke", "Coronary heart disease", "Diabetes type 2",
+                      "Chronic obstructive pulmonary disease"))
+
+cvd_dia_copd_prev <- prev_cvd_dia_copd_agesex %>% 
+    slice(rep(row_number(), each=5)) %>%
+    mutate(socio = rep(1:5, length.out=n())) %>%
+    left_join(prev_cvd_dia_copd_socio %>% select(cause, sex, socio, rr_socio = rr), 
+              by = c("cause", "sex", "socio")) %>%
+    mutate(p_socio = 1/5,    # assumption
+           pRR = p_socio * rr_socio,
+           socio = ordered(socio))
+
+sum_p <- cvd_dia_copd_prev %>% 
+    group_by(cause, age, sex) %>%
+    summarise(sum_pRR = sum(pRR), .groups="drop")
+    
+cvd_dia_copd_prev <- cvd_dia_copd_prev %>%
+    left_join(sum_p, by=c("cause", "age", "sex")) %>%
+    mutate(rate_soc = rate * rr_socio / sum_pRR, 
+           socio = ordered(socio, labels = c("1 (most deprived)",
+                                             "2","3","4",
+                                             "5 (least deprived)")),
+           sex = factor(sex)) 
+
+saveRDS(cvd_dia_copd_prev, file="health/processed/cvd_dia_copd_prevalence.rds")
+```
+
+We are left with the incidence by age, sex and socioeconomic status in
+the variable `rate_soc`. The final dataset is saved in the file
+`cvd_dia_copd_prevalence.rds`.
 
 #### Illustration of prevalence estimates
 
-REVISE THIS - COPIED AND PASTED FROM INCIDENCE; TO UPDATE \>\>\>\>\>The
-published incidence by age and sex (averaged over deprivation levels) is
-shown by the dotted black lines (original gbd data interpolated from 5
-year age groups to one year). The estimated incidence disaggregated by
-socioeconomic quintile is shown by the coloured lines, with
-socioeconomic status indicated by the lightness of the lines (calculated
-from gbd data and aihw data).
+Prevalence by age, sex and socioeconomic quintile for stroke, coronary heart
+disease, type 2 diabetes and COPD.
+
+The published incidence by age and sex (averaged over deprivation
+levels) is shown by the dotted black lines (original gbd data
+interpolated from 5 year age groups to one year). The estimated
+incidence disaggregated by socioeconomic quintile is shown by the
+coloured lines, with socioeconomic status indicated by the lightness of
+the lines (calculated from gbd data and aihw data).
 
 The relative risk between socioeconomic quintiles is assumed to be the
 same between different age/sex groups, but the average of the
 deprivation-specific estimates is constrained to be the same as the
 published average.
 
-All plots show the expected outcome of the highest levels of incidence
-at the highest levels of disadvantage.
+All plots generally show the expected outcome of higher levels of incidence
+at higher levels of disadvantage. However, female coronary heart disease in particular
+does not strictly follow the order from highest to lowest.
 
 ```{r}
 # plot of data
-p <- ggplot(cancer_prevalence_area, ###upo to here - neeed to adapt
-#        aes(x=age, y=rate_soc, col=sex, alpha=socio)) + 
-#     geom_line(lwd=1.5) + 
-#     geom_line(data=inc_cvd_dia_copd_agesex,
-#               aes(x=age, y=rate, group=sex), 
-#               inherit.aes = FALSE,
-#               lwd=1, lty=2, alpha=0.4, col="black") +
-#     facet_wrap(~cause, ncol=2, scales="free_y") +
-#     ylab("Incidence rate (per 100,000)") +
-#     xlab("Age (years)") +
-#     coord_cartesian(xlim=c(25, 90)) +
-#     guides(alpha=guide_legend(title=NULL),
-#            col=guide_legend(title=NULL)) +
-#     theme(legend.position = "bottom")
-# 
-# # save plot
-# # Generate and save all pages
-# output_dir <- "docs/images/inc_cvd_dia_copd/"
-# if (!dir.exists(output_dir)) {
-#   dir.create(output_dir, recursive = TRUE)
-# }
-# 
-# ggsave(filename = paste0(output_dir, "cvd_dia_copd_incidence.png"), plot = p, 
-#        width = 12, height = 12, bg = "white")
+p <- ggplot(cvd_dia_copd_prev, 
+       aes(x=age, y=rate_soc, col=sex, alpha=socio)) + 
+    geom_line(lwd=1.5) + 
+    geom_line(data=prev_cvd_dia_copd_agesex,
+              aes(x=age, y=rate, group=sex), 
+              inherit.aes = FALSE,
+              lwd=1, lty=2, alpha=0.4, col="black") +
+    facet_wrap(~cause, ncol=2, scales="free_y") +
+    ylab("Incidence rate (per 100,000)") +
+    xlab("Age (years)") +
+    coord_cartesian(xlim=c(25, 90)) +
+    guides(alpha=guide_legend(title=NULL),
+           col=guide_legend(title=NULL)) +
+    theme(legend.position = "bottom")
+
+# save plot
+# Generate and save all pages
+output_dir <- "docs/images/prev_cvd_dia_copd/"
+if (!dir.exists(output_dir)) {
+  dir.create(output_dir, recursive = TRUE)
+}
+
+ggsave(filename = paste0(output_dir, "cvd_dia_copd_prevalence.png"), plot = p, 
+       width = 12, height = 12, bg = "white")
 
 ```
 
-======end working
-
-### Other diseases
-
-We use socioeconomic prevalence data for stroke, coronary heart disease,
-dementia, diabetes and COPD from AIHW (see sources above), processed in
-a similar way to that described in section 2.2 above for incidence, but
-applying the socioeconomic prevalence data from AIHW to the age and sex
-prevalence data from GBD. The resulting output table is saved as
-`health/processed/cvd_dem_dia_copd_prevalence_area.rds`, and output
-plots are saved in the \`docs/images/prev_cvd_dem_dia_copd' folder.
-
-```{r}
-# Stroke
-
-## to do OTHER DISEASES
-
-```
 
 # Mortality data
 
