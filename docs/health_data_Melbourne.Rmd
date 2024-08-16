@@ -357,12 +357,12 @@ incyr <- group_modify(inc_grp, disagg_smooth_spline) %>%
 incyr_95 <- incyr %>%
   filter(ageyr == 95)
 
-# Step 2: Repeat the filtered rows and change ageyr to 96, 96, 98, and 99
+# Step 2: Repeat the filtered rows and change ageyr to 96, 97, 98, and 99
 incyr_repeated <- incyr_95 %>%
   slice(rep(1:n(), each = 4)) %>%
   mutate(ageyr = case_when(
     row_number() %% 4 == 1 ~ 96,
-    row_number() %% 4 == 2 ~ 96,
+    row_number() %% 4 == 2 ~ 97,
     row_number() %% 4 == 3 ~ 98,
     row_number() %% 4 == 0 ~ 99
   ))
@@ -543,7 +543,7 @@ cancer_incidence_area <- data_sa2_sex_age %>% rename (sa2_code=`SA2 code`,
 
 saveRDS(cancer_incidence_area, file="health/processed/cancer_incidence_area.rds")
 
-## Compare data per SA2 and sex and data from national administrative sources by age, sex and combined with level of deprivation (Chris, see cancer incidence.Rmd)
+## Compare data per SA2 and sex and data from national administrative sources by age, sex and combined with level of deprivation (Chris, see cancer incidence.Rmd) [SP NOTE: do we want to preserve some of that code here?  It's been moved to 'docs/archive'.]
 
 compare_socio <- cancer_incidence_area %>%
 group_by(age, sex, site, socio, rate_ave_age_sex, .groups = "drop") %>%
@@ -1069,21 +1069,30 @@ if (!dir.exists(output_dir)) {
 plot_interpolation_pages(plot_data, output_dir)
 ```
 
-### Incidence by age and sex, with adjustments for specific diseases
+### Prevalence by age and sex, with adjustments for specific diseases
 
 Some specific cancers need adjustment to match GBD data to standardised
-JIBE disease list.  Apart from name changes, the following cancers need transformation:
+JIBE disease list. Apart from name changes, the following cancers need
+transformation:
 
-- Head and neck cancer: sum of Larynx cancer + Lip and oral cavity cancer + Nasopharynx cancer + Other pharynx cancer
+-   Head and neck cancer: sum of Larynx cancer + Lip and oral cavity
+    cancer + Nasopharynx cancer + Other pharynx cancer
 
-- Colon cancer, Rectum cancer: Colon and rectum cancer, apportioned based on AIHW incidence rates
+-   Colon cancer, Rectum cancer: Colon and rectum cancer, apportioned
+    based on AIHW incidence rates
 
-- [Lung cancer?]
+-   \[Lung cancer? **SP note: GBD has 'trachea, bronchus and lung'; AIHW
+    has 'lung' and no other obvious category for the other repiratory
+    cancers; C33 is 'trachea', C34 is 'bronchus and lung'; there doesn't
+    seem an obvious way to separate lung cancer out from the other GBD
+    respiratory cancers. I don't think we split in THAT. For now, just
+    renamed** \]
 
-- [any others, to consider]
+-   \[any others, to consider\]
 
 ```{r}
-prec_agesex <- gbdpyr %>%
+
+prev_agesex <- gbdpyr %>%
   filter (cause %in% c("Stroke", "Ischemic heart disease", "Breast cancer", 
                        "Uterine cancer", "Tracheal, bronchus, and lung cancer", 
                        "Colon and rectum cancer", "Esophageal cancer", 
@@ -1108,18 +1117,204 @@ prec_agesex <- gbdpyr %>%
     .default = cause
   ))
 
-## NEXT, combine the head and neck cancers, split colorectal, etc
+# sum rates for head an neck cancers
+hanc <- c("Larynx cancer", "Lip and oral cavity cancer", "Nasopharynx cancer",
+          "Other pharynx cancer")
+prev_agesex_hanc <- prev_agesex %>%
+  filter(cause %in% hanc) %>%
+  group_by(sex, age) %>%
+  summarise(rate = sum(rate), .groups = "drop") %>%
+  mutate(cause = "Head and neck cancer")
+
+prev_agesex <- prev_agesex %>%
+  filter(!cause %in% hanc) %>%
+  bind_rows(prev_agesex_hanc)
+
+# split rates for colon and rectum cancers by reference to the AIHW incidence
+# rates for those two diseases
+# AIHW incidence proportions for colon and rectum cancer
+inc_crc <- incyr %>% 
+  filter(site %in% c("colon cancer", "rectum cancer")) %>%
+  dplyr::select(site, sex, ageyr, rate_1) %>%
+  mutate(site = case_when(site == "colon cancer"  ~ "colon",
+                          site == "rectum cancer" ~ "rectum"),
+         sex = case_when(sex == "Females" ~ "Female",
+                         sex == "Males"   ~ "Male")) %>%
+  pivot_wider(names_from = site, values_from = rate_1) %>%
+  # total of the two rates (with small constant to avoid zeros)
+  mutate(total = colon + rectum) %>%
+  mutate(total = ifelse(total == 0, 1e-6, total)) %>%
+  # proportions
+  mutate(colon_prop = colon/total,
+         rectum_prop = rectum/total) %>%
+  dplyr::select(sex, age = ageyr, colon_prop, rectum_prop)
+
+# apportion colon and rectum cancer by rates
+prev_agesex_crc <-
+  prev_agesex %>%
+  filter(cause == "Colon and rectum cancer") %>%
+  # join the proportions and calculate proportionate rates
+  left_join(inc_crc, by = c("sex", "age")) %>%
+  mutate(Colon = rate * colon_prop,
+         Rectum = rate * rectum_prop) %>%
+  # pivot into separate rows for colon and rectum
+  dplyr::select(age, sex, Colon, Rectum) %>%
+  pivot_longer(cols = c("Colon", "Rectum"), names_to = "cause",
+               names_transform = ~ paste(., "cancer"),
+               values_to = "rate")
+
+prev_agesex <- prev_agesex %>%
+  filter(!cause == "Colon and rectum cancer") %>%
+  bind_rows(prev_agesex_crc)
+  
+# Lung cancer - renamed
+prev_agesex <- prev_agesex %>%
+  mutate(cause = ifelse(cause == "Tracheal, bronchus, and lung cancer",
+                        "Lung cancer", cause))
+
 
 ```
-
-
-### Adjust for specific cancers
-
 
 ```{r}
 gbd_hanc <- gbd %>%
   filter(cause %in% c("Larynx cancer", "Lip and oral cavity cancer",
                       "Nasopharynx cancer", "Other pharynx cancer"))
+
+```
+
+## Inequalities
+
+We disaggregate the above age and sex data by socioeconomic status, to
+represent inequalities in health, where data is available. In some cases
+data for prevalence by socioeconomic status is not available, and in
+those cases we use data for incidence.
+
+The data used is as follows.
+
+-   Cancers: `ATLAS/Atlas_estimates_95CIs.xlsx`. This is incidence data
+    from the Cancer Atlas, by SA2 area (including socioeconomic
+    quintile) and sex, as described under 'Incidence data'.
+
+-   Stroke and Coronary heart disease:
+    `AIHW/cvd-diabetes-comorbidities.xlsx`, Tables 'Stroke' and 'CHD'.
+    This is prevalence data from AIHW, by socioeconomic quintile and
+    sex, for 2017-18.
+
+-   All cause dementia: `AIHW/dementia-prevalence.xlsx`, Table S2.6.
+    This is prevalence data (Australians living with dementia) from
+    AIHW, by socioeconomic quintile and sex, for 2021.
+
+-   Diabetes type 2: `AIHW/cdv_dia_kid_socioeconomic.csv`, Table S7.
+    This is prevalence data from AIHW, by socioeconomic quintile and
+    sex, for 2016.
+
+-   Chronic obstructive pulmonary disease: `AIHW/copd-prevalence.xlsx`,
+    Table 1.2. This is prevalence data from AIHW, by socioeconomic
+    quintile and sex, for 2017-18.
+
+We did not identify relevant socioeconomic data for Depressive disorders
+or Major depression.
+
+### Cancers
+
+We use socioeconomic incidence data from the Cancer Atlas (see source
+above), processed in the same way as described in section 2.2 above for
+incidence, but applied to the age and sex prevalence data from GBD
+rather than the age and sex incidence data from AIHW. The resulting
+output table is saved as `health/processed/cancer_prevalence_area.rds`,
+and output plots are saved in the \`docs/images/prev_cancer' folder.
+
+```{r}
+# Cancers, using 'data_sa2_sex_age' as calculated for incidence, 
+# combined with prevalence data by age and sex
+
+# combine
+prev_sa2_sex_age <- data_sa2_sex %>% 
+  mutate(site = str_to_sentence(site),
+         sex = case_when(sex == "Females" ~ "Female",
+                         sex == "Males"   ~ "Male")) %>%
+  filter(site %in% prev_agesex$cause) %>%
+  left_join(prev_agesex, by=c("sex", c("site" = "cause"))) %>%
+  filter(!is.na(rate)) %>%  # omitting where no rate (male endometrial cancer)
+  mutate(rate_area=as.numeric(SIR)*rate) %>%
+  rename(socio=`Socioeconomic status`) 
+
+# finalise and save
+cancer_prevalence_area <- prev_sa2_sex_age %>% 
+  rename (sa2_code = `SA2 code`, sa2_name = SA2) %>%
+  mutate(prob = 1 - exp(-rate_area)) %>%
+  select(sa2_code, sa2_name, socio, site, age, sex, prob, rate_area, val_interpolated = rate) %>%
+  mutate(rate_ave_age_sex = val_interpolated * 100000)
+
+saveRDS(cancer_prevalence_area, file="health/processed/cancer_prevalence_area.rds")
+
+```
+
+======working here
+
+#### Illustration of prevalence estimates
+
+REVISE THIS - COPIED AND PASTED FROM INCIDENCE; TO UPDATE \>\>\>\>\>The
+published incidence by age and sex (averaged over deprivation levels) is
+shown by the dotted black lines (original gbd data interpolated from 5
+year age groups to one year). The estimated incidence disaggregated by
+socioeconomic quintile is shown by the coloured lines, with
+socioeconomic status indicated by the lightness of the lines (calculated
+from gbd data and aihw data).
+
+The relative risk between socioeconomic quintiles is assumed to be the
+same between different age/sex groups, but the average of the
+deprivation-specific estimates is constrained to be the same as the
+published average.
+
+All plots show the expected outcome of the highest levels of incidence
+at the highest levels of disadvantage.
+
+```{r}
+# plot of data
+p <- ggplot(cancer_prevalence_area, ###upo to here - neeed to adapt
+#        aes(x=age, y=rate_soc, col=sex, alpha=socio)) + 
+#     geom_line(lwd=1.5) + 
+#     geom_line(data=inc_cvd_dia_copd_agesex,
+#               aes(x=age, y=rate, group=sex), 
+#               inherit.aes = FALSE,
+#               lwd=1, lty=2, alpha=0.4, col="black") +
+#     facet_wrap(~cause, ncol=2, scales="free_y") +
+#     ylab("Incidence rate (per 100,000)") +
+#     xlab("Age (years)") +
+#     coord_cartesian(xlim=c(25, 90)) +
+#     guides(alpha=guide_legend(title=NULL),
+#            col=guide_legend(title=NULL)) +
+#     theme(legend.position = "bottom")
+# 
+# # save plot
+# # Generate and save all pages
+# output_dir <- "docs/images/inc_cvd_dia_copd/"
+# if (!dir.exists(output_dir)) {
+#   dir.create(output_dir, recursive = TRUE)
+# }
+# 
+# ggsave(filename = paste0(output_dir, "cvd_dia_copd_incidence.png"), plot = p, 
+#        width = 12, height = 12, bg = "white")
+
+```
+
+======end working
+
+### Other diseases
+
+We use socioeconomic prevalence data for stroke, coronary heart disease,
+dementia, diabetes and COPD from AIHW (see sources above), processed in
+a similar way to that described in section 2.2 above for incidence, but
+applying the socioeconomic prevalence data from AIHW to the age and sex
+prevalence data from GBD. The resulting output table is saved as
+`health/processed/cvd_dem_dia_copd_prevalence_area.rds`, and output
+plots are saved in the \`docs/images/prev_cvd_dem_dia_copd' folder.
+
+```{r}
+# Stroke
+
+## to do OTHER DISEASES
 
 ```
 
