@@ -57,39 +57,49 @@ knitr::opts_chunk$set(
 ## Data needs
 
 We need data for all cause mortality and diseases incidence. For disease
-incidence, data is required for the list of diseases below, which
-correspond to the included risk factors in the model (PM2.5, NO2,
-physical activity).
+incidence, data is required for the list of diseases below in Table 1,
+which correspond to the included risk factors in the model (PM2.5, NO2,
+noise, physical activity). Disease names correspond to the names from
+data source. For example, we use data from the GBD for Alzheimer's
+disease and other dementias, the corresponding systematic review and
+meta analysis (SRMA) uses a different name (All cause dementia). Given
+differences in names and categories of diseases used, we provide ICD-10
+codes and aim to match up as much as possible.
+
+PREPARING TABLE IN EXCEL (disease_data, Melbourne final)
+
+Sources of dose-response functions (DRFs), concentration-response
+function (CRF) and exposure-response functions are presented in Table 2.
+For air pollutants and noise still to be confirmed.
 
 ```{r}
-diseases_risks <- tibble::tribble(
-  ~"Disease", ~"Risk",
-  "Stroke", "PA",
-  "Coronary heart disease", "PA",
-  "Breast cancer", "PA",
-  "Endometrial cancer", "PA",
-  "Lung cancer", "PA",
-  "Colon cancer", "PA",
-  "Esophageal cancer", "PA",
-  "Liver cancer", "PA",
-  "Kidney cancer", "PA",
-  "Gastric cardia cancer", "PA",
-  "Myeloid leukemia", "PA",
-  "Myeloma", "PA",
-  "Head and neck cancer", "PA",
-  "Rectum cancer", "PA",
-  "Bladder cancer", "PA",
-  "Prostate cancer", "PA",
-  "Malignant melanoma", "PA",
-  "Depressive disorders", "PA",
-  "Major depression", "PA",
-  "All cause dementia", "PA",
+health_outcomes_risks <- tibble::tribble(
+  ~"Disease",  ~ "Data source age and sex incidence (ICD code)", ~"Data source inequalities incidence",   ~"Physical activity DRF (ICD-10)", ~"PM2.5 (ICD-10 code)", ~"NO2 (ICD-10 code)", ~"Noise (ICD code)" 
+  "Stroke", "GBD (G45-G46.8, I60-I62, I62.9-I64, I64.1, I65-I69.998, Z82.3)", "AIHW (I60-I66)", "PA (I60-I66)",
+  "Coronary heart disease", "GBD (I20-I21.6, I21.9-I25.9, Z82.4-Z82.49)", "AIHW (I20-I25)",  "PA (I20-I25)",
+  "Breast cancer", "PA (C50)",
+  "Endometrial cancer", "PA (C54)",
+  "Lung cancer", "PA (C34)",
+  "Colon cancer", "PA (C18)",
+  "Esophageal cancer", "PA (C15)",
+  "Liver cancer", "PA (C22-C24)",
+  "Kidney cancer", "PA (C64-65)",
+  "Gastric cardia cancer", "PA (C16.0)",
+  "Myeloid leukemia", "PA (C92)",
+  "Myeloma", "PA (90)",
+  "Head and neck cancer", "PA (C76.0)",
+  "Rectum cancer", "PA (C20)",
+  "Bladder cancer", "PA (C67)",
+  "Prostate cancer", "PA (C61)",
+  "Malignant melanoma", "PA (C43)",
+  "Depressive disorders", "GBD (F32-F33.9, F34.1)", "PA (F32-F33)",
+  "All cause dementia", "PA (F01-F03)",
   "Diabetes type 2", "PA",
   "Chronic obstructive pulmonary disease", "PA"
 )
 
 inputs <- kableExtra::kable(
-  diseases_risks, 
+  health_outcomes_risks, 
   booktabs = TRUE, 
   caption = "Diseases", 
   longtable = TRUE
@@ -98,6 +108,36 @@ inputs <- kableExtra::kable(
 inputs
 
 ```
+
+Notes on diseases, diseases sources of data and risk factors ICD-codes.
+
+[**Depression**]{.underline}
+
+Systematic review and meta-analysis for depression
+([10.1001/jamapsychiatry.2022.0609](https://doi.org/10.1001%2Fjamapsychiatry.2022.0609))
+defines depression as (1) presence of major depressive disorder
+indicated by self-report of physician diagnosis, registry data, or
+diagnostic interviews using DSM criteria of International Statistical
+Classification of Diseases and Related Health Problems, tenth edition,
+codes F32 through F33; (2) elevated depressive symptoms established
+using validated cut-offs for a drepressive screening instrument.
+
+Data for depressive disorders is from the GBD study includes codes
+F32-F33.9 (Major depressive disorders) and F34.1 (Disthymia). We then
+include data for depressive disorders.
+
+[**All-cause dementia**]{.underline}
+
+The ICD-10 code was obtained from personal communications with Leandro
+Garcia, while DRFs are available in the DRF online interface
+([Meta-Analyses Physical Activity
+(cam.ac.uk)](https://shiny.mrc-epid.cam.ac.uk/meta-analyses-physical-activity/)),
+it is not reported in a peer-reviewed publication.
+
+[**Diabetes type 2**]{.underline}
+
+Could not find code in SRMA
+(<https://doi.org/10.1007/s00125-016-4079-0>).
 
 ## Inequalities in health
 
@@ -250,6 +290,9 @@ are defined by stdname and ICD10. Each row of the table below details
 the site from the AIHW tables that these are assumed to be matched to.
 
 Note, sites are the same as causes in GBD.
+
+BZD: Table below and tex might go, nos working for now, doing in excel,
+easier.
 
 ```{r}
 
@@ -983,7 +1026,7 @@ ggsave(filename = paste0(output_dir, "cvd_dia_copd_incidence.png"), plot = p,
 
 ## Prevalence data by age and sex
 
-We use GBD data as the age and sex data for prevalence estimates. 
+We use GBD data as the age and sex data for prevalence estimates.
 
 ### Global Burden of disease data for Australia: data interpolation
 
@@ -1188,13 +1231,15 @@ The data used is as follows.
     quintile) and sex, as described under 'Incidence data'.
 
 -   Stroke and Coronary heart disease:
-    `AIHW/cvd-diabetes-comorbidities.xlsx`, Tables 'Stroke Table 2' and 'CHD Table 2'.
-    This is prevalence data from AIHW, by socioeconomic quintile and
-    sex, for 2017-18.
+    `AIHW/cvd-diabetes-comorbidities.xlsx`, Tables 'Stroke Table 2' and
+    'CHD Table 2'. This is prevalence data from AIHW, by socioeconomic
+    quintile and sex, for 2017-18.
 
--   [All cause dementia: `AIHW/dementia-prevalence.xlsx`, Table S2.6.
+-   \[All cause dementia: `AIHW/dementia-prevalence.xlsx`, Table S2.6.
     This is prevalence data (Australians living with dementia) from
-    AIHW, by socioeconomic quintile and sex, for 2021. **SP note: I don't think we can use after all; it's numbers of people, not rates.**
+    AIHW, by socioeconomic quintile and sex, for 2021. **SP note: I
+    don't think we can use after all; it's numbers of people, not
+    rates.**
 
 -   Diabetes type 2: `AIHW/cdv_dia_kid_socioeconomic.csv`, Table S7.
     This is prevalence data from AIHW, by socioeconomic quintile and
@@ -1204,8 +1249,8 @@ The data used is as follows.
     Table 1.2. This is prevalence data from AIHW, by socioeconomic
     quintile and sex, for 2017-18.
 
-We did not identify relevant socioeconomic data for [All cause dementia,] Depressive disorders
-or Major depression.
+We did not identify relevant socioeconomic data for \[All cause
+dementia,\] Depressive disorders or Major depression.
 
 ### Cancers
 
@@ -1214,7 +1259,7 @@ above), processed in the same way as described in section 2.2 above for
 incidence, but applied to the age and sex prevalence data from GBD
 rather than the age and sex incidence data from AIHW. The resulting
 output table is saved as `health/processed/cancer_prevalence_area.rds`,
-and output plots are saved in the `docs/images/prev_cancer' folder.
+and output plots are saved in the \`docs/images/prev_cancer' folder.
 
 ```{r}
 # Cancers, using 'data_sa2_sex_age' as calculated for incidence, 
@@ -1251,10 +1296,12 @@ represents the rate by age and sex for Australia wide (black), and a
 line called rate_area which is the rate derived from data by sex and SA2
 and rates by age and sex (red).
 
-Most graphs show the expected pattern of most disadvantaged having incidence above average through to most advantaged having incidence below average. Following are the exceptions:
+Most graphs show the expected pattern of most disadvantaged having
+incidence above average through to most advantaged having incidence
+below average. Following are the exceptions:
 
--   breast cancer (F) and prostate cancer (M) show the reverse
-    pattern, with most disadvantaged having lowest incidence.
+-   breast cancer (F) and prostate cancer (M) show the reverse pattern,
+    with most disadvantaged having lowest incidence.
 -   gastric cancer (F&M) have all groups being below average.
 -   liver cancer (F) has all groups below average.
 -   malignant melanoma (F&M) show an inconsistent pattern with most
@@ -1263,10 +1310,10 @@ Most graphs show the expected pattern of most disadvantaged having incidence abo
     economic groups.
 -   myeloma (F&M) have most groups at or below average.
 
-These are the same exceptions as were identified above for cancer incidence (not
-surprisingly, as the same Cancer Atlas socioeconomic incidence data is applied
-to both incidence and prevalence figures by sex and age).
-
+These are the same exceptions as were identified above for cancer
+incidence (not surprisingly, as the same Cancer Atlas socioeconomic
+incidence data is applied to both incidence and prevalence figures by
+sex and age).
 
 ```{r}
 ## take mean of groups by socio area, and summarise
@@ -1339,16 +1386,16 @@ for (site_val in unique(cancer_prev_socio$site)) {
 
 ```
 
-
 ### Other diseases
 
 We use socioeconomic prevalence data for stroke, coronary heart disease,
-[dementia - **probably not, see below**], diabetes and COPD from AIHW (see sources above), processed in
-a similar way to that described in section 2.2 above for incidence, but
-applying the socioeconomic prevalence data from AIHW to the age and sex
-prevalence data from GBD. The resulting output table is saved as
-`health/processed/cvd_dia_copd_prevalence.rds`, and output
-plots are saved in the `docs/images/prev_cvd_dia_copd' folder.
+\[dementia - **probably not, see below**\], diabetes and COPD from AIHW
+(see sources above), processed in a similar way to that described in
+section 2.2 above for incidence, but applying the socioeconomic
+prevalence data from AIHW to the age and sex prevalence data from GBD.
+The resulting output table is saved as
+`health/processed/cvd_dia_copd_prevalence.rds`, and output plots are
+saved in the \`docs/images/prev_cvd_dia_copd' folder.
 
 ```{r}
 # Stroke
@@ -1412,7 +1459,8 @@ prev_cvd_dia_copd_socio <- bind_rows(chd_prev, diabetes_prev, stroke_prev, copd_
 #### Combining socioeconomic status with age and sex
 
 We use the method outlined in `Inequalities in health` above to
-disaggregate the age and sex data by socioeconomic status, following the same approach as outlined above for incidence of these diseases.
+disaggregate the age and sex data by socioeconomic status, following the
+same approach as outlined above for incidence of these diseases.
 
 ```{r}
 prev_cvd_dia_copd_agesex <- prev_agesex %>%
@@ -1449,8 +1497,8 @@ the variable `rate_soc`. The final dataset is saved in the file
 
 #### Illustration of prevalence estimates
 
-Prevalence by age, sex and socioeconomic quintile for stroke, coronary heart
-disease, type 2 diabetes and COPD.
+Prevalence by age, sex and socioeconomic quintile for stroke, coronary
+heart disease, type 2 diabetes and COPD.
 
 The published incidence by age and sex (averaged over deprivation
 levels) is shown by the dotted black lines (original gbd data
@@ -1464,9 +1512,10 @@ same between different age/sex groups, but the average of the
 deprivation-specific estimates is constrained to be the same as the
 published average.
 
-All plots generally show the expected outcome of higher levels of incidence
-at higher levels of disadvantage. However, female coronary heart disease in particular
-does not strictly follow the order from highest to lowest.
+All plots generally show the expected outcome of higher levels of
+incidence at higher levels of disadvantage. However, female coronary
+heart disease in particular does not strictly follow the order from
+highest to lowest.
 
 ```{r}
 # plot of data
@@ -1496,7 +1545,6 @@ ggsave(filename = paste0(output_dir, "cvd_dia_copd_prevalence.png"), plot = p,
        width = 12, height = 12, bg = "white")
 
 ```
-
 
 # Mortality data
 
