@@ -31,6 +31,9 @@ individuals being healthy) and add a differential all cause mortality
 risk for individuals who have one or more diseases.
 
 ```{r setup, include=FALSE}
+
+rm(list = ls())
+
 library(tidyverse)
 library(readxl)
 library(knitr)
@@ -66,78 +69,8 @@ meta analysis (SRMA) uses a different name (All cause dementia). Given
 differences in names and categories of diseases used, we provide ICD-10
 codes and aim to match up as much as possible.
 
-PREPARING TABLE IN EXCEL (disease_data, Melbourne final)
-
-Sources of dose-response functions (DRFs), concentration-response
-function (CRF) and exposure-response functions are presented in Table 2.
-For air pollutants and noise still to be confirmed.
-
-```{r}
-health_outcomes_risks <- tibble::tribble(
-  ~"Disease",  ~ "Data source age and sex incidence (ICD code)", ~"Data source inequalities incidence",   ~"Physical activity DRF (ICD-10)", ~"PM2.5 (ICD-10 code)", ~"NO2 (ICD-10 code)", ~"Noise (ICD code)" 
-  "Stroke", "GBD (G45-G46.8, I60-I62, I62.9-I64, I64.1, I65-I69.998, Z82.3)", "AIHW (I60-I66)", "PA (I60-I66)",
-  "Coronary heart disease", "GBD (I20-I21.6, I21.9-I25.9, Z82.4-Z82.49)", "AIHW (I20-I25)",  "PA (I20-I25)",
-  "Breast cancer", "PA (C50)",
-  "Endometrial cancer", "PA (C54)",
-  "Lung cancer", "PA (C34)",
-  "Colon cancer", "PA (C18)",
-  "Esophageal cancer", "PA (C15)",
-  "Liver cancer", "PA (C22-C24)",
-  "Kidney cancer", "PA (C64-65)",
-  "Gastric cardia cancer", "PA (C16.0)",
-  "Myeloid leukemia", "PA (C92)",
-  "Myeloma", "PA (90)",
-  "Head and neck cancer", "PA (C76.0)",
-  "Rectum cancer", "PA (C20)",
-  "Bladder cancer", "PA (C67)",
-  "Prostate cancer", "PA (C61)",
-  "Malignant melanoma", "PA (C43)",
-  "Depressive disorders", "GBD (F32-F33.9, F34.1)", "PA (F32-F33)",
-  "All cause dementia", "PA (F01-F03)",
-  "Diabetes type 2", "PA",
-  "Chronic obstructive pulmonary disease", "PA"
-)
-
-inputs <- kableExtra::kable(
-  health_outcomes_risks, 
-  booktabs = TRUE, 
-  caption = "Diseases", 
-  longtable = TRUE
-)
-
-inputs
-
-```
-
-Notes on diseases, diseases sources of data and risk factors ICD-codes.
-
-[**Depression**]{.underline}
-
-Systematic review and meta-analysis for depression
-([10.1001/jamapsychiatry.2022.0609](https://doi.org/10.1001%2Fjamapsychiatry.2022.0609))
-defines depression as (1) presence of major depressive disorder
-indicated by self-report of physician diagnosis, registry data, or
-diagnostic interviews using DSM criteria of International Statistical
-Classification of Diseases and Related Health Problems, tenth edition,
-codes F32 through F33; (2) elevated depressive symptoms established
-using validated cut-offs for a drepressive screening instrument.
-
-Data for depressive disorders is from the GBD study includes codes
-F32-F33.9 (Major depressive disorders) and F34.1 (Disthymia). We then
-include data for depressive disorders.
-
-[**All-cause dementia**]{.underline}
-
-The ICD-10 code was obtained from personal communications with Leandro
-Garcia, while DRFs are available in the DRF online interface
-([Meta-Analyses Physical Activity
-(cam.ac.uk)](https://shiny.mrc-epid.cam.ac.uk/meta-analyses-physical-activity/)),
-it is not reported in a peer-reviewed publication.
-
-[**Diabetes type 2**]{.underline}
-
-Could not find code in SRMA
-(<https://doi.org/10.1007/s00125-016-4079-0>).
+**PREPARING TABLE IN EXCEL (disease_data, Melbourne final). We might add
+a link to table here or try to import.**
 
 ## Inequalities in health
 
@@ -153,8 +86,8 @@ risk to indicate the increased/decrease risk for a given group in
 comparison to a reference group or rates comparing different population
 groups. If relative risks are supplied, we apply those to modify the
 data, if not, we need to derive a RR, for the second, we use the below
-methods (BELEN TO CHECK TEXT ONCE WE Finish to reflect on methods, a
-table with what we used for what would be useful for the paper).
+methods developed by Chris Jackson for mortality data for Melbourne and
+we applied them more broadly accross diseases, when suitable.
 
 We use the following method to disaggregate an event rate (for example,
 incidence or mortality by age and sex) by a further risk factor (such as
@@ -179,13 +112,13 @@ categories $i=1,2,3...$, such as a area socioeconomic indicator. Suppose
 $r_1$ is the mortality rate in some reference group $i$, $p_i$ is the
 proportion of people in group $i$, and $RR_i$ is the relative risk
 associated with being in this group compared to group $i=1$, so that
-$RR_1=0$. **\[SP note: is this right? Or does** $RR_1=1$?\] Given
+$RR_1=1$. Given
 
 $r_{ave} = r_1 \sum_{i=1}^G p_i RR_i$
 
 we can compute $r_1$ given $r_{ave}$, the relative rates for the risk
-factor $RR_i$ and opulation proportions for the risk factor $p_i$. Hence
-we can compute the remaining $r_i$ by multiplying $r_1$ by $RR_i$.
+factor $RR_i$ and population proportions for the risk factor $p_i$.
+Hence we can compute the remaining $r_i$ by multiplying $r_1$ by $RR_i$.
 
 # Incidence data
 
@@ -199,9 +132,10 @@ Welfare (AIHW) data.
 
 Prepare incidence data by sex and single year of age. To do so, we
 interpolate the data between age groups. Four interpolation functions
-are available below to test which one fits the data best. Graphs are
-created and saved in docs/images/inc_gbd_age_sex to visually check the
-fit of the interpolation to the original data.
+are available in folder functions and script interpolation.R were
+developed to test which one fits the data best. Graphs are created and
+saved in docs/images/inc_gbd_age_sex to visually check the fit of the
+interpolation to the original data.
 
 ```{r}
 # GBD data for Melbourne. 
@@ -439,8 +373,7 @@ disaggregation to represent inequalities in health. Preparation of
 inequalities data responds to inequality availability data for the
 following groups of diseases or single diseases: cancer, cardiovascular
 diseases and diabetes, COPD. For depression we did not find any data
-representing inequalities. Data sources are outlined here (Steve maybe
-there is a better way to share a file):
+representing inequalities. Data sources are outlined here:
 [health](https://rmiteduau.sharepoint.com/:f:/r/sites/JIBEworkinggroup/Shared%20Documents/General/health?csf=1&web=1&e=BaifAr)
 
 ### Cancers
@@ -457,7 +390,8 @@ incidence ratio (SIR). The SIR reflects the area-specific incidence rate
 relative to the Australian average. It is the ratio of the observed
 cancer cases to the expected number of cases, the latter adjusting for
 difference in population between SA2 and differences in age structure of
-the population with an SA2.
+the population with an SA2. Data for the Australian average by age and
+sex is from AIHW and interpolated data was generated above named incyr.
 
 ```{r}
 # Get sheet with SA2 areas by SES and filter Victoria
