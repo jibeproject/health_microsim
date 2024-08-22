@@ -28,7 +28,9 @@ are in a healthy state, might become diseased, and die from any causes
 need estimates of incidence and all cause mortality. A second iteration
 will be to include prevalence of disease at baseline (as opposed to all
 individuals being healthy) and add a differential all cause mortality
-risk for individuals who have one or more diseases.
+risk for individuals who have one or more diseases. Last, we need to
+include trends in mortality, incidence of diseases and prevalence of
+diseases.
 
 ```{r setup, include=FALSE}
 
@@ -59,16 +61,18 @@ knitr::opts_chunk$set(
 
 ## Data needs
 
-We need data for all cause mortality and diseases incidence **[SP: and prevalence?]**. For disease
-incidence, data is required for the list of diseases below in Table 1,
-which correspond to the included risk factors in the model (PM2.5, NO2,
-noise, physical activity). Disease names correspond to the names from
-data source. For example, we use data from the GBD for Alzheimer's
-disease and other dementias, the corresponding systematic review and
-meta analysis (SRMA) uses a different name (All cause dementia). Given
-differences in names and categories of diseases used, we provide ICD-10
-codes and aim to match up as much as possible.
-
+We need data for all cause mortality and diseases incidence and
+prevalence. We also will need data for trends in mortality and
+**diseases incidence (at least) and prevalence to validate future years
+(we might just get overall for population/age and sex maybe too).** For
+disease incidence, data is required for the list of diseases below in
+Table 1, which correspond to the included risk factors in the model
+(PM2.5, NO2, noise, physical activity). Disease names correspond to the
+names from data source. For example, we use data from the GBD for
+Alzheimer's disease and other dementias, the corresponding systematic
+review and meta analysis (SRMA) uses a different name (All cause
+dementia). Given differences in names and categories of diseases used,
+we provide ICD-10 codes and aim to match up as much as possible.
 
 PREPARING TABLE IN EXCEL (disease_data, Melbourne final)
 
@@ -128,7 +132,15 @@ using validated cut-offs for a drepressive screening instrument.
 
 Data for depressive disorders is from the GBD study includes codes
 F32-F33.9 (Major depressive disorders) and F34.1 (Disthymia). We then
-include data for depressive disorders.
+include data for depressive disorders for incidence and prevalence by
+age and sex (from GBD) and for inequalities (**WE DO NOT HAVE DATA
+YET**).
+
+Evidence suggest that females and younger pepoles have higher rates of
+depression than males, which we capture already with age and sex
+incidence and prevalence estimates. Household income was also a
+significant predictor of pression among females. The data for this study
+is old, 2007, and cross sectional survey (10.3390/app122412685)
 
 [**All-cause dementia**]{.underline}
 
@@ -140,7 +152,7 @@ it is not reported in a peer-reviewed publication.
 
 [**Diabetes type 2**]{.underline}
 
-Could not find code in SRMA
+Could not find ICD-10 code in SRMA
 (<https://doi.org/10.1007/s00125-016-4079-0>).
 
 ## Inequalities in health
@@ -158,7 +170,7 @@ comparison to a reference group or rates comparing different population
 groups. If relative risks are supplied, we apply those to modify the
 data, if not, we need to derive a RR, for the second, we use the below
 methods developed by Chris Jackson for mortality data for Melbourne and
-we applied them more broadly accross diseases, when suitable.
+we applied them more broadly across diseases, when suitable.
 
 We use the following method to disaggregate an event rate (for example,
 incidence or mortality by age and sex) by a further risk factor (such as
@@ -210,7 +222,7 @@ interpolation to the original data.
 
 ```{r}
 # GBD data for Melbourne. 
-gbd <- read.csv("health/original/GBD/gbd_incidence.csv")
+gbd <- read.csv("docs/health/original/GBD/gbd_incidence.csv")
 
 # Filter data to needed variables and remove strings from GBD age variable and create from_age and to_age needed for interpolation. 
 
@@ -282,17 +294,20 @@ plot_interpolation_pages(plot_data, output_dir)
 #### Harmonise definitions of cancer sites
 
 The cancer sites are reported differently between the AIHW tables on
-incidence by age/sex and incidence by socioeconomic quintiles. While the
-final data uses ATLAS, as opposed to AIHW, initial code from Chris used
-AIHW so we still harmonise, also to match standard names used across
-different inputs (i.e. health data, dose response functions). We also
-use the table for other purposes (TO COMPLETE, USED SOMEWHERE IN
-PREPARATIONADN INTERPOLATION OF THE DATA).
+incidence by age/sex and incidence by socioeconomic quintiles and also
+from the cancer ATLAS. While the final data uses ATLAS, as opposed to
+AIHW, initial code from Chris used AIHW so we still harmonise, also to
+match standard names used across different inputs (i.e. health data,
+dose response functions). We also use the table for other purposes (TO
+COMPLETE, USED SOMEWHERE IN PREPARATIONADN INTERPOLATION OF THE DATA).
 
 This table details the assumptions that are made in order to match the
-corresponding rates between the tables. The sites that we intend to use
-are defined by stdname and ICD10. Each row of the table below details
-the site from the AIHW tables that these are assumed to be matched to.
+corresponding rates between the AIHW tables, we manually change the
+names for the ATLAS data (for now). The sites that we intend to use are
+defined by stdname and ICD-10 and these names correspond to the names
+use in the physical activity SRMA by Garcia et al, and associated
+package. Each row of the table below details the site from the AIHW
+tables that these are assumed to be matched to.
 
 Note, sites are the same as causes in GBD.
 
@@ -336,7 +351,7 @@ stopifnot(!any(duplicated(sites$agesexname)))
 
 ```{r pressure, echo=FALSE}
 
-inc <- read_xlsx("health/original/AIHW/cancer-incidence.xlsx", sheet="Table S1a.1", skip=5, col_names=TRUE) %>% 
+inc <- read_xlsx("docs/health/original/AIHW/cancer-incidence.xlsx", sheet="Table S1a.1", skip=5, col_names=TRUE) %>% 
     filter(Year==2016) %>% # here 2016 to match inequality data.
     select(sex = Sex, age = "Age group (years)",
            site = "Cancer group/site",
@@ -467,7 +482,7 @@ sex is from AIHW and interpolated data was generated above named incyr.
 ```{r}
 # Get sheet with SA2 areas by SES and filter Victoria
 
-excel_file <- "health/original/ATLAS/Atlas_estimates_95CIs.xlsx"
+excel_file <- "docs/health/original/ATLAS/Atlas_estimates_95CIs.xlsx"
 
 # Get the names of the sheets in the Excel workbook
 diseases <- excel_sheets(excel_file)[-c(1:4)]
@@ -532,6 +547,23 @@ final_data_females <- do.call(rbind, all_data_females)
 
 SA2_soc <- read_xlsx(excel_file, sheet="Geography", skip=11, col_names = TRUE, n_max=2200)
 
+
+#ADD population nubmer here
+
+pop_SA2 <- read_csv("docs/health/original/ABS/Population by SA2 area.csv", skip = 9, col_names = TRUE) %>%
+  # Set the first row as column names
+  { setNames(.[-1, ], unlist(.[1, ]))} %>%
+   {names(.)[4] <- "population"; .}  %>%
+   as.data.frame() %>%
+  fill(SA2, .direction = "down") %>%
+  fill(`SEXP Sex`, .direction = "down") %>%
+  rename(sex = `SEXP Sex`, 
+         age = `AGEP Age`, 
+         sa2_name = SA2) %>% 
+  mutate(age=as.numeric(age))
+
+
+
 data_combined <- bind_rows(final_data_females, final_data_males) %>%
   mutate(`SA2 code`=as.numeric(`SA2 code`)) %>%
  left_join(SA2_soc) %>% rename(SA2 = `SA2 name`)
@@ -587,12 +619,18 @@ cancer_incidence_area <- data_sa2_sex_age %>% rename (sa2_code=`SA2 code`,
                                                       sa2_name = SA2) %>%
   mutate(prob=1 - exp(-rate_area)) %>%
   select(sa2_code, sa2_name, socio, site, age = ageyr, sex, prob, rate_area, val_interpolated) %>%
-  mutate(rate_ave_age_sex=val_interpolated*100000)
+  mutate(rate_ave_age_sex=val_interpolated*100000) %>%
+  mutate(sex = case_when(
+    sex == "Females" ~ "Female",
+    sex == "Males" ~ "Male")) %>%
+  left_join(pop_SA2)
 
-saveRDS(cancer_incidence_area, file="health/processed/cancer_incidence_area.rds")
+saveRDS(cancer_incidence_area, file="docs/health/processed/cancer_incidence_area.rds")
 
 ## Compare data per SA2 and sex and data from national administrative sources by age, sex and combined with level of deprivation (Chris, see cancer incidence.Rmd) [SP NOTE: do we want to preserve some of that code here?  It's been moved to 'docs/archive'.]
 
+
+#Up to here, calculate weighted average with populaiton
 compare_socio <- cancer_incidence_area %>%
 group_by(age, sex, site, socio, rate_ave_age_sex, .groups = "drop") %>%
 summarise(rate_area = round(mean(rate_area, na.rm = TRUE), 7), .groups = "drop") %>% mutate(socio=as.factor(socio)) %>%
@@ -603,7 +641,8 @@ summarise(rate_area = round(mean(rate_area, na.rm = TRUE), 7), .groups = "drop")
   )) %>%
   mutate(rate_area=rate_area*100000)
 
-cancerinc <- readRDS("health/processed/cancer_incidence.rds")
+## Prepared by chris using AIHW data by socioeconomic quintile. 
+cancerinc <- readRDS("docs/health/processed/cancer_incidence.rds")
 
 cancerinc <- cancerinc %>%
   mutate(socio = case_when(
@@ -648,18 +687,30 @@ Following are the exceptions:**
 
 -   **breast cancer (F) and prostate cancer (M) show the reverse
     pattern, with most disadvantaged having lowest incidence.**
+
+    BZD: this patters in confirmed with the source data saved in
+    cancer_socioeonomic for incidence. For mortality, the most deprived
+    die at a higher rate.
+
 -   **gastric cancer (F&M) have all groups being below average.**
+
 -   **liver cancer (F) has all groups below average.**
+
 -   **malignant melanoma (F&M) show an inconsistent pattern with most
     results above average.**
+
 -   **myeloid leukemia (F&M) show little differentiation between socio
     economic groups.**
+
 -   **myeloma (F&M) have most groups at or below average.**
 
 **There is little variation for all cancers (F&M), which is not
 surprising as they would show the combined effect of cancers with
 highest incidence in disadvantaged areas and others with highest
 incidence in advantaged areas.**
+
+**BZD: need to calculate back to average from areas, and compare with
+average by age and sex.**
 
 Each graph created below for each site and sex combinations depicts five
 graphs within representing each socioeconomic group, and within each
@@ -679,8 +730,9 @@ rates_compare_long <- compare_socio %>%
   pivot_longer(
   cols = c(rate_area, rate_soc, rate_ave_age_sex),
   values_to = "rate",
-  names_to = "rate_type"
-)
+  names_to = "rate_type")
+
+#%>% filter(!rate_type == "rate_soc") # removed the cancer data produced form cancer estimates by SES quintile (from Chris) to improve the readibility of the graphs. 
 
 
 
