@@ -69,10 +69,7 @@ meta analysis (SRMA) uses a different name (All cause dementia). Given
 differences in names and categories of diseases used, we provide ICD-10
 codes and aim to match up as much as possible.
 
-<<<<<<< HEAD
-**PREPARING TABLE IN EXCEL (disease_data, Melbourne final). We might add
-a link to table here or try to import.**
-=======
+
 PREPARING TABLE IN EXCEL (disease_data, Melbourne final)
 
 Sources of dose-response functions (DRFs), concentration-response
@@ -145,7 +142,6 @@ it is not reported in a peer-reviewed publication.
 
 Could not find code in SRMA
 (<https://doi.org/10.1007/s00125-016-4079-0>).
->>>>>>> a2cb0e77698d5cfaf32e34d06174efc14baef1b8
 
 ## Inequalities in health
 
