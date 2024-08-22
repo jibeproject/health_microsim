@@ -56,7 +56,7 @@ knitr::opts_chunk$set(
 
 ## Data needs
 
-We need data for all cause mortality and diseases incidence. For disease
+We need data for all cause mortality and diseases incidence **[SP: and prevalence?]**. For disease
 incidence, data is required for the list of diseases below in Table 1,
 which correspond to the included risk factors in the model (PM2.5, NO2,
 noise, physical activity). Disease names correspond to the names from
@@ -74,28 +74,28 @@ For air pollutants and noise still to be confirmed.
 
 ```{r}
 health_outcomes_risks <- tibble::tribble(
-  ~"Disease",  ~ "Data source age and sex incidence (ICD code)", ~"Data source inequalities incidence",   ~"Physical activity DRF (ICD-10)", ~"PM2.5 (ICD-10 code)", ~"NO2 (ICD-10 code)", ~"Noise (ICD code)" 
-  "Stroke", "GBD (G45-G46.8, I60-I62, I62.9-I64, I64.1, I65-I69.998, Z82.3)", "AIHW (I60-I66)", "PA (I60-I66)",
-  "Coronary heart disease", "GBD (I20-I21.6, I21.9-I25.9, Z82.4-Z82.49)", "AIHW (I20-I25)",  "PA (I20-I25)",
-  "Breast cancer", "PA (C50)",
-  "Endometrial cancer", "PA (C54)",
-  "Lung cancer", "PA (C34)",
-  "Colon cancer", "PA (C18)",
-  "Esophageal cancer", "PA (C15)",
-  "Liver cancer", "PA (C22-C24)",
-  "Kidney cancer", "PA (C64-65)",
-  "Gastric cardia cancer", "PA (C16.0)",
-  "Myeloid leukemia", "PA (C92)",
-  "Myeloma", "PA (90)",
-  "Head and neck cancer", "PA (C76.0)",
-  "Rectum cancer", "PA (C20)",
-  "Bladder cancer", "PA (C67)",
-  "Prostate cancer", "PA (C61)",
-  "Malignant melanoma", "PA (C43)",
-  "Depressive disorders", "GBD (F32-F33.9, F34.1)", "PA (F32-F33)",
-  "All cause dementia", "PA (F01-F03)",
-  "Diabetes type 2", "PA",
-  "Chronic obstructive pulmonary disease", "PA"
+  ~"Disease",  ~"Data source age and sex incidence (ICD code)", ~"Data source inequalities incidence",   ~"Physical activity DRF (ICD-10)", ~"PM2.5 (ICD-10 code)", ~"NO2 (ICD-10 code)", ~"Noise (ICD code)", 
+  "Stroke", "GBD (G45-G46.8, I60-I62, I62.9-I64, I64.1, I65-I69.998, Z82.3)", "AIHW (I60-I66)", "PA (I60-I66)", "#", "#", "#",
+  "Coronary heart disease", "GBD (I20-I21.6, I21.9-I25.9, Z82.4-Z82.49)", "AIHW (I20-I25) [to confirm: CVD is I00-I99]",  "PA (I20-I25)", "#", "#", "#",
+  "Breast cancer",  "AIHW (C50)", "ATLAS (C50)","PA (C50)", "#", "#", "#",
+  "Endometrial cancer",  "AIHW (C54.1)", "ATLAS (C54-C55)","PA (C54)", "#", "#", "#",
+  "Lung cancer",  "AIHW (C33-C34)", "ATLAS (C33-C34)","PA (C34)", "#", "#", "#",
+  "Colon cancer",  "AIHW (18)", "ATLAS (C18-C20)","PA (C18)", "#", "#", "#",
+  "Esophageal cancer",  "AIHW (C15)", "ATLAS (C15)","PA (C15)", "#", "#", "#",
+  "Liver cancer",  "AIHW (C22)", "ATLAS (C22)","PA (C22-C24)", "#", "#", "#",
+  "Kidney cancer",  "AIHW (C64)", "ATLAS (C64)","PA (C64-65)", "#", "#", "#",
+  "Gastric cardia cancer",  "AIHW (C16)", "ATLAS (C16)","PA (C16.0)", "#", "#", "#",
+  "Myeloid leukemia",  "AIHW (C92.1)", "ATLAS (C91-C95)","PA (C92)", "#", "#", "#",
+  "Myeloma",  "AIHW (C90.0)", "ATLAS (C90)","PA (90)", "#", "#", "#",
+  "Head and neck cancer",  "AIHW (C00-C14, C30-C32)", "ATLAS (C00-C14, C30-C32)","PA (C76.0)", "#", "#", "#",
+  "Rectum cancer",  "AIHW (C19-C20)", "ATLAS (C18-C20)","PA (C20)", "#", "#", "#",
+  "Bladder cancer",  "AIHW (C67)", "#","PA (C67)", "#", "#", "#",
+  "Prostate cancer",  "AIHW (C61)", "ATLAS (C61)","PA (C61)", "#", "#", "#",
+  "Malignant melanoma",  "AIHW (C43)", "ATLAS (C43)","PA (C43)", "#", "#", "#",
+  "Depressive disorders", "GBD (F32-F33.9, F34.1)", "#", "PA (F32-F33)", "#", "#", "#",
+  "All cause dementia",  "GBD (F00-F02.0, F02.8-F03.91, F06.2, G30-G31.1, G31.8-G32.89)", "#","PA (F01-F03)", "#", "#", "#",
+  "Diabetes type 2", "GBD (E11-E11.1, E11.3-E11.9)", "AIHW (E11)", "PA", "#", "#", "#",
+  "Chronic obstructive pulmonary disease",  "GBD (J41-J42.4, J43-J44.9)", "AIHW (J40-J44)","PA", "#", "#", "#"
 )
 
 inputs <- kableExtra::kable(
@@ -1446,7 +1446,7 @@ chd_prev <- read_xlsx("health/original/AIHW/cvd-diabetes-comorbidities.xlsx", sh
   select(socio, sex, rate, rr) %>%
   mutate(cause="Coronary heart disease")
 
-# Diabetes and COPD - same as for incidence (diabetes incidence data and COPD prevalence data)
+# Diabetes and COPD - same as for incidence (diabetes and COPD prevalence data)
 diabetes_prev <- diabetes_inc %>% mutate(cause = "Diabetes type 2")
 copd_prev <- copd_inc
 
