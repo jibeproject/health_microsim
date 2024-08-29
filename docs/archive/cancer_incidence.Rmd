@@ -1,0 +1,265 @@
+---
+title: "JIBE Melbourne: Cancer incidence data"
+author: "Chris Jackson"
+email: "chris.jackson@mrc-bsu.cam.ac.uk"
+date: today
+format: 
+  html:
+    code-fold: true
+    embed-resources: true
+    df-print: paged
+execute: 
+    message: false
+    warning: false
+toc: true
+number-sections: true
+editor: visual
+---
+
+This script produces estimates of cancer incidence, by cancer site, age, sex and area socioeconomic quintile, for Australia in 2016.
+
+The data is obtained from AIHW, as linked from [JIBE data summary spreadsheet](https://gbr01.safelinks.protection.outlook.com/ap/x-59584e83/?url=https%3A%2F%2Frmiteduau.sharepoint.com%2F%3Ax%3A%2Fr%2Fsites%2FJIBEUKAUS%2FShared%2520Documents%2FWP%25206%2Fhealth%2Fdata%2Fdiseases%2520data.xlsx%3Fd%3Dwed9fbef6faa046df8f4e6453f1a1463b%26csf%3D1%26web%3D1%26e%3DhKUlh4&data=05%7C02%7Cchris.jackson%40mrc-bsu.cam.ac.uk%7Cdfd4effdc1c346447c0508dc30f7a9ae%7C513def5bdf174107b5523dba009e5990%7C0%7C0%7C638439087576234119%7CUnknown%7CTWFpbGZsb3d8eyJWIjoiMC4wLjAwMDAiLCJQIjoiV2luMzIiLCJBTiI6Ik1haWwiLCJXVCI6Mn0%3D%7C0%7C%7C%7C&sdata=WdIPqRrgjJze3vSbAhvWQYZO3K1R2IUlDXcxbWXFVJA%3D&reserved=0). Source files:
+
+-   `cancer-incidence.xlsx` (published Dec 2021): By cancer site, 5-year age group and sex.
+
+-   `cancer_socioeconomic.xlsx` (published Dec 2021): Table S10.7. By site and area socioeconomic quintile.
+
+These data refer to the whole of Australia. GBD does not provide any further geographical detail, and is likely to have drawn their data on Australia from the same source, so GBD is not considered further here.
+
+These data are combined to produce estimates by cancer site, age, sex and area socioeconomic quintile. This assumes that the effect of socioeconomic status on cancer incidence is the same for all age and sex groups, though this effect differs by cancer site.
+
+```{r}
+library(tidyverse)
+library(readxl)
+```
+
+```{r setup, include=FALSE}
+knitr::opts_knit$set(root.dir = "C:/Users/steve/Documents/MEGAsync/Steve/RMIT JIBE/health_microsim/")
+
+```
+
+# Harmonise definitions of cancer sites
+
+The cancer sites are reported differently between the AIHW tables on incidence by age/sex and incidence by socioeconomic quintiles.
+
+This table details the assumptions that are made in order to match the corresponding rates between the tables. The sites that we intend to use are defined by `stdname` and `ICD10`. Each row of the table below details the site from the AIHW tables that these are assumed to be matched to.
+
+```{r}
+
+sites <- rbind( 
+    ## Standard name,   Name in age/sex data,  Name in socio data,   Our intended ICD10,
+    c("Breast cancer",   "Breast cancer"  ,      "Breast cancer in females (C50)" , "C50"),
+     c("Endometrial cancer", "Endometrial cancer", "Uterine cancer (C54–C55)" ,  "C54–C55"),
+      c("Lung cancer",       "Lung cancer",         "Lung cancer (C33–C34)",  "C33–C34"),
+      c("Colon cancer",     "Colon cancer",         "Colorectal cancer (C18–C20)", "C18"),
+      c("Esophageal cancer", "Oesophageal cancer" , NA,  "C15"),  
+      c("Liver cancer",      "Liver cancer",       "Liver cancer (C22)", "C22"),
+      c("Kidney cancer",     "Kidney cancer",    "Kidney cancer (C64)", "C64"),
+      c("Gastric cardia cancer",  "Stomach cancer", NA, "C16"),
+      c("Myeloid leukemia", "Chronic myeloid leukaemia (CML)"  , NA, "C92.1"),
+      c("Myeloma", "Multiple myeloma", NA, "C90.0"),
+      c("Head and neck cancer", "Head and neck cancer (including lip)", "Head and neck cancers (with lip) (C00–C14, C30–C32)", "C01–C14, C30–C32"),
+      c("Rectum cancer", "Rectal cancer (including rectosigmoid junction)", "Colorectal cancer (C18–C20)", "C20"),
+      c("Bladder cancer", "Bladder cancer", "Bladder cancer (C67)", "C67"),
+      c("Prostate cancer", "Prostate cancer", "Prostate cancer (C61)", "C61"),
+      c("Malignant melanoma", "Melanoma of the skin", "Melanoma of the skin (C43)", "C43"),
+    c("All cancers", "All cancers combined", "All cancers combined (C00–C97, D45, D46, D47.1, D47.3–D47.5)", "C00–C97, D45, D46, D47.1, D47.3–D47.5")
+    ) |> 
+    as_tibble() |>
+    setNames(c("stdname","agesexname","socioname","ICD10") ) |>
+    select(stdname, ICD10, agesexname, socioname)
+knitr::kable(sites, col.names = c("Standardised name","ICD 10 code",
+             "Closest site in age/sex data","Closest site in socioeconomic data"))
+
+# assume unique row in age-sex data for each standard site
+stopifnot(!any(duplicated(sites$agesexname))) 
+```
+
+# Incidence by age and sex
+
+Data by year of age are assumed to be the same within the published five-year age groups.
+
+```{r}
+## #| cache: true
+
+inc <- read_xlsx("health/original/AIHW/cancer-incidence.xlsx", sheet="Table S1a.1", skip=5, col_names=TRUE) |> 
+    filter(Year==2016) |>
+    select(sex = Sex, age = "Age group (years)", 
+           site = `Cancer group/site`, 
+           rate = "Age-specific rate\r\n(per 100,000)") |>
+    filter(age != "All ages combined",
+           sex != "Persons") |>
+    mutate(age = ifelse(age=="90+","90–95",age)) |>
+    separate_wider_delim(age, "–", names = c("startage","stopage")) |>
+      mutate(across(startage:stopage, as.numeric),
+             agerange = stopage - startage + 1) |>
+    group_by(sex, site) |>
+    slice(rep(1:n(), agerange)) |>
+    mutate(age = row_number() - 1,
+           site = sites$stdname[match(site, sites$agesexname)]) |>
+    filter(site %in% sites$stdname)
+stopifnot(inc$age >= inc$startage, inc$age <= inc$stopage)
+cancerinc_agesex <- inc |> 
+    select(site, age, sex, rate)
+```
+
+# Incidence by socioeconomic status
+
+-   Presumably (though not indicated in the source) socioeconomic status describes 2016 SA2 areas.
+
+-   As per Cancer 2021 report socioeconomic status corresponds to the 2016 area SA2 of usual residence (Appendinx G of <https://www.aihw.gov.au/getmedia/0ea708eb-dd6e-4499-9080-1cc7b5990e64/aihw-can-144.pdf?v=20230605165731&inline=true>). (BZD 07/03/2024)
+
+-   For the cancer sites with missing socioeconomic gradients (esophageal, gastric, myeloid leukemia, myeloma), we will assume that socioeconomic gradient is the same as that for all cancers combined. This may not be true however. The socioeconomic gradient for all cancers is not large - this is largely because the most common cancers (breast, lung) have opposite gradients that cancel out.
+
+-   Socioeconomic gradients are published for all colorectal cancer combined. These are assumed to be the same for colon and rectal cancer.
+
+```{r}
+## #| cache: true
+
+# cancerinc_socio <- read_xlsx(paste0(data_dir,"cancer_socioeconomic.xlsx"), sheet="Table S10.7", 
+#                              skip=6, col_names = TRUE, n_max=90) |>
+#     rename(site = `Cancer site/type (ICD-10 codes)`) |>
+#     fill(site) |>
+#     select(site, socio = "Socioeconomic area",
+#            rate = "ASR (per 100,000)...5") |>
+#     filter(socio != "Australia") |>
+#     mutate(socio = case_when(socio=="1 Lowest" ~ "1", # 1: lowest, to 5: highest
+#                              socio=="5 Highest" ~ "5",
+#                              .default = socio),
+#            socio = as.numeric(socio), 
+#            rr = rate / rate[1], # BZD: all rates are dividing by the first rate, I shoulde be by diseases, I modified. 
+#            site = sites$stdname[match(site, sites$socioname)]) |>
+#     filter(site %in% sites$stdname)
+
+## Above code modified to calculate RR in reference to each disease (BZD-07/03/2024)
+## When comparing with original calclations from Chris from file cancer_incidence seems that this change makes no difference in final results. 
+cancerinc_socio <- read_xlsx("health/original/AIHW/cancer_socioeconomic.xlsx", sheet="Table S10.7", 
+                             skip=6, col_names = TRUE, n_max=90) |>
+    rename(site = `Cancer site/type (ICD-10 codes)`) |>
+    fill(site) |>
+    select(site, socio = "Socioeconomic area",
+           rate = "ASR (per 100,000)...5") |>
+    filter(socio != "Australia") |>
+    mutate(socio = case_when(socio=="1 Lowest" ~ "1", # 1: lowest, to 5: highest
+                             socio=="5 Highest" ~ "5",
+                             .default = socio),
+           socio = as.numeric(socio)) |>
+  group_by(site) |>
+  mutate(rr = rate / first(rate)) |>
+  ungroup() |>
+  mutate(site = sites$stdname[match(site, sites$socioname)])  |>
+    filter(site %in% sites$stdname)
+
+####
+
+sociona_sites <- c("Esophageal cancer","Gastric cardia cancer","Myeloid leukemia","Myeloma")
+nadf <- cancerinc_socio |> 
+    filter(site == "All cancers") |>
+    slice(rep(1:n(), length(sociona_sites))) |>
+    mutate(site = rep(sociona_sites, each=5))
+
+## For rectum cancer, assume same socioeconomic distribution as all colorectal cancer
+dup_sites <- sites$stdname[!is.na(sites$socioname) & duplicated(sites$socioname)]
+## Assume this is only one with a coarser site definition in the socioeconomic data
+stopifnot(dup_sites == "Rectum cancer") # handle specially
+
+dupdf <- cancerinc_socio |> 
+    filter(site == "Colon cancer") |>
+    mutate(site = "Rectum cancer")
+
+cancerinc_socio <- cancerinc_socio |> 
+    rbind(nadf) |>
+    rbind(dupdf)
+
+
+
+```
+
+# Estimating incidence by combinations of risk factors
+
+As in the Melbourne mortality data analysis (section 2.2) to disaggregate an event rate (incidence by age and sex in this case) by a further risk factor, given
+
+-   the rate $r_{ave}$ by age and sex, averaged over people with or without the risk factor
+
+-   a relative (unstandardised) rate $RR$ between people with/without the risk factor
+
+-   the proportions of people with the risk factor $p_1$ and without the risk factor $p_0$
+
+we can estimate the rates with ($r_1$) and without the risk factor ($r_0$), because if $r_{ave} = p_1 r_1 + p_0 r_0 = p_1 r_0 RR + p_0 r_0$,we can estimate $r_0 = r_{ave} / (p_1 RR + p_0)$
+
+This generalises to categorical risk factors with more than two categories, in this case, the area socioeconomic indicator. Given
+
+$r_{ave} = r_1 \sum_{i=1}^G p_i RR_i$
+
+we can compute $r_1$ given $r_{ave}$, the socioeconomic relative rates $RR_i$ and socioeconomic population proportions $p_i$. Hence we can compute the remaining $r_i$ by multiplying $r_1$ by $RR_i$.
+
+## Implementation of disaggregating risks for cancer incidence
+
+We assume that $p_i = 1/5$ is the proportion of people in each of the five quintiles of socioeconomic status, and these proportions are the same for each age/sex group. The quintiles are defined so that the same number of areas falls in each quintile. So while this assumption will not be exact, it is expected to be approximately true. To get better estimates of these proportions, we would need data on the population by age, sex and SES quintile.
+
+The code to perform this disaggregation works by stretching out the age/sex incidence data vertically to create a dataset with one row per combination of age, sex and socioeconomic quintile. This is then joined with the dataset `cancerinc_socio` on relative incidence by socioeconomic quintiles. The term $\sum_{i=1}^G p_i RR_i$ is then computed as `sum_pRR`, and joined to the streched dataset `cancerinc`. This allows the disaggregated rates `rate` to be computed in a vectorised way.
+
+```{r}
+cancerinc <- cancerinc_agesex |> 
+    slice(rep(row_number(), each=5)) |>
+    mutate(socio = rep(1:5, length.out=n())) |>
+    left_join(cancerinc_socio |> select(site, socio, rr_socio = rr), 
+              by=c("site","socio")) |>
+    mutate(p_socio = 1/5,    # assumption
+           pRR = p_socio * rr_socio,
+           socio = ordered(socio))
+
+sum_p <- cancerinc |> 
+    group_by(site, age, sex) |>
+    summarise(sum_pRR = sum(pRR), .groups="drop")
+    
+cancerinc <- cancerinc |>
+    left_join(sum_p, by=c("site","age","sex")) |>
+    mutate(rate_soc = rate * rr_socio / sum_pRR, # Change to rr_soc to keep original value (BZ-D 13-03-2024)
+           socio = ordered(socio, labels = c("1 (most deprived)",
+                                             "2","3","4",
+                                             "5 (least deprived)")),
+           sex = factor(sex),
+           sex = fct_recode(sex, Female="Females", Male="Males")) #|>
+   # select(site, age, sex, socio, rate) # keeping all variables to track calculations (BZ-D 13-03-02024)
+saveRDS(cancerinc, file="cancer_incidence_test.rds")
+```
+
+We are left with the incidence by age, sex and socioeconomic status in the variable `rate`. The final dataset is saved in the file `cancer_incidence.rds`, and the first few rows are shown here.
+
+```{r}
+knitr::kable(head(cancerinc))
+```
+
+# Illustration of incidence estimates
+
+Incidence by age, sex and socioeconomic quintile for all cancers considered in JIBE.
+
+The published incidence by age and sex (averaged over deprivation levels) is shown by the dotted black lines. The estimated incidence disaggregated by socioeconomic quintile is shown by the coloured lines, with socioeconomic status indicated by the lightness of the lines.
+
+This shows that the relative risk between socioeconomic quintiles is assumed to be the same between different age/sex groups, but the average of the deprivation-specific estimates is constrained to be the same as the published average.
+
+Note the varying socioeconomic gradients, e.g. breast cancer is commonest among the least deprived, and lung cancer commonest for the most deprived.
+
+For some cancers (esophageal, gastric, myeloid leukemia, myeloma) the apparent lack of socioeconomic effect is due to the assumption that this effect is the same as for all cancers combined, which may not be true. Perhaps this effect might be borrowed from other countries, if there is data.
+
+```{r}
+#| fig-height: 12
+ggplot(cancerinc, 
+       aes(x=age, y=rate_soc, col=sex, alpha=socio)) + 
+    geom_line(lwd=1.5) + 
+    geom_line(data=cancerinc_agesex,
+              aes(x=age, y=rate, group=sex), 
+              inherit.aes = FALSE,
+              lwd=1, lty=2, alpha=0.4, col="black") +
+    facet_wrap(~site, ncol=2, scales="free_y") + 
+    ylab("Incidence rate (per 100,000)") +
+    xlab("Age (years)") +
+    coord_cartesian(xlim=c(25, 90)) +
+    guides(alpha=guide_legend(title=NULL),
+           col=guide_legend(title=NULL)) +
+    theme(legend.position = "bottom")
+```
+
+```         
+```

@@ -1,0 +1,74 @@
+---
+title: "Health Microsimulation"
+author: "Ali Abbas, Belen Zapata-Diomedi"
+format: 
+  html:
+    self-contained: true
+editor: visual
+---
+
+## Health Microsimulation
+
+This document explains the details of the `health microsimulation` model. It is inspired by the [Microsimulation-tutorial](https://github.com/DARTH-git/Microsimulation-tutorial). The model is an individual based model, where it remembers each individual's characteristics and their behaviours (physical activity) and exposures over time, while keeping the overall count of health statistics using incidence and mortality rates. The model is flexible and generlizable to any setting - location, diseases and demographics.
+
+The model is initially being developed for Melbourne, in Australia, and we will also develop a version for Manchester.
+
+## Running Code
+
+The individual data for a synthetic population, with demographic information (such as age and gender), as well as the exposure (relative risk for physical activity - like walking/cycling, and Air Pollution - exposure to PM2.5 and so on) comes from a transport model (build with MatSim) in a single csv file.
+
+We use this data - with slight modifications as our `synthetic population`
+
+The current code is being tested in a synthetic population for Munich, and will be updated with synthetic populations for our case studies of Melbourne and Greater Manchester. Attributes of the synthetic population, beyond age and sex, for example, by level of deprivation have to match those for the health model input data. For example, for Melbourne, mortality data is by single year of age, sex, area defined by SA2, and level of education. These attributes also have to be present in the Melbourne synthetic population.
+
+### Reduction of size of synthetic population
+
+In order to quickly run the model, we reduce the size of the `synthetic population`. This allows us to deal with a much smaller dataset.
+
+### Select variables of interest
+
+We then select the variables of interest comprising of individual demographics (such as age and gender, deprivation), and risk of premature deaths and developng diseases for exposure (`rr_all` - a combined RR for all exposure variables included, e.g. rr_all measures the mortlaity risk conditional to age, sex, exposure to AP and PA level) and use these as our columns. For now, we only have rr_all for all_cause mortality, as an example from the Munich model. In future, we will have rr_all for mortality and for diseases.
+
+The updated synthetic populations for Melbourne and Greater Manchester will have attributes that are in line with health inequalities data. For example, the Melbourne synthetic population will have attributes for each individual for SA2 areas, level of education and socioeconomic status.
+
+### Background health data
+
+We are using sample processed data by age and gender specific death rates for a variety of causes/diseases for Australia. These may include: `all-cause-mortality`, `Ischaemic Heart Disease`, `Stroke`, `Lung Cancer`. These data will be replaced by new data for Melbourne (more detail below) and we need to explore for data for Manchester.
+
+As we have mentioned before, the model is agnostic about the diseases being used. We may develop interactions and also hierarchy on a well-defined disease/cause structure later on, but as of now, the model does not care about the diseases one may use. To address this model issue, we could potentially use data on comorbidities to assign diseases, for example, for Melbourne, we have data indicating the prevalence of people with diabetes and cardiovascular disease (see data sources in teams site (WP6/health/data/diseases data.xlsx)).
+
+A summary of data inputs with details and their function is listed below. The disease_data file has details for data available for Melbourne which will guide data generation needs.
+
+| Input                                                   | detail                                                                                          | function                                                                                                                                                                                      |
+|---------------------------------------------------------|-------------------------------------------------------------------------------------------------|-----------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------|
+| all-cause mortality                                     | by age, sex, education, area                                                                    | transition from healthy/diseased to dead from any causes                                                                                                                                      |
+| incidence disease                                       | by age, sex, other heterogeneities                                                              | transition from health (diseased) to having the disease                                                                                                                                       |
+| prevalence disease                                      | by age, sex, other heterogeneities                                                              | set baseline prevalence, calibrate the model for years for which we have actual data. For example, for Melbourne baseline year is 2018, and we have actual data for this year and later years |
+| survival, all cause mortality for people with disease/s | overall population survival, or if possible by different heterogeneities, age, sex, deprivation | to adjust all-cause mortality risk for people with diseases                                                                                                                                   |
+| Projections                                             | by age and sex at least ideally                                                                 | to adjust future incidence and mortality rates                                                                                                                                                |
+
+### From death rates to sick probability
+
+We then use a generalized formula to convert death rates of a disease into `sick_prob` (or sickness probability) by: sick_prob = 1 - exp(-death_rate). In this step we convert all death rates of all diseases into sick_prob by the same formula.
+
+Ali: For Melbourne, the data file generate by Chris is for probabilities, therefore, not conversion requiered from rates to probabilities.
+
+### Combine health burden data to synthetic population
+
+In order to combine background health burden (or `sick_prob` by disease, age and gender) with `synthetic population`, we merge the two datasets. This results in a dataset where we have disease, age and gender specific `sick_prob` for all the individuals.
+
+Ali: For Melbourne, once we have the synthetic population, we also need to combine by area and level of education.
+
+## Model setup and run
+
+The model has two main functions:
+
+1.  `prob_age_sex` takes in age, gender and cause (or disease name) and returns the `sick_prob`
+
+    Ali, in future also area, education, and any other measure of deprivation for which we might have data.
+
+2.  `get_state` returns the next state for each individual agent in the `synthetic population`. Essentially this function performs state transitions such as depicted below in the diagram:
+
+    ![State Transitions](images/state_transitions.drawio.png)
+
+Each individual of the `synthetic population` starts in a `healthy` state and at each step, she may transition to any of the N disease state. Since `all-cause-mortality` is a specific kind of a cause, the individual transitions to the death state `D`. The decision for any of the disease transition boils down to: if the random uniform distribution (`runif(1)`) is greater than disease, age and gender specific `sick_prob`, then the transition occurs, otherwise the previous states are preserved. So imagine if at cycle *i*, an individual agent *a* had two states (`S1` and `S2`) and now at cycle *i + 1,* we would like to know that for `S3` the random uniform number (a random number between 0 and 1), is greater than `sick_prob` for `S3` (for a given age and gender) then the new states for the agent *a* becomes (`S1`, `S2` and `S3`). If `S3` was a special kind of cause (`all-cause-mortality`), then the new state for the agent *a* would be death (`D`). Once an agent *a* dies, then she may not transition to any other state.

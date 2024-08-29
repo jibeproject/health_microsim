@@ -1,0 +1,1991 @@
+---
+title: "health data Melbourne"
+author: "Chris Jackson, Belen Zapata-Diomedi, Steve Pemberton"
+email: "mbzd2@cam.ac.uk, chris.jackson@mrc-bsu.cam.ac.uk, steve.pemberton@rmit.edu.au"
+date: today
+format: 
+  html:
+    code-fold: true
+    embed-resources: true
+    df-print: paged
+execute: 
+    message: false
+    warning: false
+toc: true
+number-sections: true
+editor_options:
+  mode: visual
+  markdown:
+    wrap: 72
+---
+
+# Introduction
+
+This document explains and produces estimates for the health model for
+JIBE Melbourne. The model initially has three stages where individuals
+are in a healthy state, might become diseased, and die from any causes
+(regardless health status). For this first iteration of the model we
+need estimates of incidence and all cause mortality. A second iteration
+will be to include prevalence of disease at baseline (as opposed to all
+individuals being healthy) and add a differential all cause mortality
+risk for individuals who have one or more diseases. Last, we need to
+include trends in mortality, incidence of diseases and prevalence of
+diseases.
+
+```{r setup, include=FALSE}
+
+rm(list = ls())
+
+library(tidyverse)
+library(readxl)
+library(knitr)
+library(jsonlite)
+library(kableExtra)
+library(gt)
+
+# functions
+source("functions/interpolation.R")
+
+# Avoid scientific notation
+options("scipen"=100, "digits"=4)
+
+# set root directory one level up from current 'docs' directory
+knitr::opts_knit$set(root.dir = dirname(getwd()))
+
+knitr::opts_chunk$set(
+  echo = FALSE,          # Hide code by default
+  # results = "hide",      # Hide results by default
+  message = FALSE,       # Suppress messages
+  warning = FALSE)        # Suppress warnings
+```
+
+## Data needs
+
+We need data for all cause mortality and diseases incidence and
+prevalence. We also will need data for trends in mortality and
+**diseases incidence (at least) and prevalence to validate future years
+(we might just get overall for population/age and sex maybe too).** For
+disease incidence, data is required for the list of diseases below in
+Table 1, which correspond to the included risk factors in the model
+(PM2.5, NO2, noise, physical activity). Disease names correspond to the
+names from data source. For example, we use data from the GBD for
+Alzheimer's disease and other dementias, the corresponding systematic
+review and meta analysis (SRMA) uses a different name (All cause
+dementia). Given differences in names and categories of diseases used,
+we provide ICD-10 codes and aim to match up as much as possible.
+
+PREPARING TABLE IN EXCEL (disease_data, Melbourne final)
+
+Sources of dose-response functions (DRFs), concentration-response
+function (CRF) and exposure-response functions are presented in Table 2.
+For air pollutants and noise still to be confirmed.
+
+```{r}
+health_outcomes_risks <- tibble::tribble(
+  ~"Disease",  ~"Data source age and sex incidence (ICD code)", ~"Data source inequalities incidence",   ~"Physical activity DRF (ICD-10)", ~"PM2.5 (ICD-10 code)", ~"NO2 (ICD-10 code)", ~"Noise (ICD code)", 
+  "Stroke", "GBD (G45-G46.8, I60-I62, I62.9-I64, I64.1, I65-I69.998, Z82.3)", "AIHW (I60-I66)", "PA (I60-I66)", "#", "#", "#",
+  "Coronary heart disease", "GBD (I20-I21.6, I21.9-I25.9, Z82.4-Z82.49)", "AIHW (I20-I25) [to confirm: CVD is I00-I99]",  "PA (I20-I25)", "#", "#", "#",
+  "Breast cancer",  "AIHW (C50)", "ATLAS (C50)","PA (C50)", "#", "#", "#",
+  "Endometrial cancer",  "AIHW (C54.1)", "ATLAS (C54-C55)","PA (C54)", "#", "#", "#",
+  "Lung cancer",  "AIHW (C33-C34)", "ATLAS (C33-C34)","PA (C34)", "#", "#", "#",
+  "Colon cancer",  "AIHW (18)", "ATLAS (C18-C20)","PA (C18)", "#", "#", "#",
+  "Esophageal cancer",  "AIHW (C15)", "ATLAS (C15)","PA (C15)", "#", "#", "#",
+  "Liver cancer",  "AIHW (C22)", "ATLAS (C22)","PA (C22-C24)", "#", "#", "#",
+  "Kidney cancer",  "AIHW (C64)", "ATLAS (C64)","PA (C64-65)", "#", "#", "#",
+  "Gastric cardia cancer",  "AIHW (C16)", "ATLAS (C16)","PA (C16.0)", "#", "#", "#",
+  "Myeloid leukemia",  "AIHW (C92.1)", "ATLAS (C91-C95)","PA (C92)", "#", "#", "#",
+  "Myeloma",  "AIHW (C90.0)", "ATLAS (C90)","PA (90)", "#", "#", "#",
+  "Head and neck cancer",  "AIHW (C00-C14, C30-C32)", "ATLAS (C00-C14, C30-C32)","PA (C76.0)", "#", "#", "#",
+  "Rectum cancer",  "AIHW (C19-C20)", "ATLAS (C18-C20)","PA (C20)", "#", "#", "#",
+  "Bladder cancer",  "AIHW (C67)", "#","PA (C67)", "#", "#", "#",
+  "Prostate cancer",  "AIHW (C61)", "ATLAS (C61)","PA (C61)", "#", "#", "#",
+  "Malignant melanoma",  "AIHW (C43)", "ATLAS (C43)","PA (C43)", "#", "#", "#",
+  "Depressive disorders", "GBD (F32-F33.9, F34.1)", "#", "PA (F32-F33)", "#", "#", "#",
+  "All cause dementia",  "GBD (F00-F02.0, F02.8-F03.91, F06.2, G30-G31.1, G31.8-G32.89)", "#","PA (F01-F03)", "#", "#", "#",
+  "Diabetes type 2", "GBD (E11-E11.1, E11.3-E11.9)", "AIHW (E11)", "PA", "#", "#", "#",
+  "Chronic obstructive pulmonary disease",  "GBD (J41-J42.4, J43-J44.9)", "AIHW (J40-J44)","PA", "#", "#", "#"
+)
+
+inputs <- kableExtra::kable(
+  health_outcomes_risks, 
+  booktabs = TRUE, 
+  caption = "Diseases", 
+  longtable = TRUE
+)
+
+inputs
+
+```
+
+Notes on diseases, diseases sources of data and risk factors ICD-codes.
+
+[**Depression**]{.underline}
+
+Systematic review and meta-analysis for depression
+([10.1001/jamapsychiatry.2022.0609](https://doi.org/10.1001%2Fjamapsychiatry.2022.0609))
+defines depression as (1) presence of major depressive disorder
+indicated by self-report of physician diagnosis, registry data, or
+diagnostic interviews using DSM criteria of International Statistical
+Classification of Diseases and Related Health Problems, tenth edition,
+codes F32 through F33; (2) elevated depressive symptoms established
+using validated cut-offs for a drepressive screening instrument.
+
+Data for depressive disorders is from the GBD study includes codes
+F32-F33.9 (Major depressive disorders) and F34.1 (Disthymia). We then
+include data for depressive disorders for incidence and prevalence by
+age and sex (from GBD) and for inequalities (**WE DO NOT HAVE DATA
+YET**).
+
+Evidence suggest that females and younger pepoles have higher rates of
+depression than males, which we capture already with age and sex
+incidence and prevalence estimates. Household income was also a
+significant predictor of pression among females. The data for this study
+is old, 2007, and cross sectional survey (10.3390/app122412685)
+
+[**All-cause dementia**]{.underline}
+
+The ICD-10 code was obtained from personal communications with Leandro
+Garcia, while DRFs are available in the DRF online interface
+([Meta-Analyses Physical Activity
+(cam.ac.uk)](https://shiny.mrc-epid.cam.ac.uk/meta-analyses-physical-activity/)),
+it is not reported in a peer-reviewed publication.
+
+[**Diabetes type 2**]{.underline}
+
+Could not find ICD-10 code in SRMA
+(<https://doi.org/10.1007/s00125-016-4079-0>).
+
+## Inequalities in health
+
+In Jibe we aim to represent inequalities in health, thus, we include
+inequalities in our estimates of health to the extend of this being
+possible using publicly available data. We need data by age and sex at
+the minimum, and additional data representing inequalities will be used
+as much as possible. The initial data is then by age and sex with
+additional data sources used to further dissaggregate, for example, by
+area, level of socioeconomic deprivation and education. Data to
+dissaggregate is available in different formats, for example, a relative
+risk to indicate the increased/decrease risk for a given group in
+comparison to a reference group or rates comparing different population
+groups. If relative risks are supplied, we apply those to modify the
+data, if not, we need to derive a RR, for the second, we use the below
+methods developed by Chris Jackson for mortality data for Melbourne and
+we applied them more broadly across diseases, when suitable.
+
+We use the following method to disaggregate an event rate (for example,
+incidence or mortality by age and sex) by a further risk factor (such as
+socio-economic status). Given
+
+-   the rate $r_{ave}$ by age and sex, averaged over people with or
+    without the risk factor
+
+-   a relative (unstandardised) rate $RR$ between people with/without
+    the risk factor
+
+-   the proportions of people with the risk factor $p_1$ and without the
+    risk factor $p_0$
+
+we can estimate the rates with ($r_1$) and without the risk factor
+($r_0$), because if
+$r_{ave} = p_1 r_1 + p_0 r_0 = p_1 r_0 RR + p_0 r_0$, we can estimate
+$r_0 = r_{ave} / (p_1 RR + p_0)$.
+
+This generalises to categorical risk factors with more than two
+categories $i=1,2,3...$, such as a area socioeconomic indicator. Suppose
+$r_1$ is the mortality rate in some reference group $i$, $p_i$ is the
+proportion of people in group $i$, and $RR_i$ is the relative risk
+associated with being in this group compared to group $i=1$, so that
+$RR_1=1$. Given
+
+$r_{ave} = r_1 \sum_{i=1}^G p_i RR_i$
+
+we can compute $r_1$ given $r_{ave}$, the relative rates for the risk
+factor $RR_i$ and population proportions for the risk factor $p_i$.
+Hence we can compute the remaining $r_i$ by multiplying $r_1$ by $RR_i$.
+
+# Incidence data
+
+## Incidence data by age and sex
+
+We use GBD data as the age and sex data for incidence estimates except
+for cancers. For cancers we use Australian Institute of Health and
+Welfare (AIHW) data.
+
+### Global Burden of disease data for Australia: data interpolation
+
+Prepare incidence data by sex and single year of age. To do so, we
+interpolate the data between age groups. Four interpolation functions
+are available in folder functions and script interpolation.R were
+developed to test which one fits the data best. Graphs are created and
+saved in docs/images/inc_gbd_age_sex to visually check the fit of the
+interpolation to the original data.
+
+```{r}
+# GBD data for Melbourne. 
+gbd <- read.csv("docs/health/original/GBD/gbd_incidence.csv")
+
+# Filter data to needed variables and remove strings from GBD age variable and create from_age and to_age needed for interpolation. 
+
+gbdp <- gbd %>%
+  filter(measure %in% "Incidence") %>%
+  filter(metric %in% "Rate") %>%
+  filter(year %in% 2018) %>%
+  select(-c(location, upper, lower)) %>%
+  filter(!cause %in% "All causes") %>%
+  mutate(rate_1=val/100000) %>% 
+  # some ages have 'years' (eg 5-9 years), while others don't (eg 80-84); omit 'years'
+  mutate(age = gsub(" years", "", age)) %>%
+  tidyr::extract(age, c("from_age", "to_age"), "(.+)-(.+)", remove=FALSE, convert=TRUE) %>%
+  mutate(from_age = case_when(age=="95+"  ~  95L,
+                              age=="<5"  ~  0L,
+                              TRUE  ~  from_age),
+         to_age = case_when(age=="95+"  ~  99L,
+                            age=="<5"  ~  4L,
+                            TRUE  ~  to_age),
+         agediff = to_age - from_age + 1,
+          val1yr = rate_1) %>% 
+  #we do not distribute amongst age groups as it is a rate but assume same within age group
+ rename(agegroup = age) 
+
+
+# Now stretch the data out using an index, to create a data frame with 1 row per year of age and create a variable for year of age. The age group rate repeats within single years of age in the group. 
+index <- rep(1:nrow(gbdp), gbdp$agediff)
+gbdpyrd5 <- gbdp[index,] %>%
+  mutate(ageyr = from_age + sequence(gbdp$agediff) - 1)
+gbdpyrd5 <- gbdpyrd5 %>% 
+  select(measure, ageyr, sex, agegroup, from_age, to_age, cause, year, val1yr,rate_1) 
+
+
+# Apply the disaggregation function
+
+# Group data for dissaggregation
+
+gbdp_grp <- gbdp %>%
+  group_by(measure, sex, cause) %>%
+  arrange(measure, sex, cause, from_age)
+
+# Apply function (select a function from 'functions/interpolation.R'). Smooth_spline does a good job.
+gbdpyr <- group_modify(gbdp_grp, disagg_smooth_spline) %>%
+  ungroup()
+
+#Join with original data where rates are the same within groups to validate interpolated data
+gbdpyr <- gbdpyr %>%
+  left_join(gbdpyrd5, by = c("measure", "ageyr", "sex", "cause"))
+
+# Plot data to check interpolated values against 5-year age group values (original data)
+## Four interpolation function could be use, the best fit should be used. For now, best fit to the data assessed visually.
+
+# Melt the data to long format for ggplot
+plot_data <- gbdpyr %>%
+  select(measure, cause, sex, ageyr, rate_1, val_interpolated) %>%
+  pivot_longer(cols = c(rate_1, val_interpolated), names_to = "type", values_to = "value")
+
+# Generate and save all pages
+output_dir <- "docs/images/inc_gbd_age_sex/"
+if (!dir.exists(output_dir)) {
+  dir.create(output_dir, recursive = TRUE)
+}
+
+plot_interpolation_pages(plot_data, output_dir)
+```
+
+### Australian Institute of Health and Welfare data for Australia: data interpolation
+
+#### Harmonise definitions of cancer sites
+
+The cancer sites are reported differently between the AIHW tables on
+incidence by age/sex and incidence by socioeconomic quintiles and also
+from the cancer ATLAS. While the final data uses ATLAS, as opposed to
+AIHW, initial code from Chris used AIHW so we still harmonise, also to
+match standard names used across different inputs (i.e. health data,
+dose response functions). We also use the table for other purposes (TO
+COMPLETE, USED SOMEWHERE IN PREPARATIONADN INTERPOLATION OF THE DATA).
+
+This table details the assumptions that are made in order to match the
+corresponding rates between the AIHW tables, we manually change the
+names for the ATLAS data (for now). The sites that we intend to use are
+defined by stdname and ICD-10 and these names correspond to the names
+use in the physical activity SRMA by Garcia et al, and associated
+package. Each row of the table below details the site from the AIHW
+tables that these are assumed to be matched to.
+
+Note, sites are the same as causes in GBD.
+
+BZD: Table below and tex might go, nos working for now, doing in excel,
+easier.
+
+```{r}
+
+sites <- rbind( 
+    ## Standard name,   Name in age/sex data,  Name in socio data,   Our intended ICD10,
+    c("Breast cancer",   "Breast cancer"  ,      "Breast cancer in females (C50)" , "C50"),
+     c("Endometrial cancer", "Endometrial cancer", "Uterine cancer (C54–C55)" ,  "C54–C55"),
+      c("Lung cancer",       "Lung cancer",         "Lung cancer (C33–C34)",  "C33–C34"),
+      c("Colon cancer",     "Colon cancer",         "Colorectal cancer (C18–C20)", "C18"),
+      c("Esophageal cancer", "Oesophageal cancer" , NA,  "C15"),  
+      c("Liver cancer",      "Liver cancer",       "Liver cancer (C22)", "C22"),
+      c("Kidney cancer",     "Kidney cancer",    "Kidney cancer (C64)", "C64"),
+      c("Gastric cardia cancer",  "Stomach cancer", NA, "C16"),
+      c("Myeloid leukemia", "Chronic myeloid leukaemia (CML)"  , NA, "C92.1"),
+      c("Myeloma", "Multiple myeloma", NA, "C90.0"),
+      c("Head and neck cancer", "Head and neck cancer (including lip)", "Head and neck cancers (with lip) (C00–C14, C30–C32)", "C01–C14, C30–C32"),
+      c("Rectum cancer", "Rectal cancer (including rectosigmoid junction)", "Colorectal cancer (C18–C20)", "C20"),
+      c("Bladder cancer", "Bladder cancer", "Bladder cancer (C67)", "C67"),
+      c("Prostate cancer", "Prostate cancer", "Prostate cancer (C61)", "C61"),
+      c("Malignant melanoma", "Melanoma of the skin", "Melanoma of the skin (C43)", "C43"),
+    c("All cancers", "All cancers combined", "All cancers combined (C00–C97, D45, D46, D47.1, D47.3–D47.5)", "C00–C97, D45, D46, D47.1, D47.3–D47.5")
+    ) |> 
+    as_tibble() |>
+    setNames(c("stdname","agesexname","socioname","ICD10") ) |>
+    select(stdname, ICD10, agesexname, socioname)
+
+## This table is causing error, to be fixed (2/08/2024)
+knitr::kable(sites, col.names = c("Standardised name","ICD 10 code",
+             "Closest site in age/sex data","Closest site in socioeconomic data"))
+
+# assume unique row in age-sex data for each standard site
+stopifnot(!any(duplicated(sites$agesexname))) 
+```
+
+### Interpolate incidence by age and sex
+
+```{r pressure, echo=FALSE}
+
+inc <- read_xlsx("docs/health/original/AIHW/cancer-incidence.xlsx", sheet="Table S1a.1", skip=5, col_names=TRUE) %>% 
+    filter(Year==2016) %>% # here 2016 to match inequality data.
+    select(sex = Sex, age = "Age group (years)",
+           site = "Cancer group/site",
+           rate = "Age-specific rate\r\n(per 100,000)") %>%
+    filter(age != "All ages combined",
+           sex != "Persons") %>%
+    mutate(age = ifelse(age=="90+","90–94",age), 
+           rate_1=rate/100000) %>%
+    separate_wider_delim(age, "–", names = c("from_age","to_age")) %>%
+      mutate(across(from_age:to_age, as.numeric),
+             agediff = to_age - from_age + 1) 
+
+# to match other data add an age group from 95 to 99
+
+inc_95 <- inc %>%
+  filter(from_age == 90) %>%
+  mutate(from_age = case_when(
+    from_age == 90 ~ 95,  # Change `from_age` from 90 to 95
+    TRUE ~ from_age       # Keep other values unchanged
+  ),
+  to_age = case_when(
+    to_age == 94 ~ 99,    # Change `to_age` from 95 to 99
+    TRUE ~ to_age         # Keep other values unchanged
+  ))
+
+inc <- inc %>% bind_rows(inc_95) %>%
+  mutate(site = sites$stdname[match(site, sites$agesexname)]) %>%
+  # Filter rows with valid site names
+  filter(site %in% sites$stdname)
+
+# Data expanded to one year age groups with 5-year value by sex and site repeated for each one year age group within age group. 
+
+# Create index for repeating rows
+
+index <- rep(1:nrow(inc), inc$agediff)
+
+# Create the modified dataframe with repeated rows
+incyrd5 <- inc[index, ]
+
+# Additional processing if required, e.g., adding the ageyr column
+# Assuming from_age, agediff, and other required columns are correctly defined
+incyrd5 <- inc %>%
+ mutate(across(from_age:to_age, as.numeric),
+             agediff = to_age - from_age + 1) |>
+    group_by(sex, site) |>
+    slice(rep(1:n(), agediff)) %>%
+    mutate(ageyr = row_number() - 1)
+
+# Ensure that age is within the specified range (if necessary, based on incyrd5)
+stopifnot(inc$ageyr >= inc$from_age, inc$ageyr <= inc$to_age)
+
+
+# Group data for dissaggregation
+
+inc_grp <- inc %>%
+  group_by(site, sex) %>%
+  arrange(site, sex, from_age)
+
+# Apply function (select a function from 'functions/interpolation.R'). Smooth_spline does a good job.
+incyr <- group_modify(inc_grp, disagg_smooth_spline) %>%
+  ungroup()
+
+# Add age group 95 to 99, interpolation does not apply as same values for starting and end range
+
+# Step 1: Filter rows where ageyr == 95
+incyr_95 <- incyr %>%
+  filter(ageyr == 95)
+
+# Step 2: Repeat the filtered rows and change ageyr to 96, 97, 98, and 99
+incyr_repeated <- incyr_95 %>%
+  slice(rep(1:n(), each = 4)) %>%
+  mutate(ageyr = case_when(
+    row_number() %% 4 == 1 ~ 96,
+    row_number() %% 4 == 2 ~ 97,
+    row_number() %% 4 == 3 ~ 98,
+    row_number() %% 4 == 0 ~ 99
+  ))
+
+# #Join with original data where rates are the same within groups to validate interpolated data
+incyr <-incyr %>% 
+  bind_rows(incyr_repeated) %>%
+  left_join(incyrd5, by = c("ageyr", "sex", "site")) %>%
+  mutate(site=tolower(site))
+
+# Plot data to check interpolated values against 5-year age group values (original data)
+
+# Melt the data to long format for ggplot
+plot_data <- incyr %>%
+  rename(cause = site) %>%
+  pivot_longer(cols = c(rate_1, val_interpolated), names_to = "type", values_to = "value")
+
+# Generate and save all pages
+output_dir <- "docs/images/inc_aihw_age_sex/"
+if (!dir.exists(output_dir)) {
+  dir.create(output_dir, recursive = TRUE)
+}
+
+plot_interpolation_pages(plot_data, output_dir)
+```
+
+## Inequalities
+
+Above data is by age and sex, but we are interested in further
+disaggregation to represent inequalities in health. Preparation of
+inequalities data responds to inequality availability data for the
+following groups of diseases or single diseases: cancer, cardiovascular
+diseases and diabetes, COPD. For depression we did not find any data
+representing inequalities. Data sources are outlined here:
+[health](https://rmiteduau.sharepoint.com/:f:/r/sites/JIBEworkinggroup/Shared%20Documents/General/health?csf=1&web=1&e=BaifAr)
+
+### Cancers
+
+We have data from the Cancer Atlas, by SA2 area and for males, females
+and persons. This is modelled data and methods are explained here
+(https://atlas.cancer.org.au/developing-a-cancer-atlas/) and here
+(https://pubmed.ncbi.nlm.nih.gov/31570101/). Data is available for the
+below cancer types and by SA2 area defined by the Australian Statistical
+Geography Standard July 2011 edition, with data on Capital Cities for
+Australia so we can select Melbourne. I joined all diseases data for
+incidence, for males and females, by SA2 area. Data is for standardised
+incidence ratio (SIR). The SIR reflects the area-specific incidence rate
+relative to the Australian average. It is the ratio of the observed
+cancer cases to the expected number of cases, the latter adjusting for
+difference in population between SA2 and differences in age structure of
+the population with an SA2. Data for the Australian average by age and
+sex is from AIHW and interpolated data was generated above named incyr.
+
+```{r}
+# Get sheet with SA2 areas by SES and filter Victoria
+
+excel_file <- "docs/health/original/ATLAS/Atlas_estimates_95CIs.xlsx"
+
+# Get the names of the sheets in the Excel workbook
+diseases <- excel_sheets(excel_file)[-c(1:4)]
+
+## Males
+all_data_males <- list()
+
+# Loop through each disease
+for (sheet_name in diseases) {
+  # Read data for the current disease
+  data <- read_xlsx(excel_file, 
+    sheet = sheet_name, 
+    skip = 9, 
+    col_names = TRUE, 
+    n_max = 2200
+  ) 
+  
+  # Process data for males
+  males <- data %>%
+    select(1:5) %>%
+    setNames(.[2, ]) %>%
+    slice(-1, -2) %>%
+    mutate(sex = "Males",
+           site = sheet_name)
+  
+  # Store the processed data in the list
+  all_data_males[[sheet_name]] <- males
+}
+
+# Bind all data frames together
+final_data_males <- do.call(rbind, all_data_males)
+
+
+
+## females
+all_data_females <- list()
+
+# Loop through each disease
+for (sheet_name in diseases) {
+  # Read data for the current disease
+  data <- read_xlsx(excel_file, 
+    sheet = sheet_name, 
+    skip = 9, 
+    col_names = TRUE, 
+    n_max = 2200
+  ) 
+  
+  # Process data for males
+  females <- data %>%
+    select(1,2,6,7,8) %>%
+  setNames(.[2, ]) %>%
+  slice(-1, -2) %>%
+  mutate(sex="Females",
+           site = sheet_name)
+  
+  # Store the processed data in the list
+  all_data_females[[sheet_name]] <- females
+}
+
+# Bind all data frames together
+final_data_females <- do.call(rbind, all_data_females) 
+
+SA2_soc <- read_xlsx(excel_file, sheet="Geography", skip=11, col_names = TRUE, n_max=2200)
+
+
+#ADD population nubmer here
+
+pop_SA2 <- read_csv("docs/health/original/ABS/Population by SA2 area.csv", skip = 9, col_names = TRUE) %>%
+  # Set the first row as column names
+  { setNames(.[-1, ], unlist(.[1, ]))} %>%
+   {names(.)[4] <- "population"; .}  %>%
+   as.data.frame() %>%
+  fill(SA2, .direction = "down") %>%
+  fill(`SEXP Sex`, .direction = "down") %>%
+  rename(sex = `SEXP Sex`, 
+         age = `AGEP Age`, 
+         sa2_name = SA2) %>% 
+  mutate(age=as.numeric(age))
+
+
+
+data_combined <- bind_rows(final_data_females, final_data_males) %>%
+  mutate(`SA2 code`=as.numeric(`SA2 code`)) %>%
+ left_join(SA2_soc) %>% rename(SA2 = `SA2 name`)
+# %>% filter(State=="Victoria", Remoteness=="Major city", `Capital cities`=="Greater Melbourne")
+```
+
+**Combining data sources**
+
+I combined incidence data by age and sex for Australia wide with data
+for SA2 area. Data for SA2 area (data_combined) from the Atlas gives us
+the SIR, which is interpreted as the relative rate of incidence for an
+area, by sex to the Australian average. The Australian average is from
+AIHW and already stretched to one year age groups in data incyr.
+
+Select data for health model in JIBE. Rate by sex, age and area is
+simply created by multiplying Standardized Incidence Rate (SIR) by age
+and sex rate.
+
+```{r}
+
+#Select diseases from ATLAS combined data
+data_combined <- data_combined %>% filter(!(site %in% c("Brain Cancer", "Cervical Cancer", "Myeloproliferative neoplasms", "Non-Hodgkin Lymphoma", "Ovarian Cancer", "Pancreatic Cancer", "Thyroid Cancer"))) %>% mutate(site=tolower(site)) 
+# 
+
+# Atlas does not have data for bladder cancer, use data for all cancers and for colon and rectum separately, then ues combined (bowel cancer) for each. 
+
+bladder_cancer <- data_combined %>% filter(site=="all cancers") %>%
+  mutate(site = if_else(site == "all cancers", "bladder cancer", site))
+
+rectum_cancer <- data_combined %>% filter(site=="bowel cancer") %>%
+  mutate(site = if_else(site == "bowel cancer", "rectum cancer", site))
+  
+data_sa2_sex <- data_combined %>%
+  mutate(site = if_else(site == "bowel cancer", "colon cancer", site)) %>%
+           bind_rows(bladder_cancer, rectum_cancer) %>%
+  mutate(site = if_else(site == "uterine cancer", "endometrial cancer", site),
+         site = if_else(site == "oesophageal cancer", "esophageal cancer", site),
+         site = if_else(site == "melanoma", "malignant melanoma", site),
+         site = if_else(site == "stomach cancer", "gastric cardia cancer", site), 
+         site = if_else(site == "leukaemia", "myeloid leukemia", site),
+         site = ifelse(site == "head and neck cancers", "head and neck cancer", site)) 
+
+
+## Combine with incidence data by age and sex
+
+data_sa2_sex_age <- data_sa2_sex %>% left_join(incyr, by=c("sex", "site")) %>%
+  mutate(rate_area=as.numeric(SIR)*val_interpolated) %>%
+  rename(socio=`Socioeconomic status`) 
+
+# Save in final folder
+
+cancer_incidence_area <- data_sa2_sex_age %>% rename (sa2_code=`SA2 code`, 
+                                                      sa2_name = SA2) %>%
+  mutate(prob=1 - exp(-rate_area)) %>%
+  select(sa2_code, sa2_name, socio, site, age = ageyr, sex, prob, rate_area, val_interpolated) %>%
+  mutate(rate_ave_age_sex=val_interpolated*100000) %>%
+  mutate(sex = case_when(
+    sex == "Females" ~ "Female",
+    sex == "Males" ~ "Male")) %>%
+  left_join(pop_SA2)
+
+saveRDS(cancer_incidence_area, file="docs/health/processed/cancer_incidence_area.rds")
+
+## Compare data per SA2 and sex and data from national administrative sources by age, sex and combined with level of deprivation (Chris, see cancer incidence.Rmd) [SP NOTE: do we want to preserve some of that code here?  It's been moved to 'docs/archive'.]
+
+
+#Up to here, calculate weighted average with populaiton
+compare_socio <- cancer_incidence_area %>%
+group_by(age, sex, site, socio, rate_ave_age_sex, .groups = "drop") %>%
+summarise(rate_area = round(mean(rate_area, na.rm = TRUE), 7), .groups = "drop") %>% mutate(socio=as.factor(socio)) %>%
+  filter(socio != "Not classified") %>%
+  mutate(sex = case_when(
+    sex == "Females" ~ "Female",
+    sex == "Males" ~ "Male"
+  )) %>%
+  mutate(rate_area=rate_area*100000)
+
+## Prepared by chris using AIHW data by socioeconomic quintile. 
+cancerinc <- readRDS("docs/health/processed/cancer_incidence.rds")
+
+cancerinc <- cancerinc %>%
+  mutate(socio = case_when(
+    socio == "1 (most deprived)" ~ "Most disadvantaged",
+    socio == "2" ~ "Disadvantaged",
+    socio == "3" ~ "Middle SES", 
+    socio == "4" ~ "Advantaged",
+    socio == "5 (least deprived)" ~ "Most advantaged",
+    TRUE ~ socio  # Handle default case
+  )) %>%
+mutate(socio=as.factor(socio)) %>%
+  ungroup() %>%
+  mutate(site=tolower(site))
+
+compare_socio <- compare_socio %>% left_join(cancerinc, by=c("site", "age", "sex", "socio")) %>%
+  mutate(rate_soc=round(rate, 2)) %>% select(!rate) 
+
+compare_socio <- na.omit(compare_socio)
+
+# is.na(compare_socio) #  this is to check for na values, there might be some if males for instance are assigned breast cancer or females prostate cancer. 
+
+```
+
+**THESE GRAPHS CODE NEEDS CHECKING, THE IDEA IS TO COMPARE RATES
+CALCULATED WITH ATLAS DATA, WITH AIHW DATA (CHRIS) AND AVERAGE BY AGE
+AND SEX FROM AIHW INTERPOLATED.**
+
+**STEVE CAN YOU PLEASE HELP WITH CHECKING THE DATA. rate_area is grouped
+by socio economic status to compare with rate_soc from data generated by
+Chris. Then I added the rate_ave_age_sex which is the aihw age and sex
+data. The idea is to check that the data makes sense, for example, we
+would expect the lowest socio economic rate for both rate_area and
+rate_soc to be higher than the rate_ave_age_sex. Note that the rate_soc
+data was not interpolated, hence the steps (this can be done if you wish
+to, code is available)**
+
+**SP note: I've checked the graphs (note also that I've re-ordered them
+so that levels are shown in order of disadvantage from top to bottom).
+Most show the expected pattern of most disadvantaged having incidence
+above average through to most advantaged having incidence below average.
+Following are the exceptions:**
+
+-   **breast cancer (F) and prostate cancer (M) show the reverse
+    pattern, with most disadvantaged having lowest incidence.**
+
+    BZD: this patters in confirmed with the source data saved in
+    cancer_socioeonomic for incidence. For mortality, the most deprived
+    die at a higher rate.
+
+-   **gastric cancer (F&M) have all groups being below average.**
+
+-   **liver cancer (F) has all groups below average.**
+
+-   **malignant melanoma (F&M) show an inconsistent pattern with most
+    results above average.**
+
+-   **myeloid leukemia (F&M) show little differentiation between socio
+    economic groups.**
+
+-   **myeloma (F&M) have most groups at or below average.**
+
+**There is little variation for all cancers (F&M), which is not
+surprising as they would show the combined effect of cancers with
+highest incidence in disadvantaged areas and others with highest
+incidence in advantaged areas.**
+
+**BZD: need to calculate back to average from areas, and compare with
+average by age and sex.**
+
+Each graph created below for each site and sex combinations depicts five
+graphs within representing each socioeconomic group, and within each
+graph by socioeconomic group a line called rate which represents the
+rate by age and sex for Australia wide (incyr), the rate derived from
+age and sex and age standardised rates by socioeconomic group called
+rate_soc (derived by Chris) and rate derived from data by sex and SA2
+and rates by age and sex (rate_area).
+
+```{r}
+
+rates_compare_long <- compare_socio %>% 
+  mutate(socio = factor(socio, 
+                        levels = c("Most disadvantaged", "Disadvantaged", 
+                                   "Middle SES", "Advantaged", 
+                                   "Most advantaged", "Not classified"))) %>%
+  pivot_longer(
+  cols = c(rate_area, rate_soc, rate_ave_age_sex),
+  values_to = "rate",
+  names_to = "rate_type")
+
+#%>% filter(!rate_type == "rate_soc") # removed the cancer data produced form cancer estimates by SES quintile (from Chris) to improve the readibility of the graphs. 
+
+
+
+# Create folder if it doesn't exist
+folder_path <- file.path("docs", "images", "inc_cancer_compare")
+if (!file.exists(folder_path)) {
+  dir.create(folder_path, recursive = TRUE)
+}
+
+# Define colors for rate types
+rate_type_colors <- c("black", "red", "blue")
+
+# Loop over each combination of site and sex
+for (site_val in unique(rates_compare_long$site)) {
+  for (sex_val in unique(rates_compare_long$sex)) {
+    # Skip certain combinations of sex and site
+    if ((sex_val == "Male" && site_val %in% c("breast cancer", "endometrial cancer")) ||
+        (sex_val == "Female" && site_val == "prostate cancer")) {
+      cat("Skipping graph for sex:", sex_val, "and site:", site_val, "\n\n")
+      next  # Skip to the next iteration of the loop
+    }
+    
+    cat("Processing site:", site_val, "and sex:", sex_val, "\n")  # Debug print statement
+    
+    # Subset data for the current combination of site and sex
+    plot_data <- subset(rates_compare_long, site == site_val & sex == sex_val)
+    
+    # Check if there are data for the current combination
+    if (nrow(plot_data) > 0) {
+      max_rate <- max(plot_data$rate, na.rm = TRUE)
+      cat("Maximum rate:", max_rate, "\n")  # Debug print statement
+      
+      # Create ggplot for the current combination
+      p <- ggplot(plot_data, aes(x = age, y = rate, col = rate_type)) +
+        geom_line(lwd = 1, aes(linetype = NULL)) +
+        scale_color_manual(values = rate_type_colors) +
+        facet_wrap(~socio, scales = "free_y", ncol = 1) + # Nested facet wrap for socio-economic status
+        ylab("Incidence rate (per 100,000)") +
+        xlab("Age (years)") +
+        coord_cartesian(xlim = c(25, 90)) +
+        scale_y_continuous(breaks = seq(0, max_rate, by = 400)) +  # Adjust y-axis breaks
+        guides(alpha = FALSE, col = guide_legend(title = "Rate Type")) +
+        theme(legend.position = "bottom", legend.box = "horizontal", legend.box.just = "center",
+              legend.margin = margin(t = 5, unit = "pt"), legend.spacing = unit(0.2, "cm"))
+      
+      # Save the ggplot for the current combination
+      png_name <- file.path(folder_path, paste0(site_val, "_", sex_val, ".png"))
+      ggsave(png_name, plot = p + labs(title = paste("| Site:", site_val, "| Sex:", sex_val)), device = "png")
+    } else {
+      cat("No data for site:", site_val, "and sex:", sex_val, "\n")  # Debug print statement
+    }
+  }
+}
+
+
+# Second comparison difference between rate_soc and rate area
+
+compare_diff <- compare_socio %>% 
+  mutate(diff_rate = ifelse(rate_area == 0 | rate_soc == 0, 0, ((rate_area - rate_soc) / rate_soc) * 100)) 
+
+```
+
+#### Notes on comparison data sources
+
+In general, rates calculated by Chris with AIHW data and rates derived
+from ATLAS data are very similar, with small discrepancies for cancer
+with small incidence rates.
+
+Esophageal cancer rates for males are higher and lower respectively for
+disadvantaged and most disadvantage and most advantaged when usisng
+rates based on areas (ATLAS) data. Rates from socioeconomic status (from
+AIHW data) for esophageal cancer were assumed to follow the same
+patterns as all cancers.
+
+For gastric cardia, for both males and females, rates based on areas
+(ATLAS) are slightly lower than from socio-economic data (AIHW) for
+males and females disadvantaged, most advantaged and advantaged groups.
+
+For head and neck, rates for males and females from area rates (ATLAS)
+are more conservative than with AIHW, for example, for the advantaged
+group, area rates are higher than rates from socioeconomic data (AIHW).
+Similar pattern with liver cancer and lung cancer.
+
+### Cardiovascular diseases, type 2 diabetes and COPD
+
+**STEVE, can you please paste the code below from
+cardiovascular_incidence.RDM. Please replace ensure that the incidence
+by age and sex is from the interpolated file (incyr (feel free to change
+to a better name accross the file). \[SP note: done, below; using GBD
+for this, so I've used the interpolated file 'gbdpyr'. And please also
+note that I've included COPD here along with the other non-cancer
+diseases, as the structure of the two original .rmd files was so
+similar.\]**
+
+This script produces estimates of incidence for stroke, ischemic heart
+disease , type 2 diabetes and chronic obstructive pulmonary disease
+(COPD) by age, sex and area socioeconomic quintile, for Australia using
+data for 2016 and 2018.
+
+The data is obtained from the Global Burden of Disease for disease
+incidence by age and sex and from AIHW by sex and socioeconomic status
+(JIBE data summary spreadsheet). There is no unique source of data for
+what we need, hence the combination of data sources. Source files:
+
+Incidence by 5-year age group and sex for stroke, ischemic heart disease
+and type 2 diabetes:
+
+-   `gbd_incidence.csv` (available from GBD data tool, data is for 2018,
+    baseline year for the jibe model)
+
+Incidence, death and prevalence by sex and socioeconomic area for 2016
+(stroke, ischemic heart disease and type 2 diabetes) or 2017-18 (COPD).
+We do not have data for incidence by socioeconomic area for all diseases
+of interest, hence, we use deaths and prevalence, depending which one is
+more suitable.
+
+-   `cvd_dia_kid_socioeconomic.xlsx`, which contains:
+
+    -   *Stroke incidence: by sex and socioeconomic area for 2016: Table
+        S2*
+
+    -   *Cardiovascular disease death: by sex and socioeconomic area for
+        2016: Table S2*
+
+    -   *Type 2 diabetes prevalence: by sex and socioeconomic area for
+        2016: Table S7*
+
+-   `copd-prevalence.xlsx`, which contains *Prevalence of chronic
+    obstructive pulmonary disease among people aged 45 and over, by sex,
+    remoteness and socioeconomic area, 2017–18: Table 1.2*
+
+These data refer to the whole of Australia, and we do not have area
+specific data (e.g. SA2 as we do with mortality). These data are
+combined to produce estimates for each of stroke, ischemic heart
+disease, type 2 diabetes and COPD by age, sex and area socioeconomic
+quintile. This assumes that the effect of socioeconomic status on the
+incidence of these diseases is the same for all age and sex groups.
+
+#### Incidence by age and sex
+
+Data by year of age is interpolated as above.
+
+```{r}
+inc_cvd_dia_copd_agesex <- gbdpyr %>%
+  filter (cause %in% c("Stroke", "Ischemic heart disease", "Diabetes mellitus type 2",
+                       "Chronic obstructive pulmonary disease")) %>%
+  dplyr::select(cause, age = ageyr, sex, rate = val_interpolated)
+
+```
+
+#### Incidence by socioeconomic status and sex
+
+-   Socioeconomic areas are classified according to population-based
+    quintiles using the Index of Relative Socio-Economic Disadvantage
+    (IRSD) based on Statistical Area Level 2 (SA2) of usual residence.
+-   The below data sources are then used to adjust GBD data by age and
+    sex to also be further dissaggregated by socioeconomic status.
+
+```{r}
+# Stroke
+
+stroke_inc <- read_xlsx("health/original/AIHW/cdv_dia_kid_socioeconomic.xlsx", sheet="Table S2", skip=1, col_names = TRUE, n_max=30) %>%
+  slice(-c(7:11, 18:26)) %>%
+  mutate(sex = ifelse(row_number() <= 6, "Male", "Female")) %>%
+  slice(-c(1,7)) %>%
+  rename(socio=`Socioeconomic group`, 
+         rate=`2016`) %>%
+  mutate(socio = case_when(socio=="Group 1 (lowest)" ~ "1", # 1: lowest, to 5: highest
+                           socio=="Group 2" ~ "2",
+                           socio=="Group 3" ~ "3",
+                           socio=="Group 4" ~ "4",
+                           socio=="Group 5 (highest)" ~ "5",
+                           .default = socio),
+         socio = as.numeric(socio)) %>%
+  group_by(sex) %>%
+  mutate(rr = rate / first(rate)) |>
+  ungroup() %>%
+  select(socio, sex, rate, rr) %>%
+  mutate(cause="Stroke") # to match gbd name
+
+# Cardiovascular disease (data is for deaths but we will use it to adjust incidence by age and sex)
+
+cvd_inc <- read_xlsx("health/original/AIHW/cdv_dia_kid_socioeconomic.xlsx", sheet="Table S3", skip=1, col_names = TRUE, n_max=30) %>%
+  slice(-c(7:11, 18:26)) %>%
+  mutate(sex = ifelse(row_number() <= 6, "Male", "Female")) %>%
+  slice(-c(1,7)) %>%
+  rename(socio=`Socioeconomic group`, 
+         rate=`2016`) %>%
+  mutate(socio = case_when(socio=="Group 1 (lowest)" ~ "1", # 1: lowest, to 5: highest
+                           socio=="Group 2" ~ "2",
+                           socio=="Group 3" ~ "3",
+                           socio=="Group 4" ~ "4",
+                           socio=="Group 5 (highest)" ~ "5",
+                           .default = socio),
+         socio = as.numeric(socio)) %>%
+  group_by(sex) %>%
+  mutate(rr = rate / first(rate)) |>
+  ungroup() %>%
+  select(socio, sex, rate, rr) %>%
+  mutate(cause="Ischemic heart disease") # to match gbd name
+
+
+# Diabetes (we use prevalence data. There is mortality data, but figures are low and diabetes as cause of deaths is likely under reported)
+
+diabetes_inc <- read_xlsx("health/original/AIHW/cdv_dia_kid_socioeconomic.xlsx", sheet="Table S7", skip=1, col_names = TRUE, n_max=30) %>%
+  slice(-c(7:11, 18:26)) %>%
+  mutate(sex = ifelse(row_number() <= 6, "Male", "Female")) %>%
+  slice(-c(1,7,13)) %>%
+  rename(socio=`Socioeconomic group`, 
+         rate=`2016`) %>%
+  mutate(socio = case_when(socio=="Group 1 (lowest)" ~ "1", # 1: lowest, to 5: highest
+                           socio=="Group 2" ~ "2",
+                           socio=="Group 3" ~ "3",
+                           socio=="Group 4" ~ "4",
+                           socio=="Group 5 (highest)" ~ "5",
+                           .default = socio),
+         socio = as.numeric(socio)) %>%
+  group_by(sex) %>%
+  mutate(rr = rate / first(rate)) |>
+  ungroup() %>%
+  select(socio, sex, rate, rr) %>%
+  mutate(cause="Diabetes mellitus type 2") #to match gbd name
+
+# COPD (we use prevalence data)
+
+copd_inc <- read_xlsx("health/original/AIHW/copd-prevalence.xlsx", sheet="Table 1.2", skip=2, 
+                      col_names = TRUE, n_max=10) %>%
+  slice(-c(1:5)) %>%
+  rename_with( ~ c("socio", "Male", "MaleCI", "Female", "FemaleCI", "Person", "PersonCI")) %>%
+  dplyr::select(socio, Male, Female) %>%
+  pivot_longer(cols = c("Male", "Female"), names_to = "sex", values_to = "rate") %>%
+  mutate(socio = case_when(socio == "1 (lowest)" ~ "1", # 1: lowest, to 5: highest
+                           socio == "5 (highest)" ~ "5",
+                           .default = socio),
+         socio = as.numeric(socio)) %>%
+  group_by(sex) %>%
+  mutate(rr = rate / first(rate)) %>%
+  ungroup() %>%
+  select(socio, sex, rate, rr) %>%
+  mutate(cause="Chronic obstructive pulmonary disease") # to match gbd name
+
+# Combined database with all four diseases
+
+inc_cvd_dia_copd_socio <- bind_rows(cvd_inc, diabetes_inc, stroke_inc, copd_inc) %>%
+  arrange(cause, sex, socio)
+```
+
+#### Combining socioeconomic status with age and sex
+
+We use the method outlined in `Inequalities in health` above to
+disaggregate the age and sex data by socioeconomic status.
+
+We assume that $p_i = 1/5$ is the proportion of people in each of the
+five quintiles of socioeconomic status, and these proportions are the
+same for each age/sex group. The quintiles are defined so that the same
+number of areas falls in each quintile. So while this assumption will
+not be exact, it is expected to be approximately true. To get better
+estimates of these proportions, we would need data on the population by
+age, sex and SES quintile.
+
+The code to perform this disaggregation works by stretching out the
+age/sex incidence data vertically to create a dataset with one row per
+combination of age, sex and socioeconomic quintile. This is then joined
+with the dataset on relative incidence by socioeconomic quintiles. The
+term $\sum_{i=1}^G p_i RR_i$ is then computed as `sum_pRR`, and joined
+to the streched incidence dataset. This allows the disaggregated rates
+`rate` to be computed in a vectorised way.
+
+```{r}
+cvd_dia_copd_inc <- inc_cvd_dia_copd_agesex %>% 
+    slice(rep(row_number(), each=5)) %>%
+    mutate(socio = rep(1:5, length.out=n())) %>%
+    left_join(inc_cvd_dia_copd_socio %>% select(cause, sex, socio, rr_socio = rr), 
+              by = c("cause", "sex", "socio")) %>%
+    mutate(p_socio = 1/5,    # assumption
+           pRR = p_socio * rr_socio,
+           socio = ordered(socio))
+
+sum_p <- cvd_dia_copd_inc %>% 
+    group_by(cause, age, sex) %>%
+    summarise(sum_pRR = sum(pRR), .groups="drop")
+    
+cvd_dia_copd_inc <- cvd_dia_copd_inc %>%
+    left_join(sum_p, by=c("cause", "age", "sex")) %>%
+    mutate(rate_soc = rate * rr_socio / sum_pRR, 
+           socio = ordered(socio, labels = c("1 (most deprived)",
+                                             "2","3","4",
+                                             "5 (least deprived)")),
+           sex = factor(sex)) 
+
+saveRDS(cvd_dia_copd_inc, file="health/processed/cvd_dia_copd_incidence.rds")
+```
+
+We are left with the incidence by age, sex and socioeconomic status in
+the variable `rate_soc`. The final dataset is saved in the file
+`cvd_dia_copd_incidence.rds`
+
+#### Illustration of incidence estimates
+
+Incidence by age, sex and socioeconomic quintile for ischemic heart
+disease, stroke, type 2 diabetes and COPD.
+
+The published incidence by age and sex (averaged over deprivation
+levels) is shown by the dotted black lines (original gbd data
+interpolated from 5 year age groups to one year). The estimated
+incidence disaggregated by socioeconomic quintile is shown by the
+coloured lines, with socioeconomic status indicated by the lightness of
+the lines (calculated from gbd data and aihw data).
+
+The relative risk between socioeconomic quintiles is assumed to be the
+same between different age/sex groups, but the average of the
+deprivation-specific estimates is constrained to be the same as the
+published average.
+
+All plots show the expected outcome of the highest levels of incidence
+at the highest levels of disadvantage.
+
+```{r}
+# plot of data
+p <- ggplot(cvd_dia_copd_inc, 
+       aes(x=age, y=rate_soc, col=sex, alpha=socio)) + 
+    geom_line(lwd=1.5) + 
+    geom_line(data=inc_cvd_dia_copd_agesex,
+              aes(x=age, y=rate, group=sex), 
+              inherit.aes = FALSE,
+              lwd=1, lty=2, alpha=0.4, col="black") +
+    facet_wrap(~cause, ncol=2, scales="free_y") +
+    ylab("Incidence rate (per 100,000)") +
+    xlab("Age (years)") +
+    coord_cartesian(xlim=c(25, 90)) +
+    guides(alpha=guide_legend(title=NULL),
+           col=guide_legend(title=NULL)) +
+    theme(legend.position = "bottom")
+
+# save plot
+# Generate and save all pages
+output_dir <- "docs/images/inc_cvd_dia_copd/"
+if (!dir.exists(output_dir)) {
+  dir.create(output_dir, recursive = TRUE)
+}
+
+ggsave(filename = paste0(output_dir, "cvd_dia_copd_incidence.png"), plot = p, 
+       width = 12, height = 12, bg = "white")
+
+```
+
+# Prevalence data
+
+## Prevalence data by age and sex
+
+We use GBD data as the age and sex data for prevalence estimates.
+
+### Global Burden of disease data for Australia: data interpolation
+
+Prepare prevalence data by sex and single year of age. To do so, we
+interpolate the data between age groups. Four interpolation functions
+are available below to test which one fits the data best. Graphs are
+created and saved in docs/images/prev_gbd_age_sex to visually check the
+fit of the interpolation to the original data.
+
+```{r}
+# GBD data for Melbourne. 
+gbd <- read.csv("health/original/GBD/gbd_prevalence.csv")
+
+# Filter data to needed variables and remove strings from GBD age variable and create from_age and to_age needed for interpolation. 
+
+gbdp <- gbd %>%
+  filter(measure %in% "Prevalence") %>%
+  filter(metric %in% "Rate") %>%
+  filter(year %in% 2018) %>%
+  select(-c(location, upper, lower)) %>%
+  filter(!cause %in% "All causes") %>%
+  mutate(rate_1=val/100000) %>% 
+  # some ages have 'years' (eg 5-9 years), while others don't (eg 80-84); omit 'years'
+  mutate(age = gsub(" years", "", age)) %>%
+  tidyr::extract(age, c("from_age", "to_age"), "(.+)-(.+)", remove=FALSE, convert=TRUE) %>%
+  mutate(from_age = case_when(age=="95+"  ~  95L,
+                              age=="<5"  ~  0L,
+                              TRUE  ~  from_age),
+         to_age = case_when(age=="95+"  ~  99L,
+                            age=="<5"  ~  4L,
+                            TRUE  ~  to_age),
+         agediff = to_age - from_age + 1,
+          val1yr = rate_1) %>% 
+  #we do not distribute amongst age groups as it is a rate but assume same within age group
+ rename(agegroup = age) 
+
+# Now stretch the data out using an index, to create a data frame with 1 row per year of age and create a variable for year of age. The age group rate repeats within single years of age in the group. 
+index <- rep(1:nrow(gbdp), gbdp$agediff)
+gbdpyrd5 <- gbdp[index,] %>%
+  mutate(ageyr = from_age + sequence(gbdp$agediff) - 1)
+gbdpyrd5 <- gbdpyrd5 %>% 
+  select(measure, ageyr, sex, agegroup, from_age, to_age, cause, year, val1yr,rate_1) 
+
+
+# Apply the disaggregation function
+
+# Group data for dissaggregation
+
+gbdp_grp <- gbdp %>%
+  group_by(measure, sex, cause) %>%
+  arrange(measure, sex, cause, from_age)
+
+# Apply function (select a function from 'functions/interpolation.R'). Smooth_spline does a good job (so do spline and loess, but not polynomial).
+gbdpyr <- group_modify(gbdp_grp, disagg_smooth_spline) %>%
+# gbdpyr <- group_modify(gbdp_grp, disagg_spline) %>%
+# gbdpyr <- group_modify(gbdp_grp, disagg_loess) %>%
+# gbdpyr <- group_modify(gbdp_grp, disagg_polynomial) %>%
+  ungroup()
+
+#Join with original data where rates are the same within groups to validate interpolated data
+gbdpyr <- gbdpyr %>%
+  left_join(gbdpyrd5, by = c("measure", "ageyr", "sex", "cause"))
+
+# Plot data to check interpolated values against 5-year age group values (original data)
+## Four interpolation function could be use, the best fit should be used. For now, best fit to the data assessed visually.
+
+# Melt the data to long format for ggplot
+plot_data <- gbdpyr %>%
+  select(measure, cause, sex, ageyr, rate_1, val_interpolated) %>%
+  pivot_longer(cols = c(rate_1, val_interpolated), names_to = "type", values_to = "value")
+
+# Generate and save all pages
+# output_dir <- "docs/images/prev_gbd_age_sex_smooth_spline/"
+# output_dir <- "docs/images/prev_gbd_age_sex_spline/"
+# output_dir <- "docs/images/prev_gbd_age_sex_loess/"
+# output_dir <- "docs/images/prev_gbd_age_sex_polynomial/"
+output_dir <- "docs/images/prev_gbd_age_sex_smooth/"
+if (!dir.exists(output_dir)) {
+  dir.create(output_dir, recursive = TRUE)
+}
+
+plot_interpolation_pages(plot_data, output_dir)
+```
+
+### Prevalence by age and sex, with adjustments for specific diseases
+
+Some specific cancers need adjustment to match GBD data to standardised
+JIBE disease list. Apart from name changes, the following cancers need
+transformation:
+
+-   Head and neck cancer: sum of Larynx cancer + Lip and oral cavity
+    cancer + Nasopharynx cancer + Other pharynx cancer
+
+-   Colon cancer, Rectum cancer: Colon and rectum cancer, apportioned
+    based on AIHW incidence rates
+
+-   \[Lung cancer? **SP note: GBD has 'trachea, bronchus and lung'; AIHW
+    has 'lung' and no other obvious category for the other repiratory
+    cancers; C33 is 'trachea', C34 is 'bronchus and lung'; there doesn't
+    seem an obvious way to separate lung cancer out from the other GBD
+    respiratory cancers. I don't think we split in THAT. For now, just
+    renamed** \]
+
+-   \[any others, to consider\]
+
+```{r}
+
+prev_agesex <- gbdpyr %>%
+  filter (cause %in% c("Stroke", "Ischemic heart disease", "Breast cancer", 
+                       "Uterine cancer", "Tracheal, bronchus, and lung cancer", 
+                       "Colon and rectum cancer", "Esophageal cancer", 
+                       "Liver cancer", "Kidney cancer", 
+                       "Stomach cancer", "Chronic myeloid leukemia", "Multiple myeloma", 
+                       "Larynx cancer", "Lip and oral cavity cancer", "Nasopharynx cancer",
+                       "Other pharynx cancer", "Bladder cancer", "Prostate cancer", 
+                       "Malignant skin melanoma", "Depressive disorders", 
+                       "Major depressive disorder", "Alzheimer's disease and other dementias", 
+                       "Diabetes mellitus type 2", "Chronic obstructive pulmonary disease")) %>%
+  dplyr::select(cause, age = ageyr, sex, rate = val_interpolated) %>%
+  mutate(cause = case_when(
+    cause == "Ischemic heart disease"    ~ "Coronary heart disease",
+    cause == "Uterine cancer"            ~ "Endometrial cancer",
+    cause == "Stomach cancer"            ~ "Gastric cardia cancer",
+    cause == "Chronic myeloid leukemia"  ~ "Myeloid leukemia",
+    cause == "Multiple myeloma"          ~ "Myeloma",
+    cause == "Malignant skin melanoma"   ~ "Malignant melanoma",
+    cause == "Major depressive disorder" ~ "Major depression",
+    cause == "Alzheimer's disease and other dementias" ~ "All cause dementia",
+    cause == "Diabetes mellitus type 2"  ~ "Diabetes type 2",
+    .default = cause
+  ))
+
+# sum rates for head an neck cancers
+hanc <- c("Larynx cancer", "Lip and oral cavity cancer", "Nasopharynx cancer",
+          "Other pharynx cancer")
+prev_agesex_hanc <- prev_agesex %>%
+  filter(cause %in% hanc) %>%
+  group_by(sex, age) %>%
+  summarise(rate = sum(rate), .groups = "drop") %>%
+  mutate(cause = "Head and neck cancer")
+
+prev_agesex <- prev_agesex %>%
+  filter(!cause %in% hanc) %>%
+  bind_rows(prev_agesex_hanc)
+
+# split rates for colon and rectum cancers by reference to the AIHW incidence
+# rates for those two diseases
+# AIHW incidence proportions for colon and rectum cancer
+inc_crc <- incyr %>% 
+  filter(site %in% c("colon cancer", "rectum cancer")) %>%
+  dplyr::select(site, sex, ageyr, rate_1) %>%
+  mutate(site = case_when(site == "colon cancer"  ~ "colon",
+                          site == "rectum cancer" ~ "rectum"),
+         sex = case_when(sex == "Females" ~ "Female",
+                         sex == "Males"   ~ "Male")) %>%
+  pivot_wider(names_from = site, values_from = rate_1) %>%
+  # total of the two rates (with small constant to avoid zeros)
+  mutate(total = colon + rectum) %>%
+  mutate(total = ifelse(total == 0, 1e-6, total)) %>%
+  # proportions
+  mutate(colon_prop = colon/total,
+         rectum_prop = rectum/total) %>%
+  dplyr::select(sex, age = ageyr, colon_prop, rectum_prop)
+
+# apportion colon and rectum cancer by rates
+prev_agesex_crc <-
+  prev_agesex %>%
+  filter(cause == "Colon and rectum cancer") %>%
+  # join the proportions and calculate proportionate rates
+  left_join(inc_crc, by = c("sex", "age")) %>%
+  mutate(Colon = rate * colon_prop,
+         Rectum = rate * rectum_prop) %>%
+  # pivot into separate rows for colon and rectum
+  dplyr::select(age, sex, Colon, Rectum) %>%
+  pivot_longer(cols = c("Colon", "Rectum"), names_to = "cause",
+               names_transform = ~ paste(., "cancer"),
+               values_to = "rate")
+
+prev_agesex <- prev_agesex %>%
+  filter(!cause == "Colon and rectum cancer") %>%
+  bind_rows(prev_agesex_crc)
+  
+# Lung cancer - renamed
+prev_agesex <- prev_agesex %>%
+  mutate(cause = ifelse(cause == "Tracheal, bronchus, and lung cancer",
+                        "Lung cancer", cause))
+
+
+```
+
+## Inequalities
+
+We disaggregate the above age and sex data by socioeconomic status, to
+represent inequalities in health, where data is available. In some cases
+data for prevalence by socioeconomic status is not available, and in
+those cases we use data for incidence.
+
+The data used is as follows.
+
+-   Cancers: `ATLAS/Atlas_estimates_95CIs.xlsx`. This is incidence data
+    from the Cancer Atlas, by SA2 area (including socioeconomic
+    quintile) and sex, as described under 'Incidence data'.
+
+-   Stroke and Coronary heart disease:
+    `AIHW/cvd-diabetes-comorbidities.xlsx`, Tables 'Stroke Table 2' and
+    'CHD Table 2'. This is prevalence data from AIHW, by socioeconomic
+    quintile and sex, for 2017-18.
+
+-   \[All cause dementia: `AIHW/dementia-prevalence.xlsx`, Table S2.6.
+    This is prevalence data (Australians living with dementia) from
+    AIHW, by socioeconomic quintile and sex, for 2021. **SP note: I
+    don't think we can use after all; it's numbers of people, not
+    rates.**
+
+-   Diabetes type 2: `AIHW/cdv_dia_kid_socioeconomic.csv`, Table S7.
+    This is prevalence data from AIHW, by socioeconomic quintile and
+    sex, for 2016.
+
+-   Chronic obstructive pulmonary disease: `AIHW/copd-prevalence.xlsx`,
+    Table 1.2. This is prevalence data from AIHW, by socioeconomic
+    quintile and sex, for 2017-18.
+
+We did not identify relevant socioeconomic data for \[All cause
+dementia,\] Depressive disorders or Major depression.
+
+### Cancers
+
+We use socioeconomic incidence data from the Cancer Atlas (see source
+above), processed in the same way as described in section 2.2 above for
+incidence, but applied to the age and sex prevalence data from GBD
+rather than the age and sex incidence data from AIHW. The resulting
+output table is saved as `health/processed/cancer_prevalence_area.rds`,
+and output plots are saved in the \`docs/images/prev_cancer' folder.
+
+```{r}
+# Cancers, using 'data_sa2_sex_age' as calculated for incidence, 
+# combined with prevalence data by age and sex
+
+# combine
+prev_sa2_sex_age <- data_sa2_sex %>% 
+  mutate(site = str_to_sentence(site),
+         sex = case_when(sex == "Females" ~ "Female",
+                         sex == "Males"   ~ "Male")) %>%
+  filter(site %in% prev_agesex$cause) %>%
+  left_join(prev_agesex, by=c("sex", c("site" = "cause"))) %>%
+  filter(!is.na(rate)) %>%  # omitting where no rate (male endometrial cancer)
+  mutate(rate_area=as.numeric(SIR)*rate) %>%
+  rename(socio=`Socioeconomic status`) 
+
+# finalise and save
+cancer_prevalence_area <- prev_sa2_sex_age %>% 
+  rename (sa2_code = `SA2 code`, sa2_name = SA2) %>%
+  mutate(prob = 1 - exp(-rate_area)) %>%
+  select(sa2_code, sa2_name, socio, site, age, sex, prob, rate_area, val_interpolated = rate) %>%
+  mutate(rate_ave_age_sex = val_interpolated * 100000)
+
+saveRDS(cancer_prevalence_area, file="health/processed/cancer_prevalence_area.rds")
+
+```
+
+#### Illustration of prevalence estimates
+
+Each graph created below for each site and sex combinations depicts five
+graphs within representing each socioeconomic group, and within each
+graph by socioeconomic group a line called rate_ave_agae_sex which
+represents the rate by age and sex for Australia wide (black), and a
+line called rate_area which is the rate derived from data by sex and SA2
+and rates by age and sex (red).
+
+Most graphs show the expected pattern of most disadvantaged having
+incidence above average through to most advantaged having incidence
+below average. Following are the exceptions:
+
+-   breast cancer (F) and prostate cancer (M) show the reverse pattern,
+    with most disadvantaged having lowest incidence.
+-   gastric cancer (F&M) have all groups being below average.
+-   liver cancer (F) has all groups below average.
+-   malignant melanoma (F&M) show an inconsistent pattern with most
+    results above average.
+-   myeloid leukemia (F&M) show little differentiation between socio
+    economic groups.
+-   myeloma (F&M) have most groups at or below average.
+
+These are the same exceptions as were identified above for cancer
+incidence (not surprisingly, as the same Cancer Atlas socioeconomic
+incidence data is applied to both incidence and prevalence figures by
+sex and age).
+
+```{r}
+## take mean of groups by socio area, and summarise
+cancer_prev_socio <- cancer_prevalence_area %>%
+  group_by(age, sex, site, socio, rate_ave_age_sex) %>%
+  summarise(rate_area = round(mean(rate_area, na.rm = TRUE), 7), .groups = "drop") %>% 
+  filter(socio != "Not classified") %>%
+  mutate(socio = factor(socio, 
+                        levels = c("Most disadvantaged", "Disadvantaged", 
+                                   "Middle SES", "Advantaged", 
+                                   "Most advantaged", "Not classified"))) %>%
+  mutate(rate_area = rate_area * 100000) %>%
+  na.omit(.) %>%  # omit na values, eg female prostate cancer
+  #pivot longer
+  pivot_longer(cols = c(rate_area, rate_ave_age_sex),
+               values_to = "rate", names_to = "rate_type")
+
+
+# Create folder if it doesn't exist
+folder_path <- file.path("docs", "images", "prev_cancer_compare")
+if (!file.exists(folder_path)) {
+  dir.create(folder_path, recursive = TRUE)
+}
+
+# Define colors for rate types
+rate_type_colors <- c("black", "red")
+
+# Loop over each combination of site and sex
+for (site_val in unique(cancer_prev_socio$site)) {
+  for (sex_val in unique(cancer_prev_socio$sex)) {
+    # Skip certain combinations of sex and site
+    if ((sex_val == "Male" && site_val %in% c("Breast cancer", "Endometrial cancer")) ||
+        (sex_val == "Female" && site_val == "Prostate cancer")) {
+      cat("Skipping graph for sex:", sex_val, "and site:", site_val, "\n\n")
+      next  # Skip to the next iteration of the loop
+    }
+    
+    cat("Processing site:", site_val, "and sex:", sex_val, "\n")  # Debug print statement
+    
+    # Subset data for the current combination of site and sex
+    plot_data <- subset(cancer_prev_socio, site == site_val & sex == sex_val)
+    
+    # Check if there are data for the current combination
+    if (nrow(plot_data) > 0) {
+      max_rate <- max(plot_data$rate, na.rm = TRUE)
+      cat("Maximum rate:", max_rate, "\n")  # Debug print statement
+      
+      # Create ggplot for the current combination
+      p <- ggplot(plot_data, aes(x = age, y = rate, col = rate_type)) +
+        geom_line(lwd = 1, aes(linetype = NULL)) +
+        scale_color_manual(values = rate_type_colors) +
+        facet_wrap(~socio, scales = "free_y", ncol = 1) + # Nested facet wrap for socio-economic status
+        ylab("Incidence rate (per 100,000)") +
+        xlab("Age (years)") +
+        coord_cartesian(xlim = c(25, 90)) +
+        scale_y_continuous(breaks = seq(0, max_rate, by = 400)) +  # Adjust y-axis breaks
+        guides(alpha = FALSE, col = guide_legend(title = "Rate Type")) +
+        theme(legend.position = "bottom", legend.box = "horizontal", legend.box.just = "center",
+              legend.margin = margin(t = 5, unit = "pt"), legend.spacing = unit(0.2, "cm"))
+      
+      # Save the ggplot for the current combination
+      png_name <- file.path(folder_path, paste0(site_val, "_", sex_val, ".png"))
+      ggsave(png_name, plot = p + labs(title = paste("| Site:", site_val, "| Sex:", sex_val)), device = "png")
+    } else {
+      cat("No data for site:", site_val, "and sex:", sex_val, "\n")  # Debug print statement
+    }
+  }
+}
+
+
+```
+
+### Other diseases
+
+We use socioeconomic prevalence data for stroke, coronary heart disease,
+\[dementia - **probably not, see below**\], diabetes and COPD from AIHW
+(see sources above), processed in a similar way to that described in
+section 2.2 above for incidence, but applying the socioeconomic
+prevalence data from AIHW to the age and sex prevalence data from GBD.
+The resulting output table is saved as
+`health/processed/cvd_dia_copd_prevalence.rds`, and output plots are
+saved in the \`docs/images/prev_cvd_dia_copd' folder.
+
+```{r}
+# Stroke
+stroke_prev <- read_xlsx("health/original/AIHW/cvd-diabetes-comorbidities.xlsx", sheet = "Stroke", 
+                         skip = 30, col_names = TRUE, n_max = 6) %>%
+  slice(-1) %>%
+  rename_with( ~ c("socio", "MaleNo", "FemaleNo", "PersonNo", "blank1",
+                   "MaleCrudeRate", "MaleCrudeCI", "FemaleCrudeRate", "FemaleCrudeCI",
+                   "PersonCrudeRate", "PersonCrudeCI", "blank2",
+                   "Male", "MaleCI", "Female", "FemaleCI", "Person", "PersonCI")) %>%
+  dplyr::select(socio, Male, Female) %>%
+  pivot_longer(cols = c("Male", "Female"), names_to = "sex") %>%
+  rename(rate = value) %>%
+  mutate(socio = case_when(socio=="Group 1 (lowest)" ~ "1", # 1: lowest, to 5: highest
+                           socio=="Group 2" ~ "2",
+                           socio=="Group 3" ~ "3",
+                           socio=="Group 4" ~ "4",
+                           socio=="Group 5 (highest)" ~ "5",
+                           .default = socio),
+         socio = as.numeric(socio)) %>%
+  group_by(sex) %>%
+  mutate(rr = rate / first(rate)) |>
+  ungroup() %>%
+  select(socio, sex, rate, rr) %>%
+  mutate(cause = "Stroke")
+
+# Coronary heart disease
+chd_prev <- read_xlsx("health/original/AIHW/cvd-diabetes-comorbidities.xlsx", sheet = "CHD", 
+                         skip = 25, col_names = TRUE, n_max = 9) %>%
+  slice(-c(1:4)) %>%
+  rename_with( ~ c("socio", "MaleNo", "FemaleNo", "PersonNo", "blank1",
+                   "MaleCrudeRate", "MaleCrudeCI", "FemaleCrudeRate", "FemaleCrudeCI",
+                   "PersonCrudeRate", "PersonCrudeCI", "blank2",
+                   "Male", "MaleCI", "Female", "FemaleCI", "Person", "PersonCI")) %>%
+  dplyr::select(socio, Male, Female) %>%
+  pivot_longer(cols = c("Male", "Female"), names_to = "sex") %>%
+  rename(rate = value) %>%
+  mutate(socio = case_when(socio=="Group 1 (lowest)" ~ "1", # 1: lowest, to 5: highest
+                           socio=="Group 2" ~ "2",
+                           socio=="Group 3" ~ "3",
+                           socio=="Group 4" ~ "4",
+                           socio=="Group 5 (highest)" ~ "5",
+                           .default = socio),
+         socio = as.numeric(socio)) %>%
+  group_by(sex) %>%
+  mutate(rr = rate / first(rate)) |>
+  ungroup() %>%
+  select(socio, sex, rate, rr) %>%
+  mutate(cause="Coronary heart disease")
+
+# Diabetes and COPD - same as for incidence (diabetes and COPD prevalence data)
+diabetes_prev <- diabetes_inc %>% mutate(cause = "Diabetes type 2")
+copd_prev <- copd_inc
+
+# Combine all four diseases
+prev_cvd_dia_copd_socio <- bind_rows(chd_prev, diabetes_prev, stroke_prev, copd_prev) %>%
+  arrange(cause, sex, socio)
+
+```
+
+#### Combining socioeconomic status with age and sex
+
+We use the method outlined in `Inequalities in health` above to
+disaggregate the age and sex data by socioeconomic status, following the
+same approach as outlined above for incidence of these diseases.
+
+```{r}
+prev_cvd_dia_copd_agesex <- prev_agesex %>%
+  filter(cause %in% c("Stroke", "Coronary heart disease", "Diabetes type 2",
+                      "Chronic obstructive pulmonary disease"))
+
+cvd_dia_copd_prev <- prev_cvd_dia_copd_agesex %>% 
+    slice(rep(row_number(), each=5)) %>%
+    mutate(socio = rep(1:5, length.out=n())) %>%
+    left_join(prev_cvd_dia_copd_socio %>% select(cause, sex, socio, rr_socio = rr), 
+              by = c("cause", "sex", "socio")) %>%
+    mutate(p_socio = 1/5,    # assumption
+           pRR = p_socio * rr_socio,
+           socio = ordered(socio))
+
+sum_p <- cvd_dia_copd_prev %>% 
+    group_by(cause, age, sex) %>%
+    summarise(sum_pRR = sum(pRR), .groups="drop")
+    
+cvd_dia_copd_prev <- cvd_dia_copd_prev %>%
+    left_join(sum_p, by=c("cause", "age", "sex")) %>%
+    mutate(rate_soc = rate * rr_socio / sum_pRR, 
+           socio = ordered(socio, labels = c("1 (most deprived)",
+                                             "2","3","4",
+                                             "5 (least deprived)")),
+           sex = factor(sex)) 
+
+saveRDS(cvd_dia_copd_prev, file="health/processed/cvd_dia_copd_prevalence.rds")
+```
+
+We are left with the incidence by age, sex and socioeconomic status in
+the variable `rate_soc`. The final dataset is saved in the file
+`cvd_dia_copd_prevalence.rds`.
+
+#### Illustration of prevalence estimates
+
+Prevalence by age, sex and socioeconomic quintile for stroke, coronary
+heart disease, type 2 diabetes and COPD.
+
+The published incidence by age and sex (averaged over deprivation
+levels) is shown by the dotted black lines (original gbd data
+interpolated from 5 year age groups to one year). The estimated
+incidence disaggregated by socioeconomic quintile is shown by the
+coloured lines, with socioeconomic status indicated by the lightness of
+the lines (calculated from gbd data and aihw data).
+
+The relative risk between socioeconomic quintiles is assumed to be the
+same between different age/sex groups, but the average of the
+deprivation-specific estimates is constrained to be the same as the
+published average.
+
+All plots generally show the expected outcome of higher levels of
+incidence at higher levels of disadvantage. However, female coronary
+heart disease in particular does not strictly follow the order from
+highest to lowest.
+
+```{r}
+# plot of data
+p <- ggplot(cvd_dia_copd_prev, 
+       aes(x=age, y=rate_soc, col=sex, alpha=socio)) + 
+    geom_line(lwd=1.5) + 
+    geom_line(data=prev_cvd_dia_copd_agesex,
+              aes(x=age, y=rate, group=sex), 
+              inherit.aes = FALSE,
+              lwd=1, lty=2, alpha=0.4, col="black") +
+    facet_wrap(~cause, ncol=2, scales="free_y") +
+    ylab("Incidence rate (per 100,000)") +
+    xlab("Age (years)") +
+    coord_cartesian(xlim=c(25, 90)) +
+    guides(alpha=guide_legend(title=NULL),
+           col=guide_legend(title=NULL)) +
+    theme(legend.position = "bottom")
+
+# save plot
+# Generate and save all pages
+output_dir <- "docs/images/prev_cvd_dia_copd/"
+if (!dir.exists(output_dir)) {
+  dir.create(output_dir, recursive = TRUE)
+}
+
+ggsave(filename = paste0(output_dir, "cvd_dia_copd_prevalence.png"), plot = p, 
+       width = 12, height = 12, bg = "white")
+
+```
+
+# Mortality data
+
+This section shows how mortality data for the JIBE Melbourne
+microsimulation is obtained and processed, giving the R code to
+reproduce the analysis.
+
+The aim is to produce data describing the annual risk of death for a
+synthetic individual in the microsimulation model.
+
+This is defined here as a a function of the individual's age and sex,
+area of residence and level of education.
+
+It is calculated based on a combination of routinely-collected data
+sources, under the assumption that age and sex, small area of residence
+and level of education are independent risk factors for mortality.
+
+## Data sources
+
+### 2016 Australian geography definitions
+
+Statistical Areas level 2 (SA2), as defined for the 2016 census, are
+used as the definition of area of residence here. This data file defines
+the SA2 areas and their mapping to larger areas.
+
+[Source](https://www.abs.gov.au/ausstats/abs@.nsf/mf/1270.0.55.001)
+
+```{r}
+sa2 <- read_csv("health/original/ABS/SA2_2016_AUST.csv", col_types = "cccccccccccd")
+```
+
+### Mortality by year of age and sex, for Victoria state (not by smaller areas)
+
+[Source](https://www.abs.gov.au/methodologies/life-tables-methodology/2016-2018)
+
+The mortality rate here, `rate`, is defined as "the proportion of
+persons dying between exact age x and exact age x+1". For presentation,
+this is converted to a rate per 1000 people.
+
+```{r}
+dats <- read.csv("health/original/ABS/3302055001do001_20162018_Table_1.2.csv",skip=6,
+         na=c("","np"), nrows=101)[,1:9]
+mf <- rep(c("male","female"),each=4)
+names1 <- rep(c("denom","rate","personyears","le"), 2)
+names(dats) <- c("age",paste(mf, names1, sep="_"))
+
+victoria_lifetable <- dats |>
+  pivot_longer(-age, 
+               names_to = c("sex","measure"),
+               names_sep = "_") |>
+  pivot_wider(names_from="measure", values_from=value) |>
+  mutate(rate1000 = rate*1000,
+         sex = factor(sex,
+                      labels=stringr::str_to_title(sort(unique(.data$sex)))),
+         sex = relevel(sex, "Male"))  
+```
+
+### Mortality by SA2 small areas in Victoria (not by age and sex)
+
+[Source](https://adp-access.aurin.org.au/dataset/au-govt-abs-abs-deaths-sa2-2012-2020-sa2-2016)
+
+This is provided as a JSON file, rather than a tabular format, so the R
+processing is more complex here.
+
+The *standardised death rate* is published here. This is the expected
+number of deaths in the area if the age/sex balance of the area were
+same as a standard population. This can be compared between areas to
+describe the excess risk in each area not explainable by differences in
+age/sex balance.
+
+An area-specific relative rate, relative to the average in the state, is
+computed by dividing the (published) standardised rate for that area by
+the average standardised rate. The average standardised rate is computed
+as a weighted average, weighted by the population in each area
+
+```{r}
+#| cache: true
+deaths_sa2 <- rjson::fromJSON(file="health/original/aurin/au-govt-abs-abs-deaths-sa2-2012-2020-sa2-2016.json") |>
+  pluck("features") |>
+  tibble() |>
+  set_names("area") |>
+  unnest_wider(area) |>
+  select(properties) |>
+  unnest_wider(properties) |>
+  select(sa2_code,
+         sa2_name,
+         pop="_2016_estimated_resident_population_persons",
+         deaths="_2016_deaths_no",
+         stdrate="_2016_standardised_death_rate_rate") |>
+  mutate(stdrate = as.numeric(ifelse(stdrate=="np", NA, stdrate)))
+```
+
+For some SA2 areas, standardised death rates are not published. As
+explained in the source: "crude rates and Age-standardised Death Rates
+(SDRs) based on small numbers are volatile and unreliable. SDRs based on
+less than 20 deaths and crude rates based on a very low death count have
+not been published and appear as 'np'.".
+
+In these cases, the standardised death rate for the equivalent SA3 area
+is used here, from the following
+[source](https://data.aurin.org.au/dataset/au-govt-abs-abs-deaths-sa3-2012-2020-sa3-2016)
+in the same format as the SA2 data.
+
+```{r}
+#| cache: true
+deaths_sa3 <- rjson::fromJSON(file="health/original/aurin/au-govt-abs-abs-deaths-sa3-2012-2020-sa3-2016.json") |>
+  pluck("features") |>
+  tibble() |>
+  set_names("area") |>
+  unnest_wider(area) |>
+  select(properties) |>
+  unnest_wider(properties) |>
+  select(sa3_code,
+         sa3_name,
+         pop="_2016_estimated_resident_population_persons",
+         deaths="_2016_deaths_no",
+         stdrate="_2016_standardised_death_rate_rate") |>
+  mutate(stdrate = as.numeric(ifelse(stdrate=="np", NA, stdrate)))
+```
+
+Finally, a relative mortality rate `RR` is produced for each area,
+defined as the rate relative to the average mortality in the state
+`stdrate_ave`. This average mortality is defined as a weighted average
+of the area-specific rates, weighted by the population of each area.
+
+```{r}
+victoria_sa2_deaths <- deaths_sa2 |>
+  left_join(sa2, join_by(sa2_code == SA2_MAINCODE_2016)) |>
+  filter(STATE_NAME_2016=="Victoria") |>
+  select(sa2_code, sa2_name, sa3_code = "SA3_CODE_2016", pop, deaths, stdrate) |>
+  mutate(stdrate_ave = with(.data, sum(stdrate*pop,na.rm = TRUE)/sum(pop))) |>
+  # Use SA3 rate if SA2 std rate is missing "np" due to small counts 
+  left_join(deaths_sa3 |> select(sa3_code, stdrate_sa3 = stdrate), by="sa3_code") |>
+  mutate(stdrate = ifelse(is.na(stdrate), stdrate_sa3, stdrate)) |>
+  mutate(RR = stdrate / stdrate_ave)
+           
+melbourne_sa2_deaths <- victoria_sa2_deaths |> 
+  filter(sa2_code %in% sa2$SA2_MAINCODE_2016[sa2$GCCSA_NAME_2016=="Greater Melbourne"])
+```
+
+### Effects of education on mortality, by age
+
+From [Welsh et al. 2021](https://doi.org/10.1093/ije/dyab080), Table 1.
+Age adjusted mortality rates per 100,000 people for high, medium and low
+education. Age groups 25-44, 45-64 and 65-84. For the whole of
+Australia, using data from the 2016 census linked to death registrations
+in 2016 and 2017.
+
+```{r}
+rate25 <- c(high=38.8, med=105, low=236) 
+rate45 <- c(219, 399, 724)
+rate65 <- c(1551, 2201, 3202) 
+educ_mort <- as.data.frame(rbind(rate25, rate45, rate65)) |>
+  mutate(rrmedium = med/high,
+         rrlow = low/high, 
+         rrhigh = 1,
+         agegroup = c("[25,45)", "[45,65)", "[65,85)")) |>
+  pivot_longer(cols=c("rrhigh","rrmedium","rrlow"),
+               names_to = "educ",
+               names_prefix = "rr",
+               values_to = "rr_educ") |>
+  select(agegroup, educ, rr_educ) 
+```
+
+### Education by area
+
+Proportion in each area who have completed the equivalent of
+secondary-school ("medium" education), and proportion with a bachelor's
+degree ("high" education), by area. From the 2016 census,
+[source](https://data.aurin.org.au/dataset/au-govt-abs-abs-data-by-region-education-and-employment-asgs-sa2-2011-2019-sa2-2016).
+
+This data will be required to appropriately produce mortality rates
+disagreggated by both area and education (see below).
+
+```{r}
+educarea <- read.csv("health/original/aurin/education_sa2_aurin.csv") |>
+  filter(yr==2016) |>
+  select(sa2_maincode_2016, 
+         sa2_name_2016, 
+         perc_school = hghst_yr_schl_cmpltd_prsns_agd_15_yrs_cnss_12_eqvlnt_pc,
+         perc_degree = prsns_nn_schl_qlfctns_agd_15_yrs_cnss_bchlr_dgre_pc) |>
+  mutate(high = perc_degree/100, 
+         medium = (perc_school - perc_degree)/100,
+         low = 1 - perc_school / 100) |>
+  select(sa2_code = sa2_maincode_2016, high, medium, low) |>
+  mutate(sa2_code =  as.character(sa2_code)) |>
+  left_join(sa2, join_by(sa2_code == SA2_MAINCODE_2016)) |>
+  filter(sa2_code %in% sa2$SA2_MAINCODE_2016[sa2$GCCSA_NAME_2016=="Greater Melbourne"]) |>
+  select(sa2_code, high, medium, low)
+missing_areas <- unique(c(setdiff(melbourne_sa2_deaths$sa2_code, 
+                                  educarea$sa2_code), 
+                          educarea$sa2_code[is.na(educarea$high)]))
+
+missing_areanames <- sa2$SA2_NAME_2016[sa2$SA2_MAINCODE_2016 %in% missing_areas]
+```
+
+`r length(missing_areas)` areas do not have the relevant education data
+reported in this dataset (SA2 names `r missing_areanames`). Derive the
+proportion in all of Melbourne with high/medium/low education, to impute
+for these areas.
+
+```{r}
+educ_ave <- educarea |>
+  left_join(victoria_sa2_deaths |> select(sa2_code, pop), by="sa2_code") |>
+  mutate(high = sum(pop*high, na.rm = TRUE)/sum(pop,na.rm=TRUE),
+         medium = sum(pop*medium, na.rm = TRUE)/sum(pop,na.rm=TRUE),
+         low = 1 - high - medium) |>
+  select(high, medium, low) |>
+  head(1)
+educarea <- educarea |> 
+  filter(!is.na(high), !is.na(medium)) |>
+  rbind(data.frame(sa2_code = missing_areas) |>
+          cross_join(educ_ave))
+```
+
+## Combining data sources
+
+The goal is to estimate the probabilities of death within a year, in
+Melbourne, by year of age, sex, area of residence (SA2) and education
+level. These rates apply to the baseline scenario for the
+microsimulation model. Assume that alternative scenarios (in which
+disease/death risks are modified) may be handled by multiplying these
+baseline risks by relative risks of exposure changes.
+
+Firstly, we illustrate two of our sources of data together: (a)
+age/sex-specific mortality for Victoria, and (b) variation between SA2
+areas in mortality (averaged over age/sex within each area)
+
+```{r}
+ggplot(victoria_lifetable, aes(x=age, y=rate1000, col=sex)) + 
+  geom_hline(data=victoria_sa2_deaths, aes(yintercept = stdrate), 
+             col="blue", alpha=0.3, lwd=1.05) +
+  geom_line(lwd=1.5) +
+  labs(col="") +
+  scale_y_continuous(trans="log", 
+                     breaks=c(0.0002, 0.0005, 0.001, 0.005, 
+                              0.01, 0.05, 0.1, 0.2)*1000) + 
+  scale_x_continuous(breaks=seq(0,100,10)) +
+  theme_bw() + 
+  theme(legend.position = c(0.5, 0.1), 
+        legend.justification = "bottom",
+        legend.background = element_blank()) +
+  annotate(geom="text", x=0, y=20, 
+           label="Standardised average rates by small area", 
+           col="blue", alpha=0.6, hjust=0) + 
+  xlab("Age") + ylab("Mortality rate (per 1000 person-years)") +
+  annotate(geom="text", x=10, y=500, 
+           label="Average over areas in state, by age and sex", 
+           col="blue", alpha=0.6, hjust=0)
+#saveRDS(victoria_lifetable, "data-r/victoria_lifetable.rds")
+```
+
+These are combined as follows to estimate mortality rates by both area
+and age/sex.
+
+### Independence model for variations between areas and between age/sex
+
+We assume that the excess mortality risk associated with living in a
+particular area does not depend on age and sex. We then estimate the
+area-specific mortality rate for people of a particular age/sex by
+multiplying the state-wide rate by the area-specific, relative
+standardised rate.
+
+```{r vic_mort_dep,fig.width=7,fig.height=4}
+deaths_age_sa2 <- victoria_lifetable |>
+  select(age, sex, rate1000) |>
+  cross_join(melbourne_sa2_deaths |> 
+               select(sa2_code, sa2_name, RR)) |>
+  mutate(rate1000 = rate1000*RR,
+         area_sex = paste(sa2_code,sex))
+```
+
+These are illustrated:
+
+```{r}
+deaths_age_sa2 |>
+  filter(sa2_code %in% sample(unique(.data$sa2_code), 100)) |>
+  droplevels() |>
+ggplot(aes(x=age, y=rate1000, col=sex, group=sa2_code)) + 
+  geom_line(lwd=1, alpha=0.2) +
+  labs(col="") +
+  facet_grid(cols=vars(sex)) +
+  scale_y_continuous(trans="log", 
+                     breaks=c(0.0002, 0.0005, 0.001, 0.005, 0.01, 0.05, 0.1, 0.2)*1000) + 
+  scale_x_continuous(breaks=seq(0,100,10)) +
+  theme_bw() +
+  theme(legend.position = "none") +
+  xlab("Age") + ylab("Mortality rate (per 1000 person-years)")
+```
+
+Note that knowing the age balance of each area would not help further to
+explain these between-area variations, since the age balance is already
+accounted for in the standardised rates.
+
+### Including other predictors of mortality
+
+We use the method outlined in `Inequalities in health` above to
+disaggregate the age and sex data by socioeconomic status.
+
+We have previously estimated mortality by age, sex and area. We use this
+method to further disaggregate mortality rates by level of education,
+given data on agegroup-specific education effects on mortality and rates
+of education by area. This assumes that the education effects are
+independent of year of age (within broad age groups), sex and area.
+
+### Disaggregating age/sex/area mortality by education
+
+The effects of education on mortality are published for three age groups
+(25-44, 45-64 and 65-84). Outside these age groups, mortality effects
+are assumed to be independent of education level.
+
+```{r}
+mort_disagg <- deaths_age_sa2 |> 
+  left_join(educarea, by="sa2_code") |>
+  pivot_longer(cols = c("high","medium","low"), 
+               names_to = "educ", values_to = "p_educ") |>
+  mutate(agegroup = cut(age, c(0, 25, 45, 65, 85, Inf),
+                        right=FALSE, include.lowest = TRUE)) |>
+  left_join(educ_mort, by=c("agegroup","educ")) |>
+  mutate(pRR = rr_educ * p_educ) 
+
+sum_p <- mort_disagg |> group_by(age, sa2_code) |> 
+  summarise(sum_pRR = sum(pRR), .groups="drop")
+
+mort_disagg <- mort_disagg |> 
+  left_join(sum_p, by=c("age","sa2_code")) |>
+  rename(rate_ave_educ = rate1000) |>
+  mutate(rate = ifelse(
+    between(age, 25, 84) & (!(sa2_code %in% missing_areas)), 
+    rate_ave_educ * rr_educ / sum_pRR,
+    rate_ave_educ),
+    prob = 1 - exp(-rate/1000)
+  ) |>  select(age, sex, sa2_code, sa2_name, educ, rate, prob) |>
+  filter(sa2_code %in% sa2$SA2_MAINCODE_2016[sa2$GCCSA_NAME_2016=="Greater Melbourne"])
+saveRDS(mort_disagg, file="health/processed/mort_disagg.rds")
+```
+
+The final dataset produced contains the following columns
+
+`age` Year of age
+
+`sex` Sex
+
+`sa2_code` SA2 area code (2016 definitions)
+
+`sa2_name` SA2 area name
+
+`educ` Level of education (low: no secondary school qualification,
+medium: secondary school but no bachelor's degree, high: bachelor's
+degree)
+
+`rate` Mortality rate per 1000 person-years
+
+`prob` Annual mortality risk
+
+and `r nrow(mort_disagg)` rows, one for each of 2 sexes $\times$ 101
+years of age $\times$ 3 levels of education $\times$ 309 SA2 areas in
+Melbourne.
+
+```{r,echo=FALSE}
+stopifnot(nrow(mort_disagg)==187254)
+```
+
+First five rows:
+
+```{r}
+head(mort_disagg, 5)
+```
+
+## Summaries of annual mortality probabilities
+
+For each age group, sex and education level, this table shows the median
+(min-max) annual mortality risk over areas and single years of age.
+
+```{r}
+#| rows.print: 30
+agecut <- c(0, 18, 45, 65, 80, Inf)
+mort_disagg |> 
+  mutate(agegroup = cut(age, agecut, right=FALSE, include.lowest = TRUE)) |>
+  group_by("Age group"=agegroup, "Sex"=sex, "Education"=educ) |>
+  summarise(Median = median(prob), Min = min(prob), Max = max(prob), .groups="drop") |>
+  gt() |>
+  fmt_number(n_sigfig=2) |>
+  cols_align_decimal() |>
+  cols_merge_range(Min, Max) |>
+  cols_label(Min = "Range")
+```
