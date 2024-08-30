@@ -2111,7 +2111,7 @@ mort_disagg <- mort_disagg |>
     prob = 1 - exp(-rate/1000)
   ) |>  select(age, sex, sa2_code, sa2_name, educ, rate, prob) |>
   filter(sa2_code %in% sa2$SA2_MAINCODE_2016[sa2$GCCSA_NAME_2016=="Greater Melbourne"])
-saveRDS(mort_disagg, file="health/processed/mort_disagg.rds")
+saveRDS(mort_disagg, file=here("health/processed/mort_disagg.rds"))
 ```
 
 The final dataset produced contains the following columns
