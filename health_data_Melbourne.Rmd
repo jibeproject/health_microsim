@@ -478,7 +478,7 @@ plot_interpolation_pages(plot_data, output_dir)
 
 Above data is by age and sex, but we are interested in further
 disaggregation to represent inequalities in health. Preparation of
-inequalities data responds to inequality availability data for the
+inequalities data responds to inequality data availability for the
 following groups of diseases or single diseases: cancer, cardiovascular
 diseases and diabetes, COPD. For depression we did not find any data
 representing inequalities. Data sources are outlined here:
@@ -695,7 +695,7 @@ compare_age_sex <- cancer_incidence_area %>%
 
 ```
 
-#### Scoioeconomic data from AIHW
+#### Scoioeconomic data from AIHW (Chris)
 
 As a point of comparison, we also have socioeconomic data from AIHW,
 from the file cancer_socioeconomic.xlsx (published Dec 2021): Table
@@ -1147,9 +1147,7 @@ for (site_val in unique(rates_compare_long$site)) {
     }
   }
 }
-# Second comparison difference between rate_soc and rate area
-compare_diff <- compare_socio %>% 
-  mutate(diff_rate = ifelse(rate_area_100000_ave == 0 | rate_soc == 0, 0, ((rate_area_100000_ave - rate_soc) / rate_soc) * 100)) 
+
 ```
 
 Notes on comparison of data sources
@@ -1165,17 +1163,19 @@ melanoma, where the rates don't match well (eg Female malignant melanoma
 for most disadvantaged, Atlas rates are above average while AIHW rates
 are below average).**
 
+**STEVE, thank you, I left the relevant notes below. the pattern in the
+original ses cancer incidence data (cancer_socioeconomic) follow the
+same pattern as Chris' data and it should as it uses such data to
+produce the estimates. I have doubts on the estimates produced by ATLAS
+for this disease. Also, to note, there is a new release of cancer atlas
+data, which I will request, hopefully in the same format, so we can
+replace and compare whether it is a data issue.**
+
 -   *Esophageal cancer rates for males are higher and lower respectively
     for disadvantaged and most disadvantage and most advantaged when
     using rates based on areas (ATLAS) data. Rates from socioeconomic
     status (from AIHW data) for esophageal cancer were assumed to follow
     the same patterns as all cancers.*
-
--   *For gastric cardia, for both males and females, rates based on
-    areas (ATLAS) are slightly lower than from socio-economic data
-    (AIHW) for males and females disadvantaged, most advantaged and
-    advantaged groups.* \[SP: I'm not sure this is still correct. Or, at
-    least, it doesn't look noteworthy.\]
 
 -   *For head and neck, rates for males and females from area rates
     (ATLAS) are more conservative than with AIHW, for example, for the
@@ -1294,7 +1294,8 @@ in the same format so we can just replace.**
 
 ####Clean and save data
 
-The final cancer incidence data (using socioeconomic data from the Cancer Atlas) is saved as `cancer_incidence_final.rds`.
+The final cancer incidence data (using socioeconomic data from the
+Cancer Atlas) is saved as `cancer_incidence_final.rds`.
 
 ```{r}
 
@@ -1309,9 +1310,9 @@ saveRDS(cancer_incidence_area, file=here("health/processed/cancer_incidence_fina
 ### Cardiovascular diseases, dementia, type 2 diabetes and COPD
 
 This script produces estimates of incidence for stroke, ischemic heart
-disease, dementia, type 2 diabetes and chronic obstructive pulmonary disease
-(COPD) by age, sex and area socioeconomic quintile, for Australia using
-data for 2016 and 2018.
+disease, dementia, type 2 diabetes and chronic obstructive pulmonary
+disease (COPD) by age, sex and area socioeconomic quintile, for
+Australia using data for 2016 and 2018.
 
 The data is obtained from the Global Burden of Disease for disease
 incidence by age and sex and from AIHW by sex and socioeconomic status
@@ -1325,10 +1326,10 @@ and type 2 diabetes:
     baseline year for the jibe model)
 
 Incidence, death and prevalence by sex and socioeconomic area for 2016
-(stroke, ischemic heart disease and type 2 diabetes) or 2021 (dementia and COPD).
-We do not have data for incidence by socioeconomic area for all diseases
-of interest, hence, we use deaths and prevalence, depending which one is
-more suitable.
+(stroke, ischemic heart disease and type 2 diabetes) or 2021 (dementia
+and COPD). We do not have data for incidence by socioeconomic area for
+all diseases of interest, hence, we use deaths and prevalence, depending
+which one is more suitable.
 
 We do not have data by socioeconomic status for depression.
 
@@ -1342,16 +1343,22 @@ We do not have data by socioeconomic status for depression.
 
     -   *Type 2 diabetes prevalence: by sex and socioeconomic area for
         2016: Table S7*
--   `dementia-mortality-xlsx`, which contains *Deaths due to dementia in 2021: age-standardised and crude rates by sex and geographic and socioeconomic areas: Table S3.6*
 
--   `copd-mortality.xlsx`, which contains *Respiratory mortality statistics, by remoteness area and SEIFA-quintile, 2021: Table Resp_Mort.2*
+-   `dementia-mortality-xlsx`, which contains *Deaths due to dementia in
+    2021: age-standardised and crude rates by sex and geographic and
+    socioeconomic areas: Table S3.6*
+
+-   `copd-mortality.xlsx`, which contains *Respiratory mortality
+    statistics, by remoteness area and SEIFA-quintile, 2021: Table
+    Resp_Mort.2*
 
 These data refer to the whole of Australia, and we do not have area
 specific data (e.g. SA2 as we do with mortality). These data are
 combined to produce estimates for each of stroke, ischemic heart
-disease, dementia, type 2 diabetes and COPD by age, sex and area socioeconomic
-quintile. This assumes that the effect of socioeconomic status on the
-incidence of these diseases is the same for all age and sex groups.
+disease, dementia, type 2 diabetes and COPD by age, sex and area
+socioeconomic quintile. This assumes that the effect of socioeconomic
+status on the incidence of these diseases is the same for all age and
+sex groups.
 
 #### Incidence by age and sex
 
@@ -1543,7 +1550,7 @@ cvd_dem_dia_copd_inc <- cvd_dem_dia_copd_inc %>%
 ```
 
 We are left with the incidence by age, sex and socioeconomic status in
-the variable `rate_soc`. 
+the variable `rate_soc`.
 
 #### Illustration of incidence estimates
 
@@ -1565,7 +1572,8 @@ published average.
 The plots are saved in the folder `inc_cvd_dem_dia_copd`.
 
 All plots show the expected outcome of the highest levels of incidence
-at the highest levels of disadvantage, though the pattern is less obvious for dementia, particularly for males.
+at the highest levels of disadvantage, though the pattern is less
+obvious for dementia, particularly for males.
 
 ```{r}
 # plot of data
@@ -1598,14 +1606,14 @@ ggsave(filename = paste0(output_dir, "/cvd_dem_dia_copd_incidence.png"), plot = 
 
 ####Clean and save data
 
-The final incidence data for non-cancers is saved as `cvd_dem_dia_copd_incidence_final.rds`.
+The final incidence data for non-cancers is saved as
+`cvd_dem_dia_copd_incidence_final.rds`.
 
 ```{r}
 
 cvd_dem_dia_copd_inc <- cvd_dem_dia_copd_inc %>% select("socio", "cause", "age", "sex", "prob") %>% mutate(measure="incidence")
 saveRDS(cvd_dem_dia_copd_inc, file=(here("health/processed/cvd_dem_dia_copd_incidence_final.rds")))
 ```
-
 
 # Prevalence data
 
@@ -1834,8 +1842,9 @@ The data used is as follows.
     quintile and sex, for 2017-18.
 
 -   Dementia: `AIHW/dementia-mortality.xlsx`, Table S3.6. This is
-    mortality data from AIHW, by socioeconomic quintile and sex,
-    for 2021.
+    mortality data from AIHW, by socioeconomic quintile and sex, for
+
+    2021. 
 
 -   Diabetes type 2: `AIHW/cdv_dia_kid_socioeconomic.csv`, Table S7.
     This is prevalence data from AIHW, by socioeconomic quintile and
@@ -1989,7 +1998,8 @@ above), processed in a similar way to that described in section 2.2
 above for incidence, but applying the socioeconomic prevalence data from
 AIHW to the age and sex prevalence data from GBD. The resulting output
 table is saved as `health/processed/cvd_dia_copd_prevalence.rds`, and
-output plots are saved in the \`docs/images/prev_cvd_dem_dia_copd' folder.
+output plots are saved in the \`docs/images/prev_cvd_dem_dia_copd'
+folder.
 
 ```{r}
 # Stroke
@@ -2139,7 +2149,8 @@ published average.
 All plots generally show the expected outcome of higher levels of
 incidence at higher levels of disadvantage. However, female coronary
 heart disease in particular does not strictly follow the order from
-highest to lowest, and there is little separation in rates of male dementia.
+highest to lowest, and there is little separation in rates of male
+dementia.
 
 ```{r}
 # plot of data
