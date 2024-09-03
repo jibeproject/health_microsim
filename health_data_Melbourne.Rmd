@@ -1187,6 +1187,9 @@ replace and compare whether it is a data issue.**
 socioeconomic group and compare with source data from
 cancer_socioeconomic.***
 
+**STEVE, could you please do a last check here and instead of using
+cancer_socio data generate the data from Chris' incidence data)?**
+
 The output charts are saved in the `inc_cancer_compare_ASR` folder.
 
 ```{r pressure6, echo=FALSE}
@@ -1275,7 +1278,9 @@ Following is the original comment:**
     kidney, liver, lung, malignant melanoma) the pattern of values is
     generally in the same direction in both datasets, but values from
     ATLAS generated data, aggregated by disease, are higher that those
-    in the AIHW data (cancer_socioecononmic).
+    in the AIHW data (cancer_socioecononmic). BZD: **Noted, I went over
+    the code to find discrepancies, but cannot see any. If we get new
+    data we can test again.**
 
 -   For colon and rectum cancers, the pattern of values is also in the
     same direction in both datasets, but the AIHW values are higher.
@@ -1283,7 +1288,9 @@ Following is the original comment:**
 
 -   For breast and prostate cancers, the AHIW data shows rates
     increasing as socio-economic status increases, but the Atlas does
-    not match this pattern.
+    not match this pattern. **BZD: I see, interesting, because the ATLAS
+    graphs by single year of age show the patterns of higher rates for
+    higher socio.**
 
 -   For esophageal, gastric cardia, myeloid leukemia and myeloma
     cancers, the charts are not useful because they are comparing Atlas
@@ -1292,17 +1299,24 @@ Following is the original comment:**
 **BZD: There is an update of the atlas and I requested the latest data
 in the same format so we can just replace.**
 
-####Clean and save data
+####Clean and save data (BZD, eventually, move to the end of the code).
 
 The final cancer incidence data (using socioeconomic data from the
 Cancer Atlas) is saved as `cancer_incidence_final.rds`.
 
 ```{r}
-
 cancer_incidence_area <- cancer_incidence_area %>% 
                         rename(cause=site) %>%
                         mutate(measure="incidence") %>% 
-                        select("sa2_code", "sa2_name", "socio", "cause", "measure", "age", "sex", "prob")
+                        select("sa2_code", "sa2_name", "socio", "cause", "measure", "age", "sex", "prob") %>%
+  filter(socio != "Not classified") %>%
+  mutate(socio = case_when(
+    socio == "Most disadvantaged" ~ 1,
+    socio == "Disadvantaged"      ~ 2,
+    socio == "Middle SES"         ~ 3,
+    socio == "Advantaged"         ~ 4,
+    socio == "Most advantaged"    ~ 5
+  ))
 saveRDS(cancer_incidence_area, file=here("health/processed/cancer_incidence_final.rds"))
 
 ```
@@ -1516,7 +1530,8 @@ copd_inc <- bind_rows(
 inc_cvd_dem_dia_copd_socio <- bind_rows(cvd_inc, dementia_inc, diabetes_inc, 
                                         stroke_inc, copd_inc) %>% 
   arrange(cause, sex, socio) %>% 
-  filter(socio != "6")
+  filter(socio != "6") %>% 
+  mutate(measure="incidence")
 ```
 
 #### Combining socioeconomic status with age and sex
