@@ -1306,10 +1306,10 @@ saveRDS(cancer_incidence_area, file=here("health/processed/cancer_incidence_fina
 
 ```
 
-### Cardiovascular diseases, type 2 diabetes and COPD
+### Cardiovascular diseases, dementia, type 2 diabetes and COPD
 
 This script produces estimates of incidence for stroke, ischemic heart
-disease , type 2 diabetes and chronic obstructive pulmonary disease
+disease, dementia, type 2 diabetes and chronic obstructive pulmonary disease
 (COPD) by age, sex and area socioeconomic quintile, for Australia using
 data for 2016 and 2018.
 
@@ -1325,10 +1325,12 @@ and type 2 diabetes:
     baseline year for the jibe model)
 
 Incidence, death and prevalence by sex and socioeconomic area for 2016
-(stroke, ischemic heart disease and type 2 diabetes) or 2017-18 (COPD).
+(stroke, ischemic heart disease and type 2 diabetes) or 2021 (dementia and COPD).
 We do not have data for incidence by socioeconomic area for all diseases
 of interest, hence, we use deaths and prevalence, depending which one is
 more suitable.
+
+We do not have data by socioeconomic status for depression.
 
 -   `cvd_dia_kid_socioeconomic.xlsx`, which contains:
 
@@ -1340,15 +1342,14 @@ more suitable.
 
     -   *Type 2 diabetes prevalence: by sex and socioeconomic area for
         2016: Table S7*
+-   `dementia-mortality-xlsx`, which contains *Deaths due to dementia in 2021: age-standardised and crude rates by sex and geographic and socioeconomic areas: Table S3.6*
 
--   `copd-prevalence.xlsx`, which contains *Prevalence of chronic
-    obstructive pulmonary disease among people aged 45 and over, by sex,
-    remoteness and socioeconomic area, 2017–18: Table 1.2*
+-   `copd-mortality.xlsx`, which contains *Respiratory mortality statistics, by remoteness area and SEIFA-quintile, 2021: Table Resp_Mort.2*
 
 These data refer to the whole of Australia, and we do not have area
 specific data (e.g. SA2 as we do with mortality). These data are
 combined to produce estimates for each of stroke, ischemic heart
-disease, type 2 diabetes and COPD by age, sex and area socioeconomic
+disease, dementia, type 2 diabetes and COPD by age, sex and area socioeconomic
 quintile. This assumes that the effect of socioeconomic status on the
 incidence of these diseases is the same for all age and sex groups.
 
@@ -1357,8 +1358,10 @@ incidence of these diseases is the same for all age and sex groups.
 Data by year of age is interpolated as above.
 
 ```{r}
-inc_cvd_dia_copd_agesex <- gbdpyr %>%
-  filter (cause %in% c("Stroke", "Ischemic heart disease", "Diabetes mellitus type 2",
+inc_cvd_dem_dia_copd_agesex <- gbdpyr %>%
+  filter (cause %in% c("Stroke", "Ischemic heart disease", 
+                       "Alzheimer's disease and other dementias",
+                       "Diabetes mellitus type 2",
                        "Chronic obstructive pulmonary disease")) %>%
   dplyr::select(cause, age = ageyr, sex, rate = val_interpolated)
 
@@ -1418,6 +1421,28 @@ cvd_inc <- read_xlsx(here("health/original/AIHW/cdv_dia_kid_socioeconomic.xlsx")
   mutate(cause="Ischemic heart disease") # to match gbd name
 
 
+# Dementia (we use mortality data.  There is also hospitalisation data (dementia-hospital-care.xlsx, Table S9.6), but the socioeconomic area rates for hospitalisations are not differentiated by sex, whereas the mortality data shows  greater socioeconomic area variation for Females than Males.)
+
+dementia_inc <- read_xlsx(here("health/original/AIHW/dementia-mortality.xlsx"), 
+                          sheet = "S3.6", skip = 2, col_names = TRUE, n_max = 11) %>%
+  slice(-c(2:6)) %>%
+  rename_with( ~ c("category", "socio", "Male", "Female", "Person",
+                   "MaleCrude", "FemaleCrude", "PersonCrude")) %>%
+  dplyr::select(socio, Female, Male) %>%
+  pivot_longer(cols = c("Female", "Male"), names_to = "sex", values_to = "rate") %>%
+  mutate(socio = case_when(socio == "1 (lowest)" ~ "1", # 1: lowest, to 5: highest
+                           socio == "5 (highest)" ~ "5",
+                           socio == "Australia" ~ "6",
+                           .default = socio),
+         socio = as.numeric(socio)) %>%
+  arrange(socio) %>%
+  group_by(sex) %>%
+  mutate(rr = rate / last(rate)) |> 
+  ungroup() %>%
+  select(socio, sex, rate, rr) %>%
+  mutate(cause = "Alzheimer's disease and other dementias") # to match gbd name
+
+
 # Diabetes (we use prevalence data. There is mortality data, but figures are low and diabetes as cause of deaths is likely under reported)
 
 diabetes_inc <- read_xlsx(here("health/original/AIHW/cdv_dia_kid_socioeconomic.xlsx"), sheet="Table S7", skip=1, col_names = TRUE, n_max=30) %>%
@@ -1440,28 +1465,50 @@ diabetes_inc <- read_xlsx(here("health/original/AIHW/cdv_dia_kid_socioeconomic.x
   select(socio, sex, rate, rr) %>%
   mutate(cause="Diabetes mellitus type 2") #to match gbd name
 
-# COPD (we use prevalence data)
 
-### BZD: Steve, I am thinking that we should use mortality, prevalence is self reported, from the health survey, whereas mortality is from death certificates. Also for mortality we have age standardises rates per 100,000 which is better to use and derive the RR as I modified for the other diseases relative to the Aus average. The dataset copd-mortality has in table Resp_Mort.1 standardised rates for age groups and males and females, since the rates for socioeconomic in table Table REsp_Mort2 are by sex, you could compare the standardised rates, so as per cvds, rate 6 is for australia wide (from table 1 here)
-copd_inc <- read_xlsx(here("health/original/AIHW/copd-prevalence.xlsx"), sheet="Table 1.2", skip=2, 
-                      col_names = TRUE, n_max=10) %>%
-  slice(-c(1:5)) %>%
-  rename_with( ~ c("socio", "Male", "MaleCI", "Female", "FemaleCI", "Person", "PersonCI")) %>%
-  dplyr::select(socio, Male, Female) %>%
-  pivot_longer(cols = c("Male", "Female"), names_to = "sex", values_to = "rate") %>%
-  mutate(socio = case_when(socio == "1 (lowest)" ~ "1", # 1: lowest, to 5: highest
-                           socio == "5 (highest)" ~ "5",
-                           .default = socio),
-         socio = as.numeric(socio)) %>%
+# COPD (we use mortality data)
+
+copd_inc <- bind_rows(
+  # data by socio-economic quintile
+  read_xlsx(here("health/original/AIHW/copd-mortality.xlsx"),
+            sheet = "Table Resp_Mort.2", skip = 4, col_names = TRUE) %>%
+    filter(str_detect(Geography, "SEIFA")),
+  # add data for Australia all ages
+  read_xlsx(here("health/original/AIHW/copd-mortality.xlsx"),
+            sheet = "Table Resp_Mort.1", skip = 4, col_names = TRUE) %>%
+    mutate(Year = as.character(Year))%>%
+    filter(`Age group` == "All ages")
+  ) %>%
+  filter(Year == "2021" &  # SEIFA table only has 2021
+           Condition == "Respiratory - COPD" &
+           `Cause scope` == "1. Underlying cause of condition" &
+           Sex %in% c("Females", "Males")) %>%
+  dplyr::select(socio = Geography, sex = Sex, 
+                rate = `Deaths per 100,000 population (age standardised)`) %>%
+  mutate(socio = case_when(
+    socio == "SEIFA-2016 Quintile 1 (most disadvantaged)"  ~ "1", # 1: lowest, to 5: highest
+    socio == "SEIFA-2016 Quintile 2"                       ~ "2",
+    socio == "SEIFA-2016 Quintile 3"                       ~ "3",
+    socio == "SEIFA-2016 Quintile 4"                       ~ "4",
+    socio == "SEIFA-2016 Quintile 5 (least disadvantaged)" ~ "5",
+    socio == "Australia"                                   ~ "6",
+    .default = socio),
+    socio = as.numeric(socio),
+    sex = case_when(sex == "Females" ~ "Female",
+                    sex == "Males"   ~ "Male",
+                    .default = sex)) %>%
   group_by(sex) %>%
-  mutate(rr = rate / first(rate)) %>%
+  mutate(rr = rate / last(rate)) %>%
   ungroup() %>%
   select(socio, sex, rate, rr) %>%
   mutate(cause="Chronic obstructive pulmonary disease") # to match gbd name
 
+
 # Combined database with all four diseases
 
-inc_cvd_dia_copd_socio <- bind_rows(cvd_inc, diabetes_inc, stroke_inc, copd_inc) %>% arrange(cause, sex, socio) %>% 
+inc_cvd_dem_dia_copd_socio <- bind_rows(cvd_inc, dementia_inc, diabetes_inc, 
+                                        stroke_inc, copd_inc) %>% 
+  arrange(cause, sex, socio) %>% 
   filter(socio != "6")
 ```
 
@@ -1471,20 +1518,20 @@ We use the method outlined in `Inequalities in health` above to
 disaggregate the age and sex data by socioeconomic status.
 
 ```{r}
-cvd_dia_copd_inc <- inc_cvd_dia_copd_agesex %>% 
+cvd_dem_dia_copd_inc <- inc_cvd_dem_dia_copd_agesex %>% 
     slice(rep(row_number(), each=5)) %>%
     mutate(socio = rep(1:5, length.out=n())) %>%
-    left_join(inc_cvd_dia_copd_socio %>% select(cause, sex, socio, rr_socio = rr), 
+    left_join(inc_cvd_dem_dia_copd_socio %>% select(cause, sex, socio, rr_socio = rr), 
               by = c("cause", "sex", "socio")) %>%
     mutate(p_socio = 1/5,    # assumption
            pRR = p_socio * rr_socio,
            socio = ordered(socio))
 
-sum_p <- cvd_dia_copd_inc %>% 
+sum_p <- cvd_dem_dia_copd_inc %>% 
     group_by(cause, age, sex) %>%
     summarise(sum_pRR = sum(pRR), .groups="drop")
     
-cvd_dia_copd_inc <- cvd_dia_copd_inc %>%
+cvd_dem_dia_copd_inc <- cvd_dem_dia_copd_inc %>%
     left_join(sum_p, by=c("cause", "age", "sex")) %>%
     mutate(rate_soc = rate * rr_socio / sum_pRR, 
            socio = ordered(socio, labels = c("1 (most deprived)",
@@ -1501,7 +1548,7 @@ the variable `rate_soc`.
 #### Illustration of incidence estimates
 
 Incidence by age, sex and socioeconomic quintile for ischemic heart
-disease, stroke, type 2 diabetes and COPD.
+disease, stroke, dementia, type 2 diabetes and COPD.
 
 The published incidence by age and sex (averaged over deprivation
 levels) is shown by the dotted black lines (original gbd data
@@ -1515,15 +1562,17 @@ same between different age/sex groups, but the average of the
 deprivation-specific estimates is constrained to be the same as the
 published average.
 
+The plots are saved in the folder `inc_cvd_dem_dia_copd`.
+
 All plots show the expected outcome of the highest levels of incidence
-at the highest levels of disadvantage.
+at the highest levels of disadvantage, though the pattern is less obvious for dementia, particularly for males.
 
 ```{r}
 # plot of data
-p <- ggplot(cvd_dia_copd_inc, 
+p <- ggplot(cvd_dem_dia_copd_inc, 
        aes(x=age, y=rate_soc, col=sex, alpha=socio)) + 
     geom_line(lwd=1.5) + 
-    geom_line(data=inc_cvd_dia_copd_agesex,
+    geom_line(data=inc_cvd_dem_dia_copd_agesex,
               aes(x=age, y=rate, group=sex), 
               inherit.aes = FALSE,
               lwd=1, lty=2, alpha=0.4, col="black") +
@@ -1537,34 +1586,26 @@ p <- ggplot(cvd_dia_copd_inc,
 
 # save plot
 # Generate and save all pages
-output_dir <- file.path(here("images/inc_cvd_dia_copd/"))
+output_dir <- file.path(here("images/inc_cvd_dem_dia_copd/"))
 if (!dir.exists(output_dir)) {
   dir.create(output_dir, recursive = TRUE)
 }
 
-ggsave(filename = paste0(output_dir, "/cvd_dia_copd_incidence.png"), plot = p, 
+ggsave(filename = paste0(output_dir, "/cvd_dem_dia_copd_incidence.png"), plot = p, 
        width = 12, height = 12, bg = "white")
-
-
 
 ```
 
 ####Clean and save data
 
-The final incidence data for non-cancers is saved as `cvd_dia_copd_incidence_final.rds`.
+The final incidence data for non-cancers is saved as `cvd_dem_dia_copd_incidence_final.rds`.
 
 ```{r}
 
-cvd_dia_copd_inc <- cvd_dia_copd_inc %>% select("socio", "cause", "age", "sex", "prob") %>% mutate(measure="incidence")
-saveRDS(cvd_dia_copd_inc, file=(here("health/processed/cvd_dia_copd_incidence_final.rds")))
+cvd_dem_dia_copd_inc <- cvd_dem_dia_copd_inc %>% select("socio", "cause", "age", "sex", "prob") %>% mutate(measure="incidence")
+saveRDS(cvd_dem_dia_copd_inc, file=(here("health/processed/cvd_dem_dia_copd_incidence_final.rds")))
 ```
 
-**STEVE, COULD YOU DO DEMENTIAS AS WELL, I SEE THAT WE HAVE
-HOSPITALIATIONS AND MORTLAITY, IS THERE MUCH DIFFERENCE IN THE DERIVE
-RRS? As with corrections, we need to derive the RRs from the Australian
-average.**
-
-**I BELIEVE TAHT WE DO NOT HAVE DATA FOR DEPRESSION FOR SES.**
 
 # Prevalence data
 
