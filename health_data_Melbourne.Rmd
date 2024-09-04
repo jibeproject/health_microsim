@@ -1304,7 +1304,7 @@ in the same format so we can just replace.**
 The final cancer incidence data (using socioeconomic data from the
 Cancer Atlas) is saved as `cancer_incidence_final.rds`.
 
-```{r}
+```{r pressure, echo=FALSE}
 cancer_incidence_area <- cancer_incidence_area %>% 
                         rename(cause=site) %>%
                         mutate(measure="incidence") %>% 
@@ -1319,6 +1319,9 @@ cancer_incidence_area <- cancer_incidence_area %>%
   ))
 saveRDS(cancer_incidence_area, file=here("health/processed/cancer_incidence_final.rds"))
 
+```
+
+```         
 ```
 
 ### Cardiovascular diseases, dementia, type 2 diabetes and COPD
