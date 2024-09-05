@@ -2759,3 +2759,71 @@ data_melbourne <- mort_disagg %>% left_join(cancer_incidence_area) %>%
 
 saveRDS(data_melbourne, file=here("health/processed/health_transitions_melbourne.rds"))
 ```
+
+**Trends**
+
+**Mortality trends**
+
+TO DO: Change path of data when moved to original/ABS
+
+```{r}
+library(readxl)
+
+# Read the Excel sheet and skip the first 6 rows
+mort_trends <- read_excel(here("health/original/staged_projections and trends TEMPORARY FOLDER/32220ds02_2022-2071_projection_assumptions_detailed.xlsx"), 
+                          sheet = "Table 5", skip = 6)
+
+# Select specific columns (1, 2, 4, and 13)
+mort_trends <- mort_trends %>%
+  select(1, 2, 4, 14) %>%
+  rename(male=`Victoria...4`, 
+         female = Victoria...14) 
+
+mort_trends_ord <- mort_trends %>%
+                   arrange(Age) %>% 
+                    pivot_longer(cols = c("male", "female"), 
+                                 names_to = "sex") %>%
+                    rename(rate = value) %>%
+                    mutate(sex=as.factor(sex)) %>%
+                    arrange(sex) %>%
+                    mutate(diff=rate - lag(rate)) 
+
+mort_trends_ord[5101, "diff"] <- 0 # modify male diff for 0 age 2022 as it compare with females. 
+
+mort_trends_ord[1, "diff"] <- 0 # modify female diff for 0 age 2022 as it compare with females. 
+                    
+
+
+```
+
+Regression analysis to derive trends
+
+```{r}
+
+# Load necessary libraries
+library(dplyr)
+library(ggplot2)
+
+# Fit a linear regression model
+model <- lm(diff ~ Age + Year + sex, data = mort_trends_ord)
+
+# View the summary of the model to check coefficients, R-squared, etc.
+summary(model)
+
+# Extract coefficients
+coefficients <- coef(model)
+print(coefficients)
+
+# Make predictions using the fitted model
+mort_trends_ord$predicted_change <- predict(model, newdata = mort_trends_ord)
+
+# Plot observed vs predicted mortality change
+ggplot(mort_trends_ord, aes(x = diff, y = predicted_change)) +
+  geom_point() +
+  geom_abline(intercept = 0, slope = 1, color = "red") +
+  labs(title = "Observed vs Predicted Mortality Change",
+       x = "Observed Mortality Change",
+       y = "Predicted Mortality Change") +
+  theme_minimal()
+
+```
