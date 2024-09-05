@@ -539,8 +539,6 @@ for (sheet_name in diseases) {
 # Bind all data frames together
 final_data_males <- do.call(rbind, all_data_males)
 
-
-
 ## females
 all_data_females <- list()
 
@@ -642,15 +640,14 @@ data_sa2_sex <- data_combined %>%
 
 ## Combine with incidence data by age and sex
 
-data_sa2_sex_age <- data_sa2_sex %>% left_join(incyr, by=c("sex", "site")) %>%
-  mutate(rate_area=ifelse(diff=="yes", as.numeric(SIR)*val_interpolated, val_interpolated)) %>%
-  rename(socio=`Socioeconomic status`) 
-
-cancer_incidence_area <- data_sa2_sex_age %>% rename (sa2_code=`SA2 code`, 
-                                                      sa2_name = SA2) %>%
-  mutate(prob=1 - exp(-rate_area)) %>%
-  select(sa2_code, sa2_name, socio, site, age = ageyr, sex, prob, rate_area, val_interpolated) %>%
-  mutate(rate_ave_100000=val_interpolated*100000,
+cancer_incidence_area <- data_sa2_sex %>% left_join(incyr, by=c("sex", "site")) %>%
+         mutate(rate_area=ifelse(diff=="yes", as.numeric(SIR)*val_interpolated,     val_interpolated)) %>%
+         rename(socio=`Socioeconomic status`,
+         sa2_code=`SA2 code`, 
+         sa2_name = SA2) %>%
+         mutate(prob=1 - exp(-rate_area)) %>%
+         select(sa2_code, sa2_name, socio, site, age = ageyr, sex, prob, rate_area, val_interpolated) %>%
+         mutate(rate_ave_100000=val_interpolated*100000,
          rate_area_100000=rate_area*100000) %>%
   mutate(sex = case_when(
     sex == "Females" ~ "Female",
@@ -1187,9 +1184,6 @@ replace and compare whether it is a data issue.**
 socioeconomic group and compare with source data from
 cancer_socioeconomic.***
 
-**STEVE, could you please do a last check here and instead of using
-cancer_socio data generate the data from Chris' incidence data)?**
-
 The output charts are saved in the `inc_cancer_compare_ASR` folder.
 
 ```{r pressure6, echo=FALSE}
@@ -1278,9 +1272,7 @@ Following is the original comment:**
     kidney, liver, lung, malignant melanoma) the pattern of values is
     generally in the same direction in both datasets, but values from
     ATLAS generated data, aggregated by disease, are higher that those
-    in the AIHW data (cancer_socioecononmic). BZD: **Noted, I went over
-    the code to find discrepancies, but cannot see any. If we get new
-    data we can test again.**
+    in the AIHW data (cancer_socioecononmic).
 
 -   For colon and rectum cancers, the pattern of values is also in the
     same direction in both datasets, but the AIHW values are higher.
@@ -1288,9 +1280,7 @@ Following is the original comment:**
 
 -   For breast and prostate cancers, the AHIW data shows rates
     increasing as socio-economic status increases, but the Atlas does
-    not match this pattern. **BZD: I see, interesting, because the ATLAS
-    graphs by single year of age show the patterns of higher rates for
-    higher socio.**
+    not match this pattern.
 
 -   For esophageal, gastric cardia, myeloid leukemia and myeloma
     cancers, the charts are not useful because they are comparing Atlas
@@ -1299,29 +1289,28 @@ Following is the original comment:**
 **BZD: There is an update of the atlas and I requested the latest data
 in the same format so we can just replace.**
 
-####Clean and save data (BZD, eventually, move to the end of the code).
+####Clean and save data
 
 The final cancer incidence data (using socioeconomic data from the
 Cancer Atlas) is saved as `cancer_incidence_final.rds`.
 
-```{r pressure, echo=FALSE}
-cancer_incidence_area <- cancer_incidence_area %>% 
-                        rename(cause=site) %>%
-                        mutate(measure="incidence") %>% 
-                        select("sa2_code", "sa2_name", "socio", "cause", "measure", "age", "sex", "prob") %>%
-  filter(socio != "Not classified") %>%
-  mutate(socio = case_when(
+```{r}
+cancer_incidence_area <- cancer_incidence_area %>%
+  rename(cause = site) %>%
+  mutate(measure = "incidence") %>%
+  select("sa2_code", "sa2_name", "socio", "cause", "measure", "age", "sex", "prob") %>%
+  mutate(socio = as.numeric(case_when(
     socio == "Most disadvantaged" ~ 1,
-    socio == "Disadvantaged"      ~ 2,
-    socio == "Middle SES"         ~ 3,
-    socio == "Advantaged"         ~ 4,
-    socio == "Most advantaged"    ~ 5
-  ))
+    socio == "Disadvantaged" ~ 2,
+    socio == "Middle SES" ~ 3, 
+    socio == "Advantaged" ~ 4,
+    socio == "Most advantaged"  ~ 5,
+    TRUE ~ NA_real_  # Assign NA for non-classified
+  ))) %>%
+  filter(!is.na(socio))  # Now filtering for non-classified values
+
 saveRDS(cancer_incidence_area, file=here("health/processed/cancer_incidence_final.rds"))
 
-```
-
-```         
 ```
 
 ### Cardiovascular diseases, dementia, type 2 diabetes and COPD
@@ -1533,8 +1522,7 @@ copd_inc <- bind_rows(
 inc_cvd_dem_dia_copd_socio <- bind_rows(cvd_inc, dementia_inc, diabetes_inc, 
                                         stroke_inc, copd_inc) %>% 
   arrange(cause, sex, socio) %>% 
-  filter(socio != "6") %>% 
-  mutate(measure="incidence")
+  filter(socio != "6") 
 ```
 
 #### Combining socioeconomic status with age and sex
@@ -1563,7 +1551,7 @@ cvd_dem_dia_copd_inc <- cvd_dem_dia_copd_inc %>%
                                              "2","3","4",
                                              "5 (least deprived)")),
            sex = factor(sex), 
-           prob=1 - exp(-rate_soc)) 
+           prob=1 - exp(-rate_soc))
 
 ```
 
@@ -1629,7 +1617,11 @@ The final incidence data for non-cancers is saved as
 
 ```{r}
 
-cvd_dem_dia_copd_inc <- cvd_dem_dia_copd_inc %>% select("socio", "cause", "age", "sex", "prob") %>% mutate(measure="incidence")
+cvd_dem_dia_copd_inc <- cvd_dem_dia_copd_inc %>% select("socio", "cause", "age", "sex", "prob") %>% mutate(measure="incidence")  %>%
+           mutate(socio=as.numeric(socio)) %>% 
+  mutate(sex=as.character(sex))
+
+
 saveRDS(cvd_dem_dia_copd_inc, file=(here("health/processed/cvd_dem_dia_copd_incidence_final.rds")))
 ```
 
@@ -2005,6 +1997,23 @@ for (site_val in unique(cancer_prev_socio$site)) {
     }
   }
 }
+```
+
+```{r}
+cancer_prevalence_area <-  cancer_prevalence_area %>%
+  mutate(measure="prevalence") %>% 
+  mutate(socio = as.numeric(case_when(
+    socio == "Most disadvantaged" ~ 1,
+    socio == "Disadvantaged" ~ 2,
+    socio == "Middle SES" ~ 3, 
+    socio == "Advantaged" ~ 4,
+    socio == "Most advantaged"  ~ 5,
+    TRUE ~ NA_real_  # Assign NA for non-classified
+  ))) %>%
+  filter(!is.na(socio)) %>% 
+  rename(cause = site) %>% # Now filtering for non-classified values
+  select("sa2_code", "sa2_name", "socio", "cause", "measure", "age", "sex", "prob") 
+
 
 ```
 
@@ -2138,7 +2147,8 @@ cvd_dem_dia_copd_prev <- cvd_dem_dia_copd_prev %>%
            socio = ordered(socio, labels = c("1 (most deprived)",
                                              "2","3","4",
                                              "5 (least deprived)")),
-           sex = factor(sex)) 
+           sex = factor(sex), 
+          prob = 1 - exp(-rate_soc))
 
 saveRDS(cvd_dem_dia_copd_prev, file=here("health/processed/cvd_dem_dia_copd_prevalence.rds"))
 ```
@@ -2197,6 +2207,145 @@ if (!dir.exists(output_dir)) {
 ggsave(filename = paste0(output_dir, "/cvd_dem_dia_copd_prevalence.png"), plot = p, 
        width = 12, height = 12, bg = "white")
 
+```
+
+```{r}
+cvd_dem_dia_copd_prev <-  cvd_dem_dia_copd_prev %>%
+  mutate(measure="prevalence") %>% 
+  mutate(socio = as.numeric(case_when(
+    socio == "1 (most deprived)" ~ 1,
+    socio == "2" ~ 2,
+    socio == "3" ~ 3, 
+    socio == "3" ~ 4,
+    socio == "5 (least deprived)"  ~ 5,
+    TRUE ~ NA_real_ ))) %>% # Assign NA for non-classified 
+  mutate(sex=as.character(sex)) %>% 
+  filter(!is.na(socio)) %>% # Now filtering for non-classified values
+  select("socio", "cause", "measure", "age", "sex", "prob") 
+
+
+```
+
+### Depression incidence and prevalence
+
+For depression, we only have GBD data by age and sex.
+
+```{r}
+
+# Incidence
+# GBD data for Melbourne. 
+gbd <- read.csv(here("health/original/GBD/gbd_incidence.csv"))
+
+# Filter data to needed variables and remove strings from GBD age variable and create from_age and to_age needed for interpolation. 
+
+gbdp <- gbd %>%
+  filter(measure %in% c("Incidence")) %>%
+  filter(metric %in% "Rate") %>%
+  filter(year %in% 2018) %>%
+  select(-c(location, upper, lower)) %>%
+  filter(cause %in% "Depressive disorders") %>%
+  mutate(rate_1=val/100000) %>% 
+  # some ages have 'years' (eg 5-9 years), while others don't (eg 80-84); omit 'years'
+  mutate(age = gsub(" years", "", age)) %>%
+  tidyr::extract(age, c("from_age", "to_age"), "(.+)-(.+)", remove=FALSE, convert=TRUE) %>%
+  mutate(from_age = case_when(age=="95+"  ~  95L,
+                              age=="<5"  ~  0L,
+                              TRUE  ~  from_age),
+         to_age = case_when(age=="95+"  ~  99L,
+                            age=="<5"  ~  4L,
+                            TRUE  ~  to_age),
+         agediff = to_age - from_age + 1,
+          val1yr = rate_1) %>% 
+  #we do not distribute amongst age groups as it is a rate but assume same within age group
+ rename(agegroup = age) 
+
+
+# Now stretch the data out using an index, to create a data frame with 1 row per year of age and create a variable for year of age. The age group rate repeats within single years of age in the group. 
+index <- rep(1:nrow(gbdp), gbdp$agediff)
+gbdpyrd5 <- gbdp[index,] %>%
+  mutate(ageyr = from_age + sequence(gbdp$agediff) - 1)
+gbdpyrd5 <- gbdpyrd5 %>% 
+  select(measure, ageyr, sex, agegroup, from_age, to_age, cause, year, val1yr,rate_1) 
+
+
+# Apply the disaggregation function
+
+# Group data for dissaggregation
+
+gbdp_grp <- gbdp %>%
+  group_by(measure, sex, cause) %>%
+  arrange(measure, sex, cause, from_age)
+
+# Apply function (select a function from 'functions/interpolation.R'). Smooth_spline does a good job.
+gbdpyr <- group_modify(gbdp_grp, disagg_smooth_spline) %>%
+  ungroup()
+
+#Join with original data where rates are the same within groups to validate interpolated data
+depression_incidence <- gbdpyr %>%
+  left_join(gbdpyrd5, by = c("measure", "ageyr", "sex", "cause")) %>%
+  rename(age = ageyr) %>%
+  mutate(prob=1-exp(-rate_1)) %>%
+  select(c("age", "sex", "measure", "cause", "prob")) %>%
+  mutate(measure=tolower(measure), 
+         cause=tolower(cause))
+
+
+# Prevalence
+# GBD data for Melbourne. 
+gbd <- read.csv(here("health/original/GBD/gbd_prevalence.csv"))
+
+# Filter data to needed variables and remove strings from GBD age variable and create from_age and to_age needed for interpolation. 
+
+gbdp <- gbd %>%
+  filter(measure %in% c("Prevalence")) %>%
+  filter(metric %in% "Rate") %>%
+  filter(year %in% 2018) %>%
+  select(-c(location, upper, lower)) %>%
+  filter(cause %in% "Depressive disorders") %>%
+  mutate(rate_1=val/100000) %>% 
+  # some ages have 'years' (eg 5-9 years), while others don't (eg 80-84); omit 'years'
+  mutate(age = gsub(" years", "", age)) %>%
+  tidyr::extract(age, c("from_age", "to_age"), "(.+)-(.+)", remove=FALSE, convert=TRUE) %>%
+  mutate(from_age = case_when(age=="95+"  ~  95L,
+                              age=="<5"  ~  0L,
+                              TRUE  ~  from_age),
+         to_age = case_when(age=="95+"  ~  99L,
+                            age=="<5"  ~  4L,
+                            TRUE  ~  to_age),
+         agediff = to_age - from_age + 1,
+          val1yr = rate_1) %>% 
+  #we do not distribute amongst age groups as it is a rate but assume same within age group
+ rename(agegroup = age) 
+
+
+# Now stretch the data out using an index, to create a data frame with 1 row per year of age and create a variable for year of age. The age group rate repeats within single years of age in the group. 
+index <- rep(1:nrow(gbdp), gbdp$agediff)
+gbdpyrd5 <- gbdp[index,] %>%
+  mutate(ageyr = from_age + sequence(gbdp$agediff) - 1)
+gbdpyrd5 <- gbdpyrd5 %>% 
+  select(measure, ageyr, sex, agegroup, from_age, to_age, cause, year, val1yr,rate_1) 
+
+
+# Apply the disaggregation function
+
+# Group data for dissaggregation
+
+gbdp_grp <- gbdp %>%
+  group_by(measure, sex, cause) %>%
+  arrange(measure, sex, cause, from_age)
+
+# Apply function (select a function from 'functions/interpolation.R'). Smooth_spline does a good job.
+gbdpyr <- group_modify(gbdp_grp, disagg_smooth_spline) %>%
+  ungroup()
+
+#Join with original data where rates are the same within groups to validate interpolated data
+depression_prevalence <- gbdpyr %>%
+  left_join(gbdpyrd5, by = c("measure", "ageyr", "sex", "cause")) %>%
+  rename(age = ageyr) %>%
+  mutate(prob=1-exp(-rate_1)) %>%
+  select(c("age", "sex", "measure", "cause", "prob")) %>%
+  mutate(measure=tolower(measure), 
+         cause=tolower(cause))
 ```
 
 # Mortality data
@@ -2584,4 +2733,29 @@ mort_disagg |>
   cols_align_decimal() |>
   cols_merge_range(Min, Max) |>
   cols_label(Min = "Range")
+```
+
+```{r}
+mort_disagg <- mort_disagg %>%
+                mutate(cause = "all cause", 
+                       measure = "deaths", 
+                       sa2_code=as.numeric(sa2_code))
+          
+```
+
+Combine all data sources for incidence, prevalence and mortality in one
+file.
+
+```{r}
+
+
+data_melbourne <- mort_disagg %>% left_join(cancer_incidence_area) %>%
+                  bind_rows(cancer_prevalence_area) %>%
+                  bind_rows(cvd_dem_dia_copd_inc) %>%
+                  bind_rows(cvd_dem_dia_copd_prev) %>%
+                  bind_rows(depression_incidence) %>%
+                  bind_rows(depression_prevalence) %>%
+                  mutate(cause=tolower(cause))
+
+saveRDS(data_melbourne, file=here("health/processed/health_transitions_melbourne.rds"))
 ```
