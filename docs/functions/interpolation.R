@@ -12,13 +12,13 @@ disagg_spline <- function(dat, key) {
   with(dat, {
     # Define the x and y for interpolation, adding epsilon and log-transforming the rates
     y <- log(rate_1 + epsilon)
-    x <- seq(from = floor(min(from_age)/5) * 5, by = 5, length.out = length(y))
+    x <- seq(from = floor(min(from_age)/5) * 5, by = 5, length.out = length(y)) + 2
     
     # browser() #useful for checking that x is what we expect. Can be used at any steps that we want 
     # to check the data and works when running the function by stoping the process.
     
     # Generate new x points (high-frequency), constrained to be at most 99
-    new_x <- seq(min(x), min(99, max(x)), length.out = min(100, max(x) - min(x) + 1))
+    new_x <- seq(min(x), min(99, max(x)), length.out = min(100, max(x) - min(x) + 1)) - 2
     
     # browser()
     
@@ -45,13 +45,13 @@ disagg_spline <- function(dat, key) {
 disagg_polynomial <- function(dat, key) {
   with(dat, {
     y <- rate_1
-    x <- seq(from = floor(min(from_age)/5) * 5, by = 5, length.out = length(y))
+    x <- seq(from = floor(min(from_age)/5) * 5, by = 5, length.out = length(y)) + 2
     
     # Fit a polynomial model
     fit <- lm(y ~ poly(x, 3))  # 3rd-degree polynomial (adjust degree as needed)
     
     # Generate new x points
-    new_x <- seq(min(x), min(99, max(x)), length.out = min(100, max(x) - min(x) + 1))
+    new_x <- seq(min(x), min(99, max(x)), length.out = min(100, max(x) - min(x) + 1)) - 2
     
     # Predict values
     interpolated <- predict(fit, newdata = data.frame(x = new_x))
@@ -73,13 +73,13 @@ disagg_polynomial <- function(dat, key) {
 disagg_loess <- function(dat, key) {
   with(dat, {
     y <- rate_1
-    x <- seq(from = floor(min(from_age)/5) * 5, by = 5, length.out = length(y))
+    x <- seq(from = floor(min(from_age)/5) * 5, by = 5, length.out = length(y)) + 2
     
     # Fit a loess model
     fit <- loess(y ~ x)
     
     # Generate new x points
-    new_x <- seq(min(x), min(99, max(x)), length.out = min(100, max(x) - min(x) + 1))
+    new_x <- seq(min(x), min(99, max(x)), length.out = min(100, max(x) - min(x) + 1)) - 2
     
     # Predict values
     interpolated <- predict(fit, newdata = data.frame(x = new_x))
@@ -102,7 +102,7 @@ disagg_smooth_spline <- function(dat, key) {
   epsilon <- 1e-6
   
   with(dat, {
-    x <- seq(from = floor(min(from_age)/5) * 5, to = 99, by = 5) 
+    x <- seq(from = floor(min(from_age)/5) * 5, to = 99, by = 5) + 2
     y <- log(rate_1 + epsilon)
     
     # browser()
@@ -113,7 +113,7 @@ disagg_smooth_spline <- function(dat, key) {
     # browser()
     
     # Generate new x points
-    new_x <- seq(min(x), min(99, max(x)), length.out = min(100, max(x) - min(x) + 1))
+    new_x <- seq(min(x), min(99, max(x)), length.out = min(100, max(x) - min(x) + 1)) - 2
     
     # browser()
     
