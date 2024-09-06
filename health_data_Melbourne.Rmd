@@ -65,24 +65,20 @@ knitr::opts_chunk$set(
 
 ## Data needs
 
-We need data for all cause mortality and diseases incidence and
-prevalence. We also will need data for trends in mortality and
-**diseases incidence (at least) and prevalence to validate future years
-(we might just get overall for population/age and sex maybe too).** For
-disease incidence, data is required for the list of diseases below in
-Table 1, which correspond to the included risk factors in the model
-(PM2.5, NO2, noise, physical activity). Disease names correspond to the
-names from data source. For example, we use data from the GBD for
-Alzheimer's disease and other dementias, the corresponding systematic
-review and meta analysis (SRMA) uses a different name (All cause
-dementia). Given differences in names and categories of diseases used,
-we provide ICD-10 codes and aim to match up as much as possible.
+We need annual probability data for all cause mortality and diseases
+incidence and prevalence. We also will need data for trends in mortality
+and diseases incidence. For prevalence we need rates for baseline (2018)
+and later years for validation. For disease incidence and prevalence,
+data is required for the list of diseases below in Table 1, which
+correspond to the included risk factors in the model (PM2.5, NO2, noise,
+physical activity). Disease names correspond to the names from data
+source. For example, we use data from the GBD for Alzheimer's disease
+and other dementias, the corresponding systematic review and meta
+analysis (SRMA) uses a different name (All cause dementia). Given
+differences in names and categories of diseases used, we provide ICD-10
+codes and aim to match up as much as possible.
 
 Also see excel file (disease_data, Melbourne final).
-
-Sources of dose-response functions (DRFs), concentration-response
-function (CRF) and exposure-response functions are presented in Table 2.
-For air pollutants and noise still to be confirmed.
 
 ```{r}
 health_outcomes_risks <- tibble::tribble(
@@ -137,8 +133,8 @@ using validated cut-offs for a drepressive screening instrument.
 Data for depressive disorders is from the GBD study includes codes
 F32-F33.9 (Major depressive disorders) and F34.1 (Disthymia). We then
 include data for depressive disorders for incidence and prevalence by
-age and sex (from GBD) and for inequalities (**WE DO NOT HAVE DATA
-YET**).
+age and sex (from GBD). We did not find publicly available data for
+representing inequalities in health for depression.
 
 Evidence suggest that females and younger pepoles have higher rates of
 depression than males, which we capture already with age and sex
@@ -513,6 +509,8 @@ difference in population between SA2 and differences in age structure of
 the population with an SA2. Data for the Australian average by age and
 sex is from AIHW and interpolated data was generated above named incyr.
 
+**Code if using ATLAS original up to years 2014 or 2016 (check)**
+
 ```{r, echo=FALSE}
 # Get sheet with SA2 areas by SES and filter Victoria
 
@@ -612,6 +610,173 @@ data_combined <- data_combined %>%  mutate(diff = ifelse(SIR > 1 & `Probability 
 
 ```
 
+**Code if using latest ATLAS (2010-2019)**
+
+```{r}
+# Get sheet with SA2 areas by SES and filter Victoria
+
+library(stringr)
+library(openxlsx)
+
+excel_file <- loadWorkbook(here("health/original/ATLAS 2/ACA 2 - Diagnosis relative estimates.xlsx"))
+
+# Get the sheet names
+sheet_names <- names(excel_file)
+
+# Define the string that should be in the sheet names
+search_string <- "invasive" #we just keep invasive cancer, stages are within invasive. in situ, localised, is not available as added to invasive. Most data for invasive and for previous ATLAS data we ony had invasive cancer. 
+
+# Filter sheets to keep: those containing the string or the first 5 sheets
+sheets_to_keep <- sheet_names[1:5]  # Keep first 5 sheets
+sheets_with_string <- sheet_names[grepl(search_string, sheet_names)]  # Sheets with the string
+
+# Combine the two criteria
+sheets_to_keep <- unique(c(sheets_to_keep, sheets_with_string))
+
+# Remove the sheets that are not in sheets_to_keep
+sheets_to_remove <- setdiff(sheet_names, sheets_to_keep)
+
+# Remove the sheets
+for(sheet in sheets_to_remove) {
+  removeWorksheet(excel_file, sheet)
+}
+
+## Now remove the invasive string from the sheet names
+# Get the current sheet names
+sheet_names <- names(excel_file)
+
+# Define the string to remove
+string_to_remove <- " - invasive"
+
+# Modify sheet names by removing the specified string
+new_sheet_names <- gsub(string_to_remove, "", sheet_names)
+
+# Rename sheets only if the sheet name changed
+for (i in seq_along(sheet_names)) {
+  if (sheet_names[i] != new_sheet_names[i]) {
+    renameWorksheet(excel_file, sheet = sheet_names[i], newName = new_sheet_names[i])
+  }
+}
+
+# Save the workbook with the updated sheets
+saveWorkbook(excel_file, here("health/original/ATLAS 2/ATLAS_clean.xlsx"), overwrite = TRUE)
+
+
+# Open file 
+excel_file <- here("health/original/ATLAS 2/ATLAS_clean.xlsx")
+
+# Get the names of the sheets in the Excel workbook
+diseases <- excel_sheets(excel_file)[-c(1:5)]
+
+## Males
+all_data_males <- list()
+
+# Loop through each disease
+for (sheet_name in diseases) {
+  
+   if (sheet_name %in% c("Breast cancer", "Uterine cancer", "Cervical cancer", "Ovarian cancer", "Testicular cancer", "Prostate cancer", "Vulvar cancer")) {
+    next  # Skip to the next iteration of the loop includes cancer for females only and also testicular cancer, we do not model and messes up columns patterns
+  }
+  
+  # sheet_name = "All cancers"
+  
+  # Read data for the current disease
+  data <- read_xlsx(excel_file, 
+    sheet = sheet_name, 
+    col_names = TRUE, 
+    n_max = 2400) %>%
+    select(1:8, 13, 16) %>%
+  mutate(sex="Males",
+           site = sheet_name)
+  
+  # Store the processed data in the list
+  all_data_males[[sheet_name]] <- data
+}
+
+# Done outside loop as diff columns format
+
+prostate_cancer <- read_xlsx(excel_file,
+    sheet = "Prostate cancer", 
+    col_names = TRUE, 
+    n_max = 2400) %>%
+    mutate(sex = "Males",
+           site = "Prostate cancer")  %>%
+    select(1:9, 12:14)
+
+# Bind all data frames together
+final_data_males <- do.call(rbind, all_data_males) %>% 
+                   bind_rows(prostate_cancer) %>% 
+                  rename("Probability differs from Aust average"= "Probability differs from Aust average - Males",
+                         "SIR"="Estimate - Males" )
+
+## females
+all_data_females <- list()
+
+# Loop through each disease
+for (sheet_name in diseases) {
+  
+  
+  if (sheet_name %in% c("Testicular cancer", "Prostate cancer")) {
+    next  # Skip to the next iteration of the loop includes cancer for females only and also testicular cancer, we do not model and messes up columns patterns
+  }
+  # Read data for the current disease
+  data <- read_xlsx(excel_file, 
+    sheet = sheet_name, 
+    col_names = TRUE, 
+    n_max = 2400
+  )  %>%
+    select(1:12) %>%
+  mutate(sex="Females",
+           site = sheet_name)
+  
+  # Store the processed data in the list
+  all_data_females[[sheet_name]] <- data
+}
+
+# Bind all data frames together
+final_data_females <- do.call(rbind, all_data_females) %>%
+    select(1:9, 12:14) %>% 
+                  rename("Probability differs from Aust average"= "Probability differs from Aust average - Females",
+                         "SIR"="Estimate - Females" )
+
+SA2_soc <- read_xlsx(excel_file, sheet="Geography", skip=11, col_names = TRUE, n_max=2200)
+
+
+# Population from 2026 census
+
+pop_SA2 <- read_csv(here("health/original/ABS/Population by SA2 area.csv"), skip = 9, col_names = TRUE) %>%
+  # Set the first row as column names
+  { setNames(.[-1, ], unlist(.[1, ]))} %>%
+   {names(.)[4] <- "population"; .}  %>%
+   as.data.frame() %>%
+  fill(SA2, .direction = "down") %>%
+  fill(`SEXP Sex`, .direction = "down") %>%
+  rename(sex = `SEXP Sex`, 
+         age = `AGEP Age`, 
+         sa2_name = SA2) %>% 
+  mutate(age=as.numeric(age))
+
+
+
+data_combined <- bind_rows(final_data_females, final_data_males) %>%
+  mutate(`SA2 code`=as.numeric(`SA2 code`)) %>%
+ left_join(SA2_soc) %>% rename(SA2 = `SA2 name`)
+# %>% filter(State=="Victoria", Remoteness=="Major city", `Capital cities`=="Greater Melbourne")
+
+
+# Create a variable to indicate whether the average by age and sex should be  multiplied by the SIR, depending on the probability of the SA2 value differing from  Australian average
+# Probability differs from Australian average
+# This value ranges from 0 (low) to 1 (high) and represents the probability that  # the area's estimate is different to the Australian average. 
+# If the standardised incidence ratio (SIR) is above 1, and the probability is high # (>0.6), then it is likely this area really has a higher diagnosis rate than the # national average. 
+# If the standardised incidence ratio (SIR) is below 1, and the probability is high (>0.6),# # then it is likely this area really has a lower diagnosis rate than the # national average. 
+
+data_combined <- data_combined %>%  mutate(diff = ifelse(SIR > 1 & `Probability differs from Aust average` > 0.6, "yes", ifelse(SIR < 1 & `Probability differs from Aust average` > 0.6, "yes", "no")))  %>%
+  mutate(`Socioeconomic index` = case_when(
+    `Socioeconomic index` == "Middle" ~ "Middle SES",
+    TRUE ~ `Socioeconomic index`  # Handle default case
+  ))
+```
+
 **Combining data sources**
 
 We combined incidence data by age and sex for Australia wide with data
@@ -631,8 +796,9 @@ data_combined <- data_combined %>% filter(!(site %in% c("Brain Cancer", "Cervica
 
 # Atlas does not have data for bladder cancer, use data for all cancers and for colon and rectum separately, then use combined (bowel cancer) for each. 
 
-bladder_cancer <- data_combined %>% filter(site=="all cancers") %>%
-  mutate(site = if_else(site == "all cancers", "bladder cancer", site))
+## ATLAS 2 has bowel cancer
+# bladder_cancer <- data_combined %>% filter(site=="all cancers") %>%
+#   mutate(site = if_else(site == "all cancers", "bladder cancer", site))
 
 rectum_cancer <- data_combined %>% filter(site=="bowel cancer") %>%
   mutate(site = if_else(site == "bowel cancer", "rectum cancer", site))
@@ -652,7 +818,7 @@ data_sa2_sex <- data_combined %>%
 
 cancer_incidence_area <- data_sa2_sex %>% left_join(incyr, by=c("sex", "site")) %>%
          mutate(rate_area=ifelse(diff=="yes", as.numeric(SIR)*val_interpolated,     val_interpolated)) %>%
-         rename(socio=`Socioeconomic status`,
+         rename(socio=`Socioeconomic index`, #`Socioeconomic status` for ATLAS data
          sa2_code=`SA2 code`, 
          sa2_name = SA2) %>%
          mutate(prob=1 - exp(-rate_area)) %>%
@@ -1841,7 +2007,9 @@ The data used is as follows.
     quintile and sex, for 2017-18.
 
 -   Dementia: `AIHW/dementia-mortality.xlsx`, Table S3.6. This is
-    mortality data from AIHW, by socioeconomic quintile and sex, for 2021. 
+    mortality data from AIHW, by socioeconomic quintile and sex, for
+
+    2021. 
 
 -   Diabetes type 2: `AIHW/cdv_dia_kid_socioeconomic.csv`, Table S7.
     This is prevalence data from AIHW, by socioeconomic quintile and
