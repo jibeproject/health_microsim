@@ -509,104 +509,105 @@ difference in population between SA2 and differences in age structure of
 the population with an SA2. Data for the Australian average by age and
 sex is from AIHW and interpolated data was generated above named incyr.
 
-**Code if using ATLAS original up to years 2014 or 2016 (check)**
+**Code if using ATLAS original up to years 2014 or 2016 (check)
+(commented out as we can use latest data, code below)**
 
 ```{r, echo=FALSE}
-# Get sheet with SA2 areas by SES and filter Victoria
-
-excel_file <- here("health/original/ATLAS/Atlas_estimates_95CIs.xlsx")
-
-# Get the names of the sheets in the Excel workbook
-diseases <- excel_sheets(excel_file)[-c(1:4)]
-
-## Males
-all_data_males <- list()
-
-# Loop through each disease
-for (sheet_name in diseases) {
-  # Read data for the current disease
-  data <- read_xlsx(excel_file, 
-    sheet = sheet_name, 
-    skip = 9, 
-    col_names = TRUE, 
-    n_max = 2200
-  ) 
-  
-  # Process data for males
-  males <- data %>%
-    select(1:5) %>%
-    setNames(.[2, ]) %>%
-    slice(-1, -2) %>%
-    mutate(sex = "Males",
-           site = sheet_name)
-  
-  # Store the processed data in the list
-  all_data_males[[sheet_name]] <- males
-}
-
-# Bind all data frames together
-final_data_males <- do.call(rbind, all_data_males)
-
-## females
-all_data_females <- list()
-
-# Loop through each disease
-for (sheet_name in diseases) {
-  # Read data for the current disease
-  data <- read_xlsx(excel_file, 
-    sheet = sheet_name, 
-    skip = 9, 
-    col_names = TRUE, 
-    n_max = 2200
-  ) 
-  
-  # Process data for males
-  females <- data %>%
-    select(1,2,6,7,8) %>%
-  setNames(.[2, ]) %>%
-  slice(-1, -2) %>%
-  mutate(sex="Females",
-           site = sheet_name)
-  
-  # Store the processed data in the list
-  all_data_females[[sheet_name]] <- females
-}
-
-# Bind all data frames together
-final_data_females <- do.call(rbind, all_data_females) 
-
-SA2_soc <- read_xlsx(excel_file, sheet="Geography", skip=11, col_names = TRUE, n_max=2200)
-
-
-# Population from 2026 census
-
-pop_SA2 <- read_csv(here("health/original/ABS/Population by SA2 area.csv"), skip = 9, col_names = TRUE) %>%
-  # Set the first row as column names
-  { setNames(.[-1, ], unlist(.[1, ]))} %>%
-   {names(.)[4] <- "population"; .}  %>%
-   as.data.frame() %>%
-  fill(SA2, .direction = "down") %>%
-  fill(`SEXP Sex`, .direction = "down") %>%
-  rename(sex = `SEXP Sex`, 
-         age = `AGEP Age`, 
-         sa2_name = SA2) %>% 
-  mutate(age=as.numeric(age))
-
-
-
-data_combined <- bind_rows(final_data_females, final_data_males) %>%
-  mutate(`SA2 code`=as.numeric(`SA2 code`)) %>%
- left_join(SA2_soc) %>% rename(SA2 = `SA2 name`)
-# %>% filter(State=="Victoria", Remoteness=="Major city", `Capital cities`=="Greater Melbourne")
-
-
-# Create a variable to indicate whether the average by age and sex should be  multiplied by the SIR, depending on the probability of the SA2 value differing from  Australian average
-# Probability differs from Australian average
-# This value ranges from 0 (low) to 1 (high) and represents the probability that  # the area's estimate is different to the Australian average. 
-# If the standardised incidence ratio (SIR) is above 1, and the probability is high # (>0.6), then it is likely this area really has a higher diagnosis rate than the # national average. 
-# If the standardised incidence ratio (SIR) is below 1, and the probability is high (>0.6),# # then it is likely this area really has a lower diagnosis rate than the # national average. 
-
-data_combined <- data_combined %>%  mutate(diff = ifelse(SIR > 1 & `Probability differs from Aust average` > 0.6, "yes", ifelse(SIR < 1 & `Probability differs from Aust average` > 0.6, "yes", "no")))
+# # Get sheet with SA2 areas by SES and filter Victoria
+# 
+# excel_file <- here("health/original/ATLAS/Atlas_estimates_95CIs.xlsx")
+# 
+# # Get the names of the sheets in the Excel workbook
+# diseases <- excel_sheets(excel_file)[-c(1:4)]
+# 
+# ## Males
+# all_data_males <- list()
+# 
+# # Loop through each disease
+# for (sheet_name in diseases) {
+#   # Read data for the current disease
+#   data <- read_xlsx(excel_file, 
+#     sheet = sheet_name, 
+#     skip = 9, 
+#     col_names = TRUE, 
+#     n_max = 2200
+#   ) 
+#   
+#   # Process data for males
+#   males <- data %>%
+#     select(1:5) %>%
+#     setNames(.[2, ]) %>%
+#     slice(-1, -2) %>%
+#     mutate(sex = "Males",
+#            site = sheet_name)
+#   
+#   # Store the processed data in the list
+#   all_data_males[[sheet_name]] <- males
+# }
+# 
+# # Bind all data frames together
+# final_data_males <- do.call(rbind, all_data_males)
+# 
+# ## females
+# all_data_females <- list()
+# 
+# # Loop through each disease
+# for (sheet_name in diseases) {
+#   # Read data for the current disease
+#   data <- read_xlsx(excel_file, 
+#     sheet = sheet_name, 
+#     skip = 9, 
+#     col_names = TRUE, 
+#     n_max = 2200
+#   ) 
+#   
+#   # Process data for males
+#   females <- data %>%
+#     select(1,2,6,7,8) %>%
+#   setNames(.[2, ]) %>%
+#   slice(-1, -2) %>%
+#   mutate(sex="Females",
+#            site = sheet_name)
+#   
+#   # Store the processed data in the list
+#   all_data_females[[sheet_name]] <- females
+# }
+# 
+# # Bind all data frames together
+# final_data_females <- do.call(rbind, all_data_females) 
+# 
+# SA2_soc <- read_xlsx(excel_file, sheet="Geography", skip=11, col_names = TRUE, n_max=2200)
+# 
+# 
+# # Population from 2026 census
+# 
+# pop_SA2 <- read_csv(here("health/original/ABS/Population by SA2 area.csv"), skip = 9, col_names = TRUE) %>%
+#   # Set the first row as column names
+#   { setNames(.[-1, ], unlist(.[1, ]))} %>%
+#    {names(.)[4] <- "population"; .}  %>%
+#    as.data.frame() %>%
+#   fill(SA2, .direction = "down") %>%
+#   fill(`SEXP Sex`, .direction = "down") %>%
+#   rename(sex = `SEXP Sex`, 
+#          age = `AGEP Age`, 
+#          sa2_name = SA2) %>% 
+#   mutate(age=as.numeric(age))
+# 
+# 
+# 
+# data_combined <- bind_rows(final_data_females, final_data_males) %>%
+#   mutate(`SA2 code`=as.numeric(`SA2 code`)) %>%
+#  left_join(SA2_soc) %>% rename(SA2 = `SA2 name`)
+# # %>% filter(State=="Victoria", Remoteness=="Major city", `Capital cities`=="Greater Melbourne")
+# 
+# 
+# # Create a variable to indicate whether the average by age and sex should be  multiplied by the SIR, depending on the probability of the SA2 value differing from  Australian average
+# # Probability differs from Australian average
+# # This value ranges from 0 (low) to 1 (high) and represents the probability that  # the area's estimate is different to the Australian average. 
+# # If the standardised incidence ratio (SIR) is above 1, and the probability is high # (>0.6), then it is likely this area really has a higher diagnosis rate than the # national average. 
+# # If the standardised incidence ratio (SIR) is below 1, and the probability is high (>0.6),# # then it is likely this area really has a lower diagnosis rate than the # national average. 
+# 
+# data_combined <- data_combined %>%  mutate(diff = ifelse(SIR > 1 & `Probability differs from Aust average` > 0.6, "yes", ifelse(SIR < 1 & `Probability differs from Aust average` > 0.6, "yes", "no")))
 
 ```
 
@@ -742,7 +743,7 @@ final_data_females <- do.call(rbind, all_data_females) %>%
 SA2_soc <- read_xlsx(excel_file, sheet="Geography", skip=11, col_names = TRUE, n_max=2200)
 
 
-# Population from 2026 census
+# Population from 2016 census
 
 pop_SA2 <- read_csv(here("health/original/ABS/Population by SA2 area.csv"), skip = 9, col_names = TRUE) %>%
   # Set the first row as column names
@@ -805,7 +806,7 @@ rectum_cancer <- data_combined %>% filter(site=="bowel cancer") %>%
   
 data_sa2_sex <- data_combined %>%
   mutate(site = if_else(site == "bowel cancer", "colon cancer", site)) %>%
-           bind_rows(bladder_cancer, rectum_cancer) %>%
+           bind_rows(rectum_cancer) %>%
   mutate(site = if_else(site == "uterine cancer", "endometrial cancer", site),
          site = if_else(site == "oesophageal cancer", "esophageal cancer", site),
          site = if_else(site == "melanoma", "malignant melanoma", site),
@@ -868,7 +869,7 @@ compare_age_sex <- cancer_incidence_area %>%
 
 ```
 
-#### Scoioeconomic data from AIHW (Chris)
+#### Socioeconomic data from AIHW (Chris)
 
 As a point of comparison, we also have socioeconomic data from AIHW,
 from the file cancer_socioeconomic.xlsx (published Dec 2021): Table
@@ -2044,7 +2045,7 @@ prev_sa2_sex_age <- data_sa2_sex %>%
   left_join(prev_agesex, by=c("sex", c("site" = "cause"))) %>%
   filter(!is.na(rate)) %>%  # omitting where no rate (male endometrial cancer)
   mutate(rate_area=as.numeric(SIR)*rate) %>%
-  rename(socio=`Socioeconomic status`) 
+  rename(socio=`Socioeconomic index`) 
 
 # finalise and save
 cancer_prevalence_area <- prev_sa2_sex_age %>% 
@@ -2376,7 +2377,8 @@ cvd_dem_dia_copd_prev <-  cvd_dem_dia_copd_prev %>%
     TRUE ~ NA_real_ ))) %>% # Assign NA for non-classified 
   mutate(sex=as.character(sex)) %>% 
   filter(!is.na(socio)) %>% # Now filtering for non-classified values
-  select("socio", "cause", "measure", "age", "sex", "prob") 
+  select("socio", "cause", "measure", "age", "sex", "prob") %>%
+  mutate(socio=as.numeric(socio))
 
 
 ```
@@ -2800,13 +2802,15 @@ file.
 ```{r}
 
 
-data_melbourne <- mort_disagg %>% left_join(cancer_incidence_area) %>%
+data_melbourne <- mort_disagg %>% bind_rows(cancer_incidence_area) %>%
                   bind_rows(cancer_prevalence_area) %>%
                   bind_rows(cvd_dem_dia_copd_inc) %>%
                   bind_rows(cvd_dem_dia_copd_prev) %>%
                   bind_rows(depression_incidence) %>%
                   bind_rows(depression_prevalence) %>%
-                  mutate(cause=tolower(cause))
+                  mutate(cause=tolower(cause), 
+                         measure=tolower(measure)) %>%
+                  select(age, sex, sa2_code, sa2_name, educ, prob, cause, measure, socio)
 
 saveRDS(data_melbourne, file=here("health/processed/health_transitions_melbourne.rds"))
 ```
