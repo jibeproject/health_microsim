@@ -510,7 +510,6 @@ difference in population between SA2 and differences in age structure of
 the population with an SA2. Data for the Australian average by age and
 sex is from AIHW and interpolated data was generated above named incyr.
 
-
 ```{r}
 # Get sheet with SA2 areas by SES and filter Victoria [SP: currently the filter for Victoria is commented out; is that intentional?]
 
@@ -2716,45 +2715,84 @@ mort_trends_ord[1, "diff"] <- 0 # modify female diff for 0 age 2022 as it is NA.
 
 ```
 
-Regression analysis to derive trends
+Do some graphs to check trends on data
 
 ```{r}
+library(ggplot2)
+library(ggforce)
 
-# Load necessary libraries - TO DO - delete (because both are in tidyverse, loaded at the top) 
-library(dplyr)
+
+# Create a directory to save the plots
+output_dir <-  file.path(here("images/mortality_trends/"))
+if (!dir.exists(output_dir)) {
+  dir.create(output_dir)
+}
+
 library(ggplot2)
 
-# Fit a linear regression model
-model <- lm(diff ~ Age + Year + sex, data = mort_trends_ord)
+# Create a directory to save the plots
+output_dir <- "plots"
+if (!dir.exists(output_dir)) {
+  dir.create(output_dir)
+}
 
-# View the summary of the model to check coefficients, R-squared, etc.
-summary(model)
+# Define the number of facets per page
+facets_per_page <- 20  # Adjust this number as needed
 
-# Extract coefficients
-coefficients <- coef(model)
-print(coefficients)
+# Split ages into chunks based on the desired number of facets per page
+ages <- unique(mort_trends_ord$Age)
+chunks <- split(ages, ceiling(seq_along(ages) / facets_per_page))
 
-# Make predictions using the fitted model
-mort_trends_ord$predicted_change <- predict(model, newdata = mort_trends_ord)
+# Function to save plots
+save_plot <- function(plot, page_number) {
+  file_name <- file.path(output_dir, paste0("plot_page_", page_number, ".png"))
+  ggsave(file_name, plot = plot, width = 12, height = 10, bg = "white")  # Adjust dimensions as needed
+}
 
-# Plot observed vs predicted mortality change
-ggplot(mort_trends_ord, aes(x = diff, y = predicted_change)) +
-  geom_point() +
-  geom_abline(intercept = 0, slope = 1, color = "red") +
-  labs(title = "Observed vs Predicted Mortality Change",
-       x = "Observed Mortality Change",
-       y = "Predicted Mortality Change") +
-  theme_minimal()
+# Generate and save plots
+for (i in seq_along(chunks)) {
+  # Subset data for current chunk
+  age_subset <- mort_trends_ord[mort_trends_ord$Age %in% chunks[[i]], ]
+  
+  # Calculate y-axis limits
+  y_min <- min(age_subset$rate, na.rm = TRUE)
+  y_max <- max(age_subset$rate, na.rm = TRUE)
+  y_padding <- 0.1 * (y_max - y_min)  # Add 10% padding to the range
+  y_limits <- c(y_min - y_padding, y_max + y_padding)
+  
+  # Create the plot with adjusted y-axis and white background
+  p <- ggplot(age_subset, aes(x = Year, y = rate, color = sex, group = sex)) +
+    geom_line() +
+    labs(title = paste("Line Chart by Sex Group - Page", i),
+         x = "Year", y = "Rate") +
+    facet_wrap(~ Age, ncol = 5) +  # Adjust number of columns to fit your layout
+    scale_y_continuous(limits = y_limits) +  # Set y-axis limits
+    theme_minimal() +
+    theme(panel.background = element_rect(fill = "white"),
+          plot.background = element_rect(fill = "white"))  # Ensure plot background is white
+  
+  # Save the plot to a file
+  save_plot(p, i)
+}
+
+cat("Plots have been saved in the 'plots' directory.\n")
+
 
 ```
 
 ## Prevalence trends
 
-Prevalence rates for 2018 and subsequent years.  We have not identified useful prevalence projections for the relevant diseases.
+Prevalence rates for 2018 and subsequent years. We have not identified
+useful prevalence projections for the relevant diseases.
 
-This consists of prevalence rates from GBD for 2018 to 2021 for all relevant diseases, plus rates from AIHW for specific years for diabetes, dementia \[and COPD\].  **SP note: the COPD figures from AIHW are much lower than from GBD, and this may be because the AIHW figures only cover ICD J43-J44, whereas the GBD figures cover J41-J44.  Possibly the COPD figures here are not useful and should be discarded.**
+This consists of prevalence rates from GBD for 2018 to 2021 for all
+relevant diseases, plus rates from AIHW for specific years for diabetes,
+dementia \[and COPD\]. **SP note: the COPD figures from AIHW are much
+lower than from GBD, and this may be because the AIHW figures only cover
+ICD J43-J44, whereas the GBD figures cover J41-J44. Possibly the COPD
+figures here are not useful and should be discarded.**
 
-``` {r}
+```{r}
 # GBD prevalence for all relevant diseases, 2018-21
 gbd_prev <- prev_agesex_all %>%
   mutate(type = "actual", source = "GBD", cause = tolower(cause)) %>%
