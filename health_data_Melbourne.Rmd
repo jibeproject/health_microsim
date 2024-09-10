@@ -38,6 +38,7 @@ rm(list = ls())
 
 library(tidyverse)
 library(readxl)
+library(openxlsx)
 library(readr)
 library(knitr)
 library(jsonlite)
@@ -509,115 +510,12 @@ difference in population between SA2 and differences in age structure of
 the population with an SA2. Data for the Australian average by age and
 sex is from AIHW and interpolated data was generated above named incyr.
 
-**Code if using ATLAS original up to years 2014 or 2016 (check)
-(commented out as we can use latest data, code below)**
-
-```{r, echo=FALSE}
-# # Get sheet with SA2 areas by SES and filter Victoria
-# 
-# excel_file <- here("health/original/ATLAS/Atlas_estimates_95CIs.xlsx")
-# 
-# # Get the names of the sheets in the Excel workbook
-# diseases <- excel_sheets(excel_file)[-c(1:4)]
-# 
-# ## Males
-# all_data_males <- list()
-# 
-# # Loop through each disease
-# for (sheet_name in diseases) {
-#   # Read data for the current disease
-#   data <- read_xlsx(excel_file, 
-#     sheet = sheet_name, 
-#     skip = 9, 
-#     col_names = TRUE, 
-#     n_max = 2200
-#   ) 
-#   
-#   # Process data for males
-#   males <- data %>%
-#     select(1:5) %>%
-#     setNames(.[2, ]) %>%
-#     slice(-1, -2) %>%
-#     mutate(sex = "Males",
-#            site = sheet_name)
-#   
-#   # Store the processed data in the list
-#   all_data_males[[sheet_name]] <- males
-# }
-# 
-# # Bind all data frames together
-# final_data_males <- do.call(rbind, all_data_males)
-# 
-# ## females
-# all_data_females <- list()
-# 
-# # Loop through each disease
-# for (sheet_name in diseases) {
-#   # Read data for the current disease
-#   data <- read_xlsx(excel_file, 
-#     sheet = sheet_name, 
-#     skip = 9, 
-#     col_names = TRUE, 
-#     n_max = 2200
-#   ) 
-#   
-#   # Process data for males
-#   females <- data %>%
-#     select(1,2,6,7,8) %>%
-#   setNames(.[2, ]) %>%
-#   slice(-1, -2) %>%
-#   mutate(sex="Females",
-#            site = sheet_name)
-#   
-#   # Store the processed data in the list
-#   all_data_females[[sheet_name]] <- females
-# }
-# 
-# # Bind all data frames together
-# final_data_females <- do.call(rbind, all_data_females) 
-# 
-# SA2_soc <- read_xlsx(excel_file, sheet="Geography", skip=11, col_names = TRUE, n_max=2200)
-# 
-# 
-# # Population from 2026 census
-# 
-# pop_SA2 <- read_csv(here("health/original/ABS/Population by SA2 area.csv"), skip = 9, col_names = TRUE) %>%
-#   # Set the first row as column names
-#   { setNames(.[-1, ], unlist(.[1, ]))} %>%
-#    {names(.)[4] <- "population"; .}  %>%
-#    as.data.frame() %>%
-#   fill(SA2, .direction = "down") %>%
-#   fill(`SEXP Sex`, .direction = "down") %>%
-#   rename(sex = `SEXP Sex`, 
-#          age = `AGEP Age`, 
-#          sa2_name = SA2) %>% 
-#   mutate(age=as.numeric(age))
-# 
-# 
-# 
-# data_combined <- bind_rows(final_data_females, final_data_males) %>%
-#   mutate(`SA2 code`=as.numeric(`SA2 code`)) %>%
-#  left_join(SA2_soc) %>% rename(SA2 = `SA2 name`)
-# # %>% filter(State=="Victoria", Remoteness=="Major city", `Capital cities`=="Greater Melbourne")
-# 
-# 
-# # Create a variable to indicate whether the average by age and sex should be  multiplied by the SIR, depending on the probability of the SA2 value differing from  Australian average
-# # Probability differs from Australian average
-# # This value ranges from 0 (low) to 1 (high) and represents the probability that  # the area's estimate is different to the Australian average. 
-# # If the standardised incidence ratio (SIR) is above 1, and the probability is high # (>0.6), then it is likely this area really has a higher diagnosis rate than the # national average. 
-# # If the standardised incidence ratio (SIR) is below 1, and the probability is high (>0.6),# # then it is likely this area really has a lower diagnosis rate than the # national average. 
-# 
-# data_combined <- data_combined %>%  mutate(diff = ifelse(SIR > 1 & `Probability differs from Aust average` > 0.6, "yes", ifelse(SIR < 1 & `Probability differs from Aust average` > 0.6, "yes", "no")))
-
-```
-
-**Code if using latest ATLAS (2010-2019)**
 
 ```{r}
-# Get sheet with SA2 areas by SES and filter Victoria
+# Get sheet with SA2 areas by SES and filter Victoria [SP: currently the filter for Victoria is commented out; is that intentional?]
 
-library(stringr)
-library(openxlsx)
+library(stringr)  # SP: can delete; loaded in chunk 1 as part of tidyverse
+library(openxlsx)  # SP: can delete; I've added it to chunk 1 
 
 excel_file <- loadWorkbook(here("health/original/ATLAS 2/ACA 2 - Diagnosis relative estimates.xlsx"))
 
@@ -625,7 +523,7 @@ excel_file <- loadWorkbook(here("health/original/ATLAS 2/ACA 2 - Diagnosis relat
 sheet_names <- names(excel_file)
 
 # Define the string that should be in the sheet names
-search_string <- "invasive" #we just keep invasive cancer, stages are within invasive. in situ, localised, is not available as added to invasive. Most data for invasive and for previous ATLAS data we ony had invasive cancer. 
+search_string <- "invasi" #we just keep invasive cancer, stages are within invasive. in situ, localised, is not available as added to invasive. Most data for invasive and for previous ATLAS data we ony had invasive cancer. However, in some sheets (eg head and neck cancers, 'invasive' is abbreviated)
 
 # Filter sheets to keep: those containing the string or the first 5 sheets
 sheets_to_keep <- sheet_names[1:5]  # Keep first 5 sheets
@@ -647,7 +545,7 @@ for(sheet in sheets_to_remove) {
 sheet_names <- names(excel_file)
 
 # Define the string to remove
-string_to_remove <- " - invasive"
+string_to_remove <- " - invasi.*"
 
 # Modify sheet names by removing the specified string
 new_sheet_names <- gsub(string_to_remove, "", sheet_names)
@@ -902,17 +800,16 @@ cancerinc_socio <- read_xlsx(here("health/original/AIHW/cancer_socioeconomic.xls
   fill(site) %>%
   select(site, socio = "Socioeconomic area",
          rate = "ASR (per 100,000)...5") %>%
-  #filter(socio != "Australia") |> # BZD: I think that we should leave and the RRs should be relative to australia wide, since the data that we then modify is australia wide, otherwise, the lowest SES has the incidence rates observed australia wide. 
+  filter(socio != "Australia") |> 
   mutate(socio = case_when(socio=="1 Lowest" ~ "1", # 1: lowest, to 5: highest
                            socio=="5 Highest" ~ "5",
-                           socio=="Australia" ~ "6",
                            .default = socio),
          socio = as.numeric(socio)) %>%
   group_by(site) %>%
-  mutate(rr = rate / last(rate)) %>%
+  mutate(rr = rate / first(rate)) %>%
   ungroup() %>%
   mutate(site = sites$stdname[match(site, sites$socioname)])  %>%
-  filter(site %in% sites$stdname) %>% filter(socio != "6")
+  filter(site %in% sites$stdname) 
 
 ## Esophageal, gastric cardia, myeloid leukemia and myeloma assumed to match all cancers
 sociona_sites <- c("Esophageal cancer","Gastric cardia cancer","Myeloid leukemia","Myeloma")
@@ -1569,9 +1466,9 @@ inc_cvd_dem_dia_copd_agesex <- gbdpyr %>%
 # Stroke
 
 stroke_inc <- read_xlsx(here("health/original/AIHW/cdv_dia_kid_socioeconomic.xlsx"), sheet="Table S2", skip=1, col_names = TRUE, n_max=30) %>%
-  slice(-c(8:11, 19:26)) %>%
+  slice(-c(7:11, 18:26)) %>%
   mutate(sex = ifelse(row_number() <= 7, "Male", "Female")) %>%
-  slice(-c(1,8)) %>%
+  slice(-c(1,7)) %>%
   rename(socio=`Socioeconomic group`, 
          rate=`2016`) %>%
   mutate(socio = case_when(socio=="Group 1 (lowest)" ~ "1", # 1: lowest, to 5: highest
@@ -1579,11 +1476,10 @@ stroke_inc <- read_xlsx(here("health/original/AIHW/cdv_dia_kid_socioeconomic.xls
                            socio=="Group 3" ~ "3",
                            socio=="Group 4" ~ "4",
                            socio=="Group 5 (highest)" ~ "5",
-                           socio =="Total" ~ "6",
                            .default = socio),
          socio = as.numeric(socio)) %>%
   group_by(sex) %>%
-  mutate(rr = rate / last(rate)) |> # Last rate is australian average
+  mutate(rr = rate / first(rate)) |> 
   ungroup() %>%
   select(socio, sex, rate, rr) %>%
   mutate(cause="Stroke") # to match gbd name
@@ -1591,9 +1487,9 @@ stroke_inc <- read_xlsx(here("health/original/AIHW/cdv_dia_kid_socioeconomic.xls
 # Cardiovascular disease (data is for deaths for CVDs, we will use it to adjust CHD/IHD incidence by age and sex)
 
 cvd_inc <- read_xlsx(here("health/original/AIHW/cdv_dia_kid_socioeconomic.xlsx"), sheet="Table S3", skip=1, col_names = TRUE, n_max=30) %>%
-  slice(-c(8:11, 19:26)) %>%
+  slice(-c(7:11, 18:26)) %>%
   mutate(sex = ifelse(row_number() <= 7, "Male", "Female")) %>%
-  slice(-c(1,8)) %>%
+  slice(-c(1,7)) %>%
   rename(socio=`Socioeconomic group`, 
          rate=`2016`) %>%
   mutate(socio = case_when(socio=="Group 1 (lowest)" ~ "1", # 1: lowest, to 5: highest
@@ -1601,11 +1497,10 @@ cvd_inc <- read_xlsx(here("health/original/AIHW/cdv_dia_kid_socioeconomic.xlsx")
                            socio=="Group 3" ~ "3",
                            socio=="Group 4" ~ "4",
                            socio=="Group 5 (highest)" ~ "5",
-                           socio =="Total" ~ "6",
                            .default = socio),
          socio = as.numeric(socio)) %>%
   group_by(sex) %>%
-  mutate(rr = rate / last(rate)) |> 
+  mutate(rr = rate / first(rate)) |> 
   ungroup() %>%
   select(socio, sex, rate, rr) %>%
   mutate(cause="Ischemic heart disease") # to match gbd name
@@ -1614,20 +1509,18 @@ cvd_inc <- read_xlsx(here("health/original/AIHW/cdv_dia_kid_socioeconomic.xlsx")
 # Dementia (we use mortality data.  There is also hospitalisation data (dementia-hospital-care.xlsx, Table S9.6), but the socioeconomic area rates for hospitalisations are not differentiated by sex, whereas the mortality data shows  greater socioeconomic area variation for Females than Males.)
 
 dementia_inc <- read_xlsx(here("health/original/AIHW/dementia-mortality.xlsx"), 
-                          sheet = "S3.6", skip = 2, col_names = TRUE, n_max = 11) %>%
-  slice(-c(2:6)) %>%
+                          sheet = "S3.6", skip = 8, col_names = TRUE, n_max = 5) %>%
   rename_with( ~ c("category", "socio", "Male", "Female", "Person",
                    "MaleCrude", "FemaleCrude", "PersonCrude")) %>%
   dplyr::select(socio, Female, Male) %>%
   pivot_longer(cols = c("Female", "Male"), names_to = "sex", values_to = "rate") %>%
   mutate(socio = case_when(socio == "1 (lowest)" ~ "1", # 1: lowest, to 5: highest
                            socio == "5 (highest)" ~ "5",
-                           socio == "Australia" ~ "6",
                            .default = socio),
          socio = as.numeric(socio)) %>%
   arrange(socio) %>%
   group_by(sex) %>%
-  mutate(rr = rate / last(rate)) |> 
+  mutate(rr = rate / first(rate)) |> 
   ungroup() %>%
   select(socio, sex, rate, rr) %>%
   mutate(cause = "Alzheimer's disease and other dementias") # to match gbd name
@@ -1636,9 +1529,9 @@ dementia_inc <- read_xlsx(here("health/original/AIHW/dementia-mortality.xlsx"),
 # Diabetes (we use prevalence data. There is mortality data, but figures are low and diabetes as cause of deaths is likely under reported)
 
 diabetes_inc <- read_xlsx(here("health/original/AIHW/cdv_dia_kid_socioeconomic.xlsx"), sheet="Table S7", skip=1, col_names = TRUE, n_max=30) %>%
-  slice(-c(8:11, 19:26)) %>%
-  mutate(sex = ifelse(row_number() <= 7, "Male", "Female")) %>%
-  slice(-c(1,8,15)) %>%
+  slice(-c(7:11, 18:27)) %>%
+  mutate(sex = ifelse(row_number() < 7, "Male", "Female")) %>%
+  slice(-c(1, 7)) %>%
   rename(socio=`Socioeconomic group`, 
          rate=`2016`) %>%
   mutate(socio = case_when(socio=="Group 1 (lowest)" ~ "1", # 1: lowest, to 5: highest
@@ -1650,7 +1543,7 @@ diabetes_inc <- read_xlsx(here("health/original/AIHW/cdv_dia_kid_socioeconomic.x
                            .default = socio),
          socio = as.numeric(socio)) %>%
   group_by(sex) %>%
-  mutate(rr = rate / last(rate)) |>
+  mutate(rr = rate / first(rate)) |>
   ungroup() %>%
   select(socio, sex, rate, rr) %>%
   mutate(cause="Diabetes mellitus type 2") #to match gbd name
@@ -1658,17 +1551,9 @@ diabetes_inc <- read_xlsx(here("health/original/AIHW/cdv_dia_kid_socioeconomic.x
 
 # COPD (we use mortality data.  There is prevalence data, but it is self-reported.)
 
-copd_inc <- bind_rows(
-  # data by socio-economic quintile
-  read_xlsx(here("health/original/AIHW/copd-mortality.xlsx"),
+copd_inc <- read_xlsx(here("health/original/AIHW/copd-mortality.xlsx"),
             sheet = "Table Resp_Mort.2", skip = 4, col_names = TRUE) %>%
-    filter(str_detect(Geography, "SEIFA")),
-  # add data for Australia all ages
-  read_xlsx(here("health/original/AIHW/copd-mortality.xlsx"),
-            sheet = "Table Resp_Mort.1", skip = 4, col_names = TRUE) %>%
-    mutate(Year = as.character(Year))%>%
-    filter(`Age group` == "All ages")
-  ) %>%
+    filter(str_detect(Geography, "SEIFA")) %>%
   filter(Year == "2021" &  # SEIFA table only has 2021
            Condition == "Respiratory - COPD" &
            `Cause scope` == "1. Underlying cause of condition" &
@@ -1681,14 +1566,13 @@ copd_inc <- bind_rows(
     socio == "SEIFA-2016 Quintile 3"                       ~ "3",
     socio == "SEIFA-2016 Quintile 4"                       ~ "4",
     socio == "SEIFA-2016 Quintile 5 (least disadvantaged)" ~ "5",
-    socio == "Australia"                                   ~ "6",
     .default = socio),
     socio = as.numeric(socio),
     sex = case_when(sex == "Females" ~ "Female",
                     sex == "Males"   ~ "Male",
                     .default = sex)) %>%
   group_by(sex) %>%
-  mutate(rr = rate / last(rate)) %>%
+  mutate(rr = rate / first(rate)) %>%
   ungroup() %>%
   select(socio, sex, rate, rr) %>%
   mutate(cause="Chronic obstructive pulmonary disease") # to match gbd name
@@ -1698,8 +1582,8 @@ copd_inc <- bind_rows(
 
 inc_cvd_dem_dia_copd_socio <- bind_rows(cvd_inc, dementia_inc, diabetes_inc, 
                                         stroke_inc, copd_inc) %>% 
-  arrange(cause, sex, socio) %>% 
-  filter(socio != "6") 
+  arrange(cause, sex, socio)
+
 ```
 
 #### Combining socioeconomic status with age and sex
@@ -1825,12 +1709,13 @@ docs/images/prev_gbd_age_sex to visually check the fit of the
 interpolation to the original data.
 
 ```{r}
-# Extract the 2018 prevalence values from the interpolated GDB data prepared above
+# Extract the prevalence values from the interpolated GDB data prepared above and plot the 2018 values
 gbdpyr <- gbdpyr_interp %>%
-  filter(measure == "Prevalence" & year == 2018)
+  filter(measure == "Prevalence")
 
 # Melt the data to long format for ggplot
 plot_data <- gbdpyr %>%
+  filter(year == 2018) %>%
   select(measure, cause, sex, ageyr, rate_1, val_interpolated) %>%
   pivot_longer(cols = c(rate_1, val_interpolated), names_to = "type", values_to = "value")
 
@@ -1865,7 +1750,7 @@ transformation:
 
 ```{r}
 
-prev_agesex <- gbdpyr %>%
+prev_agesex_all <- gbdpyr %>%
   filter (cause %in% c("Stroke", "Ischemic heart disease", "Breast cancer", 
                        "Uterine cancer", "Tracheal, bronchus, and lung cancer", 
                        "Colon and rectum cancer", "Esophageal cancer", 
@@ -1876,7 +1761,7 @@ prev_agesex <- gbdpyr %>%
                        "Malignant skin melanoma", "Depressive disorders", 
                        "Major depressive disorder", "Alzheimer's disease and other dementias", 
                        "Diabetes mellitus type 2", "Chronic obstructive pulmonary disease")) %>%
-  dplyr::select(cause, age = ageyr, sex, rate = val_interpolated) %>%
+  dplyr::select(year, cause, age = ageyr, sex, rate = val_interpolated) %>%
   mutate(cause = case_when(
     cause == "Ischemic heart disease"    ~ "Coronary heart disease",
     cause == "Uterine cancer"            ~ "Endometrial cancer",
@@ -1894,13 +1779,13 @@ prev_agesex <- gbdpyr %>%
 # sum rates for head an neck cancers
 hanc <- c("Larynx cancer", "Lip and oral cavity cancer", "Nasopharynx cancer",
           "Other pharynx cancer")
-prev_agesex_hanc <- prev_agesex %>%
+prev_agesex_hanc <- prev_agesex_all %>%
   filter(cause %in% hanc) %>%
-  group_by(sex, age) %>%
+  group_by(year, sex, age) %>%
   summarise(rate = sum(rate), .groups = "drop") %>%
   mutate(cause = "Head and neck cancer")
 
-prev_agesex <- prev_agesex %>%
+prev_agesex_all <- prev_agesex_all %>%
   filter(!cause %in% hanc) %>%
   bind_rows(prev_agesex_hanc)
 
@@ -1926,19 +1811,19 @@ inc_crc <- incyr %>%
 
 # apportion colon and rectum cancer by rates
 prev_agesex_crc <-
-  prev_agesex %>%
+  prev_agesex_all %>%
   filter(cause == "Colon and rectum cancer") %>%
   # join the proportions and calculate proportionate rates
   left_join(inc_crc, by = c("sex", "age")) %>%
   mutate(Colon = rate * colon_prop,
          Rectum = rate * rectum_prop) %>%
   # pivot into separate rows for colon and rectum
-  dplyr::select(age, sex, Colon, Rectum) %>%
+  dplyr::select(year, age, sex, Colon, Rectum) %>%
   pivot_longer(cols = c("Colon", "Rectum"), names_to = "cause",
                names_transform = ~ paste(., "cancer"),
                values_to = "rate")
 
-prev_agesex <- prev_agesex %>%
+prev_agesex_all <- prev_agesex_all %>%
   filter(!cause == "Colon and rectum cancer") %>%
   bind_rows(prev_agesex_crc)
   
@@ -1972,7 +1857,7 @@ ggplot(lung_proportion %>%
   
 # multiply tbalc_rate by lung_prop to get lung rate - but some years have higher 
 # lung than tbalc, so in that case just use the tbalc figure
-prev_agesex_lung <- prev_agesex %>%
+prev_agesex_lung <- prev_agesex_all %>%
   filter(cause == "Tracheal, bronchus, and lung cancer") %>%
   rename(tbalc_rate = rate) %>%
   left_join(lung_proportion %>%
@@ -1982,9 +1867,14 @@ prev_agesex_lung <- prev_agesex %>%
   dplyr::select(-tbalc_rate, -lung_prop) %>%
   mutate(cause = "Lung cancer")
 
-prev_agesex <- prev_agesex %>%
+prev_agesex_all <- prev_agesex_all %>%
   filter(!cause == "Tracheal, bronchus, and lung cancer") %>%
   bind_rows(prev_agesex_lung)
+
+# filter to 2018 values
+prev_agesex <- prev_agesex_all %>%
+  filter(year == 2018) %>%
+  dplyr::select(-year)
   
 
 ```
@@ -2186,25 +2076,14 @@ folder.
 
 ```{r}
 # Stroke
-stroke_prev <- bind_rows(
-  # data by socioeconomic quintile
-  read_xlsx(here("health/original/AIHW/cvd-diabetes-comorbidities.xlsx"),
+stroke_prev <- read_xlsx(here("health/original/AIHW/cvd-diabetes-comorbidities.xlsx"),
             sheet = "Stroke", skip = 30, col_names = TRUE, n_max = 6) %>%
     slice(-1) %>%
     rename_with( ~ c("socio", "MaleNo", "FemaleNo", "PersonNo", "blank1",
                      "MaleCrudeRate", "MaleCrudeCI", "FemaleCrudeRate", "FemaleCrudeCI",
                      "PersonCrudeRate", "PersonCrudeCI", "blank2",
                      "Male", "MaleCI", "Female", "FemaleCI", "Person", "PersonCI")) %>%
-    dplyr::select(socio, Male, Female),
-  # add data for Australia all ages
-  read_xlsx(here("health/original/AIHW/cvd-diabetes-comorbidities.xlsx"), 
-            sheet = "Stroke", skip = 8, col_names = TRUE, n_max = 9) %>%
-    slice(-c(1:8)) %>%
-    rename_with( ~ c("socio", "MaleNo", "FemaleNo", "PersonNo", "blank1",
-                     "Male", "MaleCI", "Female", "FemaleCI", "Person", "PersonCI")) %>%
     dplyr::select(socio, Male, Female) %>%
-    mutate(Male = as.numeric(Male), Female = as.numeric(Female))
-  ) %>%
   pivot_longer(cols = c("Male", "Female"), names_to = "sex") %>%
   rename(rate = value) %>%
   mutate(socio = case_when(socio=="Group 1 (lowest)" ~ "1", # 1: lowest, to 5: highest
@@ -2212,36 +2091,24 @@ stroke_prev <- bind_rows(
                            socio=="Group 3" ~ "3",
                            socio=="Group 4" ~ "4",
                            socio=="Group 5 (highest)" ~ "5",
-                           socio == "Age-standardised rate(a)" ~ "6",
                            .default = socio),
          socio = as.numeric(socio)) %>%
   arrange(socio) %>%
   group_by(sex) %>%
-  mutate(rr = rate / last(rate)) |>
+  mutate(rr = rate / first(rate)) |>
   ungroup() %>%
   select(socio, sex, rate, rr) %>%
   mutate(cause = "Stroke")
 
 # Coronary heart disease
-chd_prev <- bind_rows(
-  # data by socioeconomic quintile
-  read_xlsx(here("health/original/AIHW/cvd-diabetes-comorbidities.xlsx"),
+chd_prev <- read_xlsx(here("health/original/AIHW/cvd-diabetes-comorbidities.xlsx"),
             sheet = "CHD", skip = 25, col_names = TRUE, n_max = 9) %>%
     slice(-c(1:4)) %>%
   rename_with( ~ c("socio", "MaleNo", "FemaleNo", "PersonNo", "blank1",
                      "MaleCrudeRate", "MaleCrudeCI", "FemaleCrudeRate", "FemaleCrudeCI",
                      "PersonCrudeRate", "PersonCrudeCI", "blank2",
                      "Male", "MaleCI", "Female", "FemaleCI", "Person", "PersonCI")) %>%
-    dplyr::select(socio, Male, Female),
-  # add data for Australia all ages
-  read_xlsx(here("health/original/AIHW/cvd-diabetes-comorbidities.xlsx"), 
-            sheet = "CHD", skip = 8, col_names = TRUE, n_max = 7) %>%
-    slice(-c(1:6)) %>%
-    rename_with( ~ c("socio", "MaleNo", "FemaleNo", "PersonNo", "blank1",
-                     "Male", "MaleCI", "Female", "FemaleCI", "Person", "PersonCI")) %>%
     dplyr::select(socio, Male, Female) %>%
-    mutate(Male = as.numeric(Male), Female = as.numeric(Female))
-  ) %>%
   pivot_longer(cols = c("Male", "Female"), names_to = "sex") %>%
   rename(rate = value) %>%
   mutate(socio = case_when(socio=="Group 1 (lowest)" ~ "1", # 1: lowest, to 5: highest
@@ -2249,12 +2116,11 @@ chd_prev <- bind_rows(
                            socio=="Group 3" ~ "3",
                            socio=="Group 4" ~ "4",
                            socio=="Group 5 (highest)" ~ "5",
-                           socio == "Age-standardised rate(a)" ~ "6",
                            .default = socio),
          socio = as.numeric(socio)) %>%
   arrange(socio) %>%
   group_by(sex) %>%
-  mutate(rr = rate / last(rate)) |>
+  mutate(rr = rate / first(rate)) |>
   ungroup() %>%
   select(socio, sex, rate, rr) %>%
   mutate(cause = "Coronary heart disease")
@@ -2269,8 +2135,7 @@ copd_prev <- copd_inc
 # Combine all five diseases
 prev_cvd_dem_dia_copd_socio <- bind_rows(chd_prev, dementia_prev, diabetes_prev, 
                                          stroke_prev, copd_prev) %>%
-  arrange(cause, sex, socio) %>%
-  filter(socio != "6")
+  arrange(cause, sex, socio)
 
 ```
 
@@ -2796,6 +2661,8 @@ mort_disagg <- mort_disagg %>%
           
 ```
 
+# Combine incidence, prevalence and mortality
+
 Combine all data sources for incidence, prevalence and mortality in one
 file.
 
@@ -2878,5 +2745,121 @@ ggplot(mort_trends_ord, aes(x = diff, y = predicted_change)) +
        x = "Observed Mortality Change",
        y = "Predicted Mortality Change") +
   theme_minimal()
+
+```
+
+## Prevalence trends
+
+Prevalence rates for 2018 and subsequent years.  We have not identified useful prevalence projections for the relevant diseases.
+
+This consists of prevalence rates from GBD for 2018 to 2021 for all relevant diseases, plus rates from AIHW for specific years for diabetes, dementia \[and COPD\].  **SP note: the COPD figures from AIHW are much lower than from GBD, and this may be because the AIHW figures only cover ICD J43-J44, whereas the GBD figures cover J41-J44.  Possibly the COPD figures here are not useful and should be discarded.**
+
+``` {r}
+# GBD prevalence for all relevant diseases, 2018-21
+gbd_prev <- prev_agesex_all %>%
+  mutate(type = "actual", source = "GBD", cause = tolower(cause)) %>%
+  dplyr::select(year, type, source, cause, sex, age, rate)
+  
+
+# AIHW dementia prevalence, 2022, ages 60 to 90
+dem_prev_base <- read_xlsx(here("health/original/AIHW/dementia-prevalence.xlsx"),
+                           sheet = "S2.1", skip = 2, col_names = TRUE, n_max = 17) %>%
+  rename_with(~ c("sex", "age_range", "no", "no_1000")) %>%
+  dplyr::select(sex, age_range, no_1000) %>%
+  fill(sex) %>%
+  slice(-c(1, 9, 10)) %>%
+  mutate(sex = case_when(sex == "Women" ~ "Female", sex == "Men" ~ "Male")) %>%
+  # convert rates per 1000 to rate per person
+  mutate(rate_1 = no_1000 / 1000) %>%
+    # break age ranges into from and to
+  mutate(age_range = ifelse(age_range == "90+", "90–94", age_range)) %>%
+  separate_wider_delim(age_range, "–", names = c("from_age", "to_age")) %>%
+  mutate(across(from_age:to_age, as.numeric),
+         agediff = to_age - from_age + 1) %>%
+  # group for interpolation
+  group_by(sex) %>%
+  arrange(sex, from_age)
+
+# interpolate
+dem_prev_interp <- group_modify(dem_prev_base, disagg_smooth_spline) %>%
+  ungroup()
+  
+# finalise
+dem_prev <- dem_prev_interp %>%
+  mutate(year = 2022, type = "actual", source = "AIHW", 
+         cause = "all cause dementia") %>%
+  dplyr::select(year, type, source, cause, sex, age = ageyr, 
+                rate = val_interpolated)
+
+
+# AIHW diabetes prevalence, 2021, ages 40 to 85
+dia_prev_base <- read_xlsx(here("health/original/AIHW/diabetes-prevalence.xlsx"),
+                        sheet = "Type 2 prevalence", skip = 5, col_names = TRUE,
+                        n_max = 11) %>%
+  slice(-1) %>%
+  rename_with(~ c("age_range", "MaleNo", "FemaleNo", "PersonNo",
+                  "Male", "Female", "Person")) %>%
+  dplyr::select(age_range, Female, Male) %>%
+  pivot_longer(cols = c("Female", "Male"), names_to = "sex", values_to = "rate_pct") %>%
+  # convert percentage rates to rate per person
+  mutate(rate_1 = rate_pct / 100) %>%
+  # break age ranges into from and to
+  mutate(age_range = ifelse(age_range == "85+", "85–89", age_range),) %>%
+  separate_wider_delim(age_range, "–", names = c("from_age", "to_age")) %>%
+  mutate(across(from_age:to_age, as.numeric),
+         agediff = to_age - from_age + 1) %>%
+  # group for interpolation
+  group_by(sex) %>%
+  arrange(sex, from_age)
+
+# interpolate
+dia_prev_interp <- group_modify(dia_prev_base, disagg_smooth_spline) %>%
+  ungroup()
+
+# finalise
+dia_prev <- dia_prev_interp %>%
+  mutate(year = 2021, type = "actual", source = "AIHW", 
+         cause = "diabetes type 2") %>%
+  dplyr::select(year, type, source, cause, sex, age = ageyr, 
+                rate = val_interpolated)
+
+
+# AIHW COPD prevalence (multisource), 2018-19, ages 35 to 95
+copd_prev_base <- read_xlsx(here("health/original/AIHW/copd-prevalence-multisource.xlsx"),
+                            sheet = "Data extract", skip = 6, col_names = TRUE, n_max = 144) %>%
+  rename_with(~ c("year", "sex", "age_range", "population", "PBS_cases", 
+                  "PBS_prevalence", "Multisource_cases", "Multisource_prevalence",
+                  "Multisource_prevalence_std")) %>%
+  dplyr::select(year, sex, age_range, rate_pct = Multisource_prevalence) %>%
+  filter(year >= 2018 & 
+           sex %in% c("Women", "Men") & 
+           !age_range %in% c("35+", "40+", "45+")) %>%
+  mutate(sex = case_when(sex == "Women" ~ "Female", sex == "Men" ~ "Male")) %>%
+  # convert percentage rates to rate per person
+  mutate(rate_1 = rate_pct / 100) %>%
+    # break age ranges into from and to
+  mutate(age_range = ifelse(age_range == "95+", "95-99", age_range)) %>%
+  separate_wider_delim(age_range, "-", names = c("from_age", "to_age")) %>%
+  mutate(across(from_age:to_age, as.numeric),
+         agediff = to_age - from_age + 1) %>%
+  # group for interpolation
+  group_by(year, sex) %>%
+  arrange(year, sex, from_age)
+  
+# interpolate
+copd_prev_interp <- group_modify(copd_prev_base, disagg_smooth_spline) %>%
+  ungroup()
+  
+# finalise
+copd_prev <- copd_prev_interp %>%
+  mutate(type = "actual", source = "AIHW", 
+         cause = "chronic obstructive pulmonary disease") %>%
+  dplyr::select(year, type, source, cause, sex, age = ageyr, 
+                rate = val_interpolated)
+
+
+# combine and save
+prev_trends <- bind_rows(gbd_prev, dem_prev, dia_prev, copd_prev)
+saveRDS(prev_trends, file=here("health/processed/health_prev_trends.rds"))
 
 ```

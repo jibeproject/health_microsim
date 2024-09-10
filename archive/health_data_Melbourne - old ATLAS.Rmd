@@ -1,0 +1,123 @@
+---
+title: "health data Melbourne"
+author: "Chris Jackson, Belen Zapata-Diomedi, Steve Pemberton"
+email: "mbzd2@cam.ac.uk, chris.jackson@mrc-bsu.cam.ac.uk, steve.pemberton@rmit.edu.au"
+date: today
+format: 
+  html:
+    code-fold: true
+    embed-resources: true
+    df-print: paged
+execute: 
+    message: false
+    warning: false
+toc: true
+number-sections: true
+editor_options:
+  mode: visual
+  markdown:
+    wrap: 72
+---
+
+
+**Incidence - Inequalities - Cancer - Code if using ATLAS original up to years 2014 or 2016**
+
+```{r, echo=FALSE}
+# Get sheet with SA2 areas by SES and filter Victoria
+
+excel_file <- here("health/original/ATLAS/Atlas_estimates_95CIs.xlsx")
+
+# Get the names of the sheets in the Excel workbook
+diseases <- excel_sheets(excel_file)[-c(1:4)]
+
+## Males
+all_data_males <- list()
+
+# Loop through each disease
+for (sheet_name in diseases) {
+  # Read data for the current disease
+  data <- read_xlsx(excel_file,
+    sheet = sheet_name,
+    skip = 9,
+    col_names = TRUE,
+    n_max = 2200
+  )
+
+  # Process data for males
+  males <- data %>%
+    select(1:5) %>%
+    setNames(.[2, ]) %>%
+    slice(-1, -2) %>%
+    mutate(sex = "Males",
+           site = sheet_name)
+
+  # Store the processed data in the list
+  all_data_males[[sheet_name]] <- males
+}
+
+# Bind all data frames together
+final_data_males <- do.call(rbind, all_data_males)
+
+## females
+all_data_females <- list()
+
+# Loop through each disease
+for (sheet_name in diseases) {
+  # Read data for the current disease
+  data <- read_xlsx(excel_file,
+    sheet = sheet_name,
+    skip = 9,
+    col_names = TRUE,
+    n_max = 2200
+  )
+
+  # Process data for males
+  females <- data %>%
+    select(1,2,6,7,8) %>%
+  setNames(.[2, ]) %>%
+  slice(-1, -2) %>%
+  mutate(sex="Females",
+           site = sheet_name)
+
+  # Store the processed data in the list
+  all_data_females[[sheet_name]] <- females
+}
+
+# Bind all data frames together
+final_data_females <- do.call(rbind, all_data_females)
+
+SA2_soc <- read_xlsx(excel_file, sheet="Geography", skip=11, col_names = TRUE, n_max=2200)
+
+
+# Population from 2026 census
+
+pop_SA2 <- read_csv(here("health/original/ABS/Population by SA2 area.csv"), skip = 9, col_names = TRUE) %>%
+  # Set the first row as column names
+  { setNames(.[-1, ], unlist(.[1, ]))} %>%
+   {names(.)[4] <- "population"; .}  %>%
+   as.data.frame() %>%
+  fill(SA2, .direction = "down") %>%
+  fill(`SEXP Sex`, .direction = "down") %>%
+  rename(sex = `SEXP Sex`,
+         age = `AGEP Age`,
+         sa2_name = SA2) %>%
+  mutate(age=as.numeric(age))
+
+
+
+data_combined <- bind_rows(final_data_females, final_data_males) %>%
+  mutate(`SA2 code`=as.numeric(`SA2 code`)) %>%
+ left_join(SA2_soc) %>% rename(SA2 = `SA2 name`)
+# %>% filter(State=="Victoria", Remoteness=="Major city", `Capital cities`=="Greater Melbourne")
+
+
+# Create a variable to indicate whether the average by age and sex should be  multiplied by the SIR, depending on the probability of the SA2 value differing from  Australian average
+# Probability differs from Australian average
+# This value ranges from 0 (low) to 1 (high) and represents the probability that  # the area's estimate is different to the Australian average.
+# If the standardised incidence ratio (SIR) is above 1, and the probability is high # (>0.6), then it is likely this area really has a higher diagnosis rate than the # national average.
+# If the standardised incidence ratio (SIR) is below 1, and the probability is high (>0.6),# # then it is likely this area really has a lower diagnosis rate than the # national average.
+
+data_combined <- data_combined %>%  mutate(diff = ifelse(SIR > 1 & `Probability differs from Aust average` > 0.6, "yes", ifelse(SIR < 1 & `Probability differs from Aust average` > 0.6, "yes", "no")))
+
+```
+
