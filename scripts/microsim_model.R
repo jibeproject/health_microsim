@@ -1,10 +1,8 @@
-# remove any variables in R's memory 
-rm(list = ls()) 
-
 # Load libraries
 library(tidyverse)
 # For parallel processing
 library(future.apply)
+library(here)
 
 plan(multisession)
 
@@ -15,7 +13,9 @@ set.seed(2)
 # synth_pop_base <- read_csv("data/siloMitoMatsim_modelOutput/pp_health_2012.csv")
 
 ### Belen 7.03.24: change folder to Jibe working group
-synth_pop <- read_csv("data/siloMitoMatsim_modelOutput/pp_health_2012.csv")
+synth_pop <- read_csv(here("data/siloMitoMatsim_modelOutput/pp_health_2012.csv"))
+
+# synth_pop <- read_csv("data/siloMitoMatsim_modelOutput/pp_2021.csv")
 
 # # Read pp health dataset (of Munich) using read_csv_arrow from arrow library
 # synth_pop_scen <- read_csv("data/siloMitoMatsim_modelOutput/pp_health_2012_scen.csv")
@@ -38,7 +38,7 @@ n.c <- 50
 v.M_1 <- rep("H", n.i)
 
 # Read probability dataset by age and sex for Australia
-back_hdata <- read_csv("data/sample/mslt_df.csv")
+back_hdata <- read_csv(here("data/sample/mslt_df.csv"))
 
 # Mutate sex to numeric values with male ~ 1 and female ~ 2
 # Also modify all columns with deaths rate into prob by 1 - exp(-deaths_rate)
