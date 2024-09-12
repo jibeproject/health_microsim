@@ -2711,6 +2711,37 @@ mort_trends_ord[5101, "diff"] <- 0 # modify male diff for 0 age 2022 as it compa
 
 mort_trends_ord[1, "diff"] <- 0 # modify female diff for 0 age 2022 as it is NA. 
                     
+# For comparison, trends as predicted in 2017-66 data from ABS
+mort_trends_former_ord <- 
+  read_excel(here("health/original/ABS/projections 2017-2066.xls"),
+             sheet = "Table 5", skip = 6) %>%
+  select(1, 2, 4, 14) %>%
+  rename(male=`Victoria...4`, 
+         female = Victoria...14) %>%
+  arrange(Age) %>% 
+  pivot_longer(cols = c("male", "female"), 
+               names_to = "sex") %>%
+  rename(rate = value) %>%
+  mutate(sex = as.factor(sex)) %>%
+  arrange(sex) %>%
+  mutate(diff = rate - lag(rate)) %>%
+  mutate(diff = ifelse(Year == 2017 & Age == 0, 0, diff))
+
+# Combine current and former into a long dataset of rates,
+# with the rates described as 'pred' (for 'prediction')
+mort_trends_combined <- mort_trends_ord %>%
+  full_join(mort_trends_former_ord,
+             by = c("Year", "Age", "sex"),
+             suffix = c("_2066_71", "_2017_66")) %>%
+  dplyr::select(Year, Age, sex, rate_2066_71, rate_2017_66) %>%
+  pivot_longer(cols = c("rate_2066_71", "rate_2017_66"),
+               names_to = "type", values_to = "rate") %>%
+  filter(!is.na(rate)) %>%
+  mutate(type = case_when(
+    type == "rate_2066_71" ~ "pred_2066-71",
+    type == "rate_2017_66" ~ "pred_2017-66"
+  )) %>%
+  mutate(group = paste0(sex, "_", type))
 
 
 ```
@@ -2763,6 +2794,50 @@ for (i in seq_along(chunks)) {
   # Create the plot with adjusted y-axis and white background
   p <- ggplot(age_subset, aes(x = Year, y = rate, color = sex, group = sex)) +
     geom_line() +
+    labs(title = paste("Line Chart by Sex Group - Page", i),
+         x = "Year", y = "Rate") +
+    facet_wrap(~ Age, ncol = 5) +  # Adjust number of columns to fit your layout
+    scale_y_continuous(limits = y_limits) +  # Set y-axis limits
+    theme_minimal() +
+    theme(panel.background = element_rect(fill = "white"),
+          plot.background = element_rect(fill = "white"))  # Ensure plot background is white
+  
+  # Save the plot to a file
+  save_plot(p, i)
+}
+
+## Plots to compare former (2017-66) with current (2022-71) projections,
+## and also rates from 'victoria_lifetable' 
+# Function to save plots
+save_plot <- function(plot, page_number) {
+  file_name <- file.path(output_dir, paste0("plot_page_compare", page_number, ".png"))
+  ggsave(file_name, plot = plot, width = 12, height = 10, bg = "white")  # Adjust dimensions as needed
+}
+
+# Generate and save plots
+for (i in seq_along(chunks)) {
+  # Subset data for current chunk
+  age_subset <- mort_trends_combined[mort_trends_combined$Age %in% chunks[[i]], ]
+  
+  # Calculate y-axis limits
+  y_min <- min(age_subset$rate, na.rm = TRUE)
+  y_max <- max(age_subset$rate, na.rm = TRUE)
+  y_padding <- 0.1 * (y_max - y_min)  # Add 10% padding to the range
+  y_limits <- c(y_min - y_padding, y_max + y_padding)
+  
+  # Create the plot with adjusted y-axis and white background
+  p <- ggplot(age_subset, aes(x = Year, y = rate, color = group, group = group)) +
+    geom_line() +
+    geom_hline(data = victoria_lifetable %>%
+                 dplyr::select(Age = age, sex, rate) %>%
+                 mutate(sex = case_when(
+                   sex == "Female" ~ "female_actual_2016-18",
+                   sex == "Male"   ~ "male_actual_2016-18"
+                 )) %>%
+                 filter(Age %in% age_subset$Age), 
+               aes(yintercept = rate, color = sex), 
+               linetype = "dashed") +
+
     labs(title = paste("Line Chart by Sex Group - Page", i),
          x = "Year", y = "Rate") +
     facet_wrap(~ Age, ncol = 5) +  # Adjust number of columns to fit your layout
