@@ -1380,7 +1380,18 @@ cancer_incidence_area <- cancer_incidence_area %>%
     socio == "Most advantaged"  ~ 5,
     TRUE ~ NA_real_  # Assign NA for non-classified
   ))) %>%
-  filter(!is.na(socio))  # Now filtering for non-classified values
+  filter(!is.na(socio)) # Now filtering for non-classified values
+  
+# Use 9 digits sa2 codes for compatibility with synthetic population
+
+areas <- read.csv(here("health/original/ABS/SA2_2016_AUST.csv")) %>%
+  select(c("SA2_MAINCODE_2016", "SA2_5DIGITCODE_2016")) %>%
+  rename(sa2_code = SA2_5DIGITCODE_2016)
+  
+cancer_incidence_area <- cancer_incidence_area %>% left_join(areas) %>%
+  select(!sa2_code) %>%
+  rename(sa2_code = SA2_MAINCODE_2016) %>%
+  mutate(sa2_code = as.numeric(sa2_code))
 
 saveRDS(cancer_incidence_area, file=here("health/processed/cancer_incidence_final.rds"))
 
@@ -2668,12 +2679,7 @@ file.
 ```{r}
 
 
-data_melbourne <- mort_disagg %>% bind_rows(cancer_incidence_area) %>%
-                  bind_rows(cancer_prevalence_area) %>%
-                  bind_rows(cvd_dem_dia_copd_inc) %>%
-                  bind_rows(cvd_dem_dia_copd_prev) %>%
-                  bind_rows(depression_incidence) %>%
-                  bind_rows(depression_prevalence) %>%
+data_melbourne <- mort_disagg %>% bind_rows(cancer_incidence_area,cancer_prevalence_area,cvd_dem_dia_copd_inc,cvd_dem_dia_copd_prev, depression_incidence, depression_prevalence) %>%
                   mutate(cause=tolower(cause), 
                          measure=tolower(measure)) %>%
                   select(age, sex, sa2_code, sa2_name, educ, prob, cause, measure, socio)
