@@ -2767,11 +2767,7 @@ if (!dir.exists(output_dir)) {
 
 library(ggplot2)
 
-# Create a directory to save the plots
-output_dir <- "plots"
-if (!dir.exists(output_dir)) {
-  dir.create(output_dir)
-}
+
 
 # Define the number of facets per page
 facets_per_page <- 20  # Adjust this number as needed
