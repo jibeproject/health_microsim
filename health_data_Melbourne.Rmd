@@ -2732,13 +2732,13 @@ mort_trends_former_ord <-
 mort_trends_combined <- mort_trends_ord %>%
   full_join(mort_trends_former_ord,
              by = c("Year", "Age", "sex"),
-             suffix = c("_2066_71", "_2017_66")) %>%
-  dplyr::select(Year, Age, sex, rate_2066_71, rate_2017_66) %>%
-  pivot_longer(cols = c("rate_2066_71", "rate_2017_66"),
+             suffix = c("_2022_71", "_2017_66")) %>%
+  dplyr::select(Year, Age, sex, rate_2022_71, rate_2017_66) %>%
+  pivot_longer(cols = c("rate_2022_71", "rate_2017_66"),
                names_to = "type", values_to = "rate") %>%
   filter(!is.na(rate)) %>%
   mutate(type = case_when(
-    type == "rate_2066_71" ~ "pred_2066-71",
+    type == "rate_2022_71" ~ "pred_2022-71",
     type == "rate_2017_66" ~ "pred_2017-66"
   )) %>%
   mutate(group = paste0(sex, "_", type))
