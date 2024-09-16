@@ -244,10 +244,10 @@ interpolation to the original data.
 
 # GBD data for Melbourne. 
 gbd <- bind_rows(
-  read.csv(here("health/original/GBD/gbd_incidence_2018_2019.csv")),
-  read.csv(here("health/original/GBD/gbd_incidence_2020_2021.csv")),
-  read.csv(here("health/original/GBD/gbd_prevalence_2018_2019.csv")),
-  read.csv(here("health/original/GBD/gbd_prevalence_2020_2021.csv")))
+  read.csv(here("melbourne/health/original/GBD/gbd_incidence_2018_2019.csv")),
+  read.csv(here("melbourne/health/original/GBD/gbd_incidence_2020_2021.csv")),
+  read.csv(here("melbourne/health/original/GBD/gbd_prevalence_2018_2019.csv")),
+  read.csv(here("melbourne/health/original/GBD/gbd_prevalence_2020_2021.csv")))
 
 # Filter data to needed variables and remove strings from GBD age variable and create from_age and to_age needed for interpolation. 
 
@@ -376,7 +376,7 @@ stopifnot(!any(duplicated(sites$agesexname)))
 
 ```{r, echo=FALSE}
 
-inc <- read_xlsx(here("health/original/AIHW/cancer-incidence.xlsx"), sheet="Table S1a.1", skip=5, col_names=TRUE) %>% 
+inc <- read_xlsx(here("melbourne/health/original/AIHW/cancer-incidence.xlsx"), sheet="Table S1a.1", skip=5, col_names=TRUE) %>% 
     select(sex = Sex, age = "Age group (years)",
            site = "Cancer group/site",
            rate = "Age-specific rate\r\n(per 100,000)",
@@ -511,12 +511,10 @@ the population with an SA2. Data for the Australian average by age and
 sex is from AIHW and interpolated data was generated above named incyr.
 
 ```{r}
-# Get sheet with SA2 areas by SES and filter Victoria [SP: currently the filter for Victoria is commented out; is that intentional?]
+# Get sheet with SA2 areas by SES and filter Victoria [SP: currently the filter for Victoria is commented out; is that intentional?] BZD: yes, to be able to check the with national level data
 
-library(stringr)  # SP: can delete; loaded in chunk 1 as part of tidyverse
-library(openxlsx)  # SP: can delete; I've added it to chunk 1 
 
-excel_file <- loadWorkbook(here("health/original/ATLAS 2/ACA 2 - Diagnosis relative estimates.xlsx"))
+excel_file <- loadWorkbook(here("melbourne/health/original/ATLAS 2/ACA 2 - Diagnosis relative estimates.xlsx"))
 
 # Get the sheet names
 sheet_names <- names(excel_file)
@@ -557,11 +555,11 @@ for (i in seq_along(sheet_names)) {
 }
 
 # Save the workbook with the updated sheets
-saveWorkbook(excel_file, here("health/original/ATLAS 2/ATLAS_clean.xlsx"), overwrite = TRUE)
+saveWorkbook(excel_file, here("melbourne/health/original/ATLAS 2/ATLAS_clean.xlsx"), overwrite = TRUE)
 
 
 # Open file 
-excel_file <- here("health/original/ATLAS 2/ATLAS_clean.xlsx")
+excel_file <- here("melbourne/health/original/ATLAS 2/ATLAS_clean.xlsx")
 
 # Get the names of the sheets in the Excel workbook
 diseases <- excel_sheets(excel_file)[-c(1:5)]
@@ -642,7 +640,7 @@ SA2_soc <- read_xlsx(excel_file, sheet="Geography", skip=11, col_names = TRUE, n
 
 # Population from 2016 census
 
-pop_SA2 <- read_csv(here("health/original/ABS/Population by SA2 area.csv"), skip = 9, col_names = TRUE) %>%
+pop_SA2 <- read_csv(here("melbourne/health/original/ABS/Population by SA2 area.csv"), skip = 9, col_names = TRUE) %>%
   # Set the first row as column names
   { setNames(.[-1, ], unlist(.[1, ]))} %>%
    {names(.)[4] <- "population"; .}  %>%
@@ -793,7 +791,7 @@ whole of Australia.
 
 ## Compare data per SA2 and sex and data from national administrative sources by age, sex and combined with level of deprivation 
 
-cancerinc_socio <- read_xlsx(here("health/original/AIHW/cancer_socioeconomic.xlsx"), 
+cancerinc_socio <- read_xlsx(here("melbourne/health/original/AIHW/cancer_socioeconomic.xlsx"), 
                              sheet="Table S10.7", skip=6, col_names = TRUE, n_max=90) %>%
   rename(site = `Cancer site/type (ICD-10 codes)`) %>%
   fill(site) %>%
@@ -1384,7 +1382,7 @@ cancer_incidence_area <- cancer_incidence_area %>%
   
 # Use 9 digits sa2 codes for compatibility with synthetic population
 
-areas <- read.csv(here("health/original/ABS/SA2_2016_AUST.csv")) %>%
+areas <- read.csv(here("melbourne/health/original/ABS/SA2_2016_AUST.csv")) %>%
   select(c("SA2_MAINCODE_2016", "SA2_5DIGITCODE_2016")) %>%
   rename(sa2_code = SA2_5DIGITCODE_2016)
   
@@ -1393,7 +1391,7 @@ cancer_incidence_area <- cancer_incidence_area %>% left_join(areas) %>%
   rename(sa2_code = SA2_MAINCODE_2016) %>%
   mutate(sa2_code = as.numeric(sa2_code))
 
-saveRDS(cancer_incidence_area, file=here("health/processed/cancer_incidence_final.rds"))
+saveRDS(cancer_incidence_area, file=here("melbourne/health/processed/cancer_incidence_final.rds"))
 
 ```
 
@@ -1475,7 +1473,7 @@ inc_cvd_dem_dia_copd_agesex <- gbdpyr %>%
 ```{r}
 # Stroke
 
-stroke_inc <- read_xlsx(here("health/original/AIHW/cdv_dia_kid_socioeconomic.xlsx"), sheet="Table S2", skip=1, col_names = TRUE, n_max=30) %>%
+stroke_inc <- read_xlsx(here("melbourne/health/original/AIHW/cdv_dia_kid_socioeconomic.xlsx"), sheet="Table S2", skip=1, col_names = TRUE, n_max=30) %>%
   slice(-c(7:11, 18:26)) %>%
   mutate(sex = ifelse(row_number() <= 7, "Male", "Female")) %>%
   slice(-c(1,7)) %>%
@@ -1496,7 +1494,7 @@ stroke_inc <- read_xlsx(here("health/original/AIHW/cdv_dia_kid_socioeconomic.xls
 
 # Cardiovascular disease (data is for deaths for CVDs, we will use it to adjust CHD/IHD incidence by age and sex)
 
-cvd_inc <- read_xlsx(here("health/original/AIHW/cdv_dia_kid_socioeconomic.xlsx"), sheet="Table S3", skip=1, col_names = TRUE, n_max=30) %>%
+cvd_inc <- read_xlsx(here("melbourne/health/original/AIHW/cdv_dia_kid_socioeconomic.xlsx"), sheet="Table S3", skip=1, col_names = TRUE, n_max=30) %>%
   slice(-c(7:11, 18:26)) %>%
   mutate(sex = ifelse(row_number() <= 7, "Male", "Female")) %>%
   slice(-c(1,7)) %>%
@@ -1518,7 +1516,7 @@ cvd_inc <- read_xlsx(here("health/original/AIHW/cdv_dia_kid_socioeconomic.xlsx")
 
 # Dementia (we use mortality data.  There is also hospitalisation data (dementia-hospital-care.xlsx, Table S9.6), but the socioeconomic area rates for hospitalisations are not differentiated by sex, whereas the mortality data shows  greater socioeconomic area variation for Females than Males.)
 
-dementia_inc <- read_xlsx(here("health/original/AIHW/dementia-mortality.xlsx"), 
+dementia_inc <- read_xlsx(here("melbourne/health/original/AIHW/dementia-mortality.xlsx"), 
                           sheet = "S3.6", skip = 8, col_names = TRUE, n_max = 5) %>%
   rename_with( ~ c("category", "socio", "Male", "Female", "Person",
                    "MaleCrude", "FemaleCrude", "PersonCrude")) %>%
@@ -1538,7 +1536,7 @@ dementia_inc <- read_xlsx(here("health/original/AIHW/dementia-mortality.xlsx"),
 
 # Diabetes (we use prevalence data. There is mortality data, but figures are low and diabetes as cause of deaths is likely under reported)
 
-diabetes_inc <- read_xlsx(here("health/original/AIHW/cdv_dia_kid_socioeconomic.xlsx"), sheet="Table S7", skip=1, col_names = TRUE, n_max=30) %>%
+diabetes_inc <- read_xlsx(here("melbourne/health/original/AIHW/cdv_dia_kid_socioeconomic.xlsx"), sheet="Table S7", skip=1, col_names = TRUE, n_max=30) %>%
   slice(-c(7:11, 18:27)) %>%
   mutate(sex = ifelse(row_number() < 7, "Male", "Female")) %>%
   slice(-c(1, 7)) %>%
@@ -1561,7 +1559,7 @@ diabetes_inc <- read_xlsx(here("health/original/AIHW/cdv_dia_kid_socioeconomic.x
 
 # COPD (we use mortality data.  There is prevalence data, but it is self-reported.)
 
-copd_inc <- read_xlsx(here("health/original/AIHW/copd-mortality.xlsx"),
+copd_inc <- read_xlsx(here("melbourne/health/original/AIHW/copd-mortality.xlsx"),
             sheet = "Table Resp_Mort.2", skip = 4, col_names = TRUE) %>%
     filter(str_detect(Geography, "SEIFA")) %>%
   filter(Year == "2021" &  # SEIFA table only has 2021
@@ -1693,7 +1691,7 @@ cvd_dem_dia_copd_inc <- cvd_dem_dia_copd_inc %>% select("socio", "cause", "age",
   mutate(sex=as.character(sex))
 
 
-saveRDS(cvd_dem_dia_copd_inc, file=(here("health/processed/cvd_dem_dia_copd_incidence_final.rds")))
+saveRDS(cvd_dem_dia_copd_inc, file=(here("melbourne/health/processed/cvd_dem_dia_copd_incidence_final.rds")))
 ```
 
 # Prevalence data
@@ -1954,7 +1952,7 @@ cancer_prevalence_area <- prev_sa2_sex_age %>%
   select(sa2_code, sa2_name, socio, site, age, sex, prob, rate_area, val_interpolated = rate) %>%
   mutate(rate_ave_age_sex = val_interpolated * 100000)
 
-saveRDS(cancer_prevalence_area, file=here("health/processed/cancer_prevalence_area.rds"))
+saveRDS(cancer_prevalence_area, file=here("melbourne/health/processed/cancer_prevalence_area.rds"))
 
 ```
 
@@ -2086,7 +2084,7 @@ folder.
 
 ```{r}
 # Stroke
-stroke_prev <- read_xlsx(here("health/original/AIHW/cvd-diabetes-comorbidities.xlsx"),
+stroke_prev <- read_xlsx(here("melbourne/health/original/AIHW/cvd-diabetes-comorbidities.xlsx"),
             sheet = "Stroke", skip = 30, col_names = TRUE, n_max = 6) %>%
     slice(-1) %>%
     rename_with( ~ c("socio", "MaleNo", "FemaleNo", "PersonNo", "blank1",
@@ -2111,7 +2109,7 @@ stroke_prev <- read_xlsx(here("health/original/AIHW/cvd-diabetes-comorbidities.x
   mutate(cause = "Stroke")
 
 # Coronary heart disease
-chd_prev <- read_xlsx(here("health/original/AIHW/cvd-diabetes-comorbidities.xlsx"),
+chd_prev <- read_xlsx(here("melbourne/health/original/AIHW/cvd-diabetes-comorbidities.xlsx"),
             sheet = "CHD", skip = 25, col_names = TRUE, n_max = 9) %>%
     slice(-c(1:4)) %>%
   rename_with( ~ c("socio", "MaleNo", "FemaleNo", "PersonNo", "blank1",
@@ -2181,7 +2179,7 @@ cvd_dem_dia_copd_prev <- cvd_dem_dia_copd_prev %>%
            sex = factor(sex), 
           prob = 1 - exp(-rate_soc))
 
-saveRDS(cvd_dem_dia_copd_prev, file=here("health/processed/cvd_dem_dia_copd_prevalence.rds"))
+saveRDS(cvd_dem_dia_copd_prev, file=here("melbourne/health/processed/cvd_dem_dia_copd_prevalence.rds"))
 ```
 
 We are left with the incidence by age, sex and socioeconomic status in
@@ -2303,7 +2301,7 @@ the SA2 areas and their mapping to larger areas.
 [Source](https://www.abs.gov.au/ausstats/abs@.nsf/mf/1270.0.55.001)
 
 ```{r}
-sa2 <- read_csv(here("health/original/ABS/SA2_2016_AUST.csv"), col_types = "cccccccccccd")
+sa2 <- read_csv(here("melbourne/health/original/ABS/SA2_2016_AUST.csv"), col_types = "cccccccccccd")
 ```
 
 ### Mortality by year of age and sex, for Victoria state (not by smaller areas)
@@ -2315,7 +2313,7 @@ persons dying between exact age x and exact age x+1". For presentation,
 this is converted to a rate per 1000 people.
 
 ```{r}
-dats <- read.csv(here("health/original/ABS/3302055001do001_20162018_Table_1.2.csv"),skip=6,
+dats <- read.csv(here("melbourne/health/original/ABS/3302055001do001_20162018_Table_1.2.csv"),skip=6,
          na=c("","np"), nrows=101)[,1:9]
 mf <- rep(c("male","female"),each=4)
 names1 <- rep(c("denom","rate","personyears","le"), 2)
@@ -2352,7 +2350,7 @@ as a weighted average, weighted by the population in each area
 
 ```{r}
 #| cache: true
-deaths_sa2 <- rjson::fromJSON(file=here("health/original/aurin/au-govt-abs-abs-deaths-sa2-2012-2020-sa2-2016.json")) |>
+deaths_sa2 <- rjson::fromJSON(file=here("melbourne/health/original/aurin/au-govt-abs-abs-deaths-sa2-2012-2020-sa2-2016.json")) |>
   pluck("features") |>
   tibble() |>
   set_names("area") |>
@@ -2380,7 +2378,7 @@ in the same format as the SA2 data.
 
 ```{r}
 #| cache: true
-deaths_sa3 <- rjson::fromJSON(file=here("health/original/aurin/au-govt-abs-abs-deaths-sa3-2012-2020-sa3-2016.json")) |>
+deaths_sa3 <- rjson::fromJSON(file=here("melbourne/health/original/aurin/au-govt-abs-abs-deaths-sa3-2012-2020-sa3-2016.json")) |>
   pluck("features") |>
   tibble() |>
   set_names("area") |>
@@ -2450,7 +2448,7 @@ This data will be required to appropriately produce mortality rates
 disagreggated by both area and education (see below).
 
 ```{r}
-educarea <- read.csv(here("health/original/aurin/education_sa2_aurin.csv")) |>
+educarea <- read.csv(here("melbourne/health/original/aurin/education_sa2_aurin.csv")) |>
   filter(yr==2016) |>
   select(sa2_maincode_2016, 
          sa2_name_2016, 
@@ -2609,7 +2607,7 @@ mort_disagg <- mort_disagg |>
     prob = 1 - exp(-rate/1000)
   ) |>  select(age, sex, sa2_code, sa2_name, educ, rate, prob) |>
   filter(sa2_code %in% sa2$SA2_MAINCODE_2016[sa2$GCCSA_NAME_2016=="Greater Melbourne"])
-saveRDS(mort_disagg, file=here("health/processed/mort_disagg.rds"))
+saveRDS(mort_disagg, file=here("melbourne/health/processed/mort_disagg.rds"))
 ```
 
 The final dataset produced contains the following columns
@@ -2684,7 +2682,7 @@ data_melbourne <- mort_disagg %>% bind_rows(cancer_incidence_area,cancer_prevale
                          measure=tolower(measure)) %>%
                   select(age, sex, sa2_code, sa2_name, educ, prob, cause, measure, socio)
 
-saveRDS(data_melbourne, file=here("health/processed/health_transitions_melbourne.rds"))
+saveRDS(data_melbourne, file=here("melbourne/health/processed/health_transitions_melbourne.rds"))
 ```
 
 # Trends
@@ -2695,7 +2693,7 @@ saveRDS(data_melbourne, file=here("health/processed/health_transitions_melbourne
 library(readxl)
 
 # Read the Excel sheet and skip the first 6 rows
-mort_trends <- read_excel(here("health/original/ABS/32220ds02_2022-2071_projection_assumptions_detailed.xlsx"), 
+mort_trends <- read_excel(here("melbourne/health/original/ABS/32220ds02_2022-2071_projection_assumptions_detailed.xlsx"), 
                           sheet = "Table 5", skip = 6)
 
 # Select specific columns (1, 2, 4, and 13)
@@ -2719,7 +2717,7 @@ mort_trends_ord[1, "diff"] <- 0 # modify female diff for 0 age 2022 as it is NA.
                     
 # For comparison, trends as predicted in 2017-66 data from ABS
 mort_trends_former_ord <- 
-  read_excel(here("health/original/ABS/projections 2017-2066.xls"),
+  read_excel(here("melbourne/health/original/ABS/projections 2017-2066.xls"),
              sheet = "Table 5", skip = 6) %>%
   select(1, 2, 4, 14) %>%
   rename(male=`Victoria...4`, 
@@ -2877,7 +2875,7 @@ gbd_prev <- prev_agesex_all %>%
   
 
 # AIHW dementia prevalence, 2022, ages 60 to 90
-dem_prev_base <- read_xlsx(here("health/original/AIHW/dementia-prevalence.xlsx"),
+dem_prev_base <- read_xlsx(here("melbourne/health/original/AIHW/dementia-prevalence.xlsx"),
                            sheet = "S2.1", skip = 2, col_names = TRUE, n_max = 17) %>%
   rename_with(~ c("sex", "age_range", "no", "no_1000")) %>%
   dplyr::select(sex, age_range, no_1000) %>%
@@ -2908,7 +2906,7 @@ dem_prev <- dem_prev_interp %>%
 
 
 # AIHW diabetes prevalence, 2021, ages 40 to 85
-dia_prev_base <- read_xlsx(here("health/original/AIHW/diabetes-prevalence.xlsx"),
+dia_prev_base <- read_xlsx(here("melbourne/health/original/AIHW/diabetes-prevalence.xlsx"),
                         sheet = "Type 2 prevalence", skip = 5, col_names = TRUE,
                         n_max = 11) %>%
   slice(-1) %>%
@@ -2940,7 +2938,7 @@ dia_prev <- dia_prev_interp %>%
 
 
 # AIHW COPD prevalence (multisource), 2018-19, ages 35 to 95
-copd_prev_base <- read_xlsx(here("health/original/AIHW/copd-prevalence-multisource.xlsx"),
+copd_prev_base <- read_xlsx(here("melbourne/health/original/AIHW/copd-prevalence-multisource.xlsx"),
                             sheet = "Data extract", skip = 6, col_names = TRUE, n_max = 144) %>%
   rename_with(~ c("year", "sex", "age_range", "population", "PBS_cases", 
                   "PBS_prevalence", "Multisource_cases", "Multisource_prevalence",
@@ -2975,6 +2973,6 @@ copd_prev <- copd_prev_interp %>%
 
 # combine and save
 prev_trends <- bind_rows(gbd_prev, dem_prev, dia_prev, copd_prev)
-saveRDS(prev_trends, file=here("health/processed/health_prev_trends.rds"))
+saveRDS(prev_trends, file=here("melbourne/health/processed/health_prev_trends.rds"))
 
 ```
