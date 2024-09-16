@@ -6,27 +6,20 @@ packages <- c("tidyverse",
               "ggplot2",
               "data.table",
               "readxl")
-
 lapply(packages, library, character.only = TRUE)
 
 # Data for England
 # Mortality Data by LSOA by age and sex
 # [Source]: https://www.ons.gov.uk/peoplepopulationandcommunity/birthsdeathsandmarriages/deaths/adhocs/1028deathregistrationsbysexfiveyearagegroupandlowerlayersuperoutputareaslsoa2011censusboundariesenglandandwales2001to2021
-deaths_england <- fread('./data/processed/deaths_england.csv')
-population_england <- fread('./data/processed/population_england.csv')
-
-df <- read.csv('https://rmiteduau.sharepoint.com/:x:/r/sites/JIBEworkinggroup/Shared%20Documents/General/manchester/health/original/gbd/IHME-GBD_2021_DATA-bfdf8007-1.csv?d=w48a194289a9546c8a243035eae490039&csf=1&web=1&e=c10SET')
+deaths_england <- fread('manchester/health/processed/deaths_england.csv')
+population_england <- fread('manchester/health/processed/population_england.csv')
 
 # [Source]: https://geoportal.statistics.gov.uk/datasets/e7c49b62898a417192a336aca17e3a3f/about
-msoa <- fread('./data/lsoa_to_msoa.csv')
+msoa <- fread('manchester/health/original/lsoa_to_msoa.csv')
 
 # Life Tables for England
 # [Source]: https://www.ons.gov.uk/peoplepopulationandcommunity/birthsdeathsandmarriages/lifeexpectancies/datasets/nationallifetablesenglandreferencetables/current
-eng <- fread('./data/original/life_tables_20172019.csv',skip = 5)
-
-# Mortality Data by LSOA by age and sex for Greater Manchester Only
-deaths <- fread('./data/processed/deaths.csv')
-population <- fread('./data/processed/population.csv')
+eng <- fread('manchester/health/original/life_tables_20172019.csv',skip = 5)
 
 ## Mortality by year of age and sex, for England (not by LSOAs)
 
@@ -99,10 +92,6 @@ deaths_lsoa_eng <- deaths_lsoa_eng |>
   mutate(stdrate_ave = with(.data, sum(stdrate*pop,na.rm = TRUE)/sum(pop))) |>
   mutate(RR = stdrate / stdrate_ave)
 
-summary(deaths_lsoa_eng)
-
-write.csv(deaths_lsoa_eng, "./data/processed/deaths_lsoa_england.csv", row.names = FALSE)
-
 # Filter for Greater Manchester Only:
 
 deaths_lsoa_manchester <- deaths_lsoa_eng %>% 
@@ -117,10 +106,3 @@ deaths_lsoa_manchester <- deaths_lsoa_eng %>%
       str_starts(lsoa_name, "Tameside") |
       str_starts(lsoa_name, "Trafford") |
       str_starts(lsoa_name, "Wigan"))
-
-
-## EDUCATION
-
-# Highest level of qualification by sex by LSOA (2021 estimates)
-
-# [Source]: https://statistics.ukdataservice.ac.uk/dataset/england-and-wales-census-2021-rm055-highest-level-of-qualification-by-sex
