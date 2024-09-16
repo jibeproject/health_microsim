@@ -64,6 +64,7 @@ england_lifetable <- eng |>
 # of deaths by the respective population, then multiplying the result by 1000,
 # then multiplying each of the age-specific rates by the proportion of 
 # the population belonging to the particular age group (standard population weight)
+## BZD: for what population is the proportion by age group that you are multiplying by?
 
 # Source: https://www.statcan.gc.ca/en/dai/btd/asr
 
