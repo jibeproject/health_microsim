@@ -2328,6 +2328,11 @@ victoria_lifetable <- dats |>
          sex = factor(sex,
                       labels=stringr::str_to_title(sort(unique(.data$sex)))),
          sex = relevel(sex, "Male"))  
+
+# save the lifetable as the mortality rates for the base year (2018)
+mort_base <- victoria_lifetable %>%
+  dplyr::select(age, sex, rate)
+saveRDS(mort_base, here("melbourne/health/processed/mort_base.rds"))
 ```
 
 ### Mortality by SA2 small areas in Victoria (not by age and sex)
@@ -2600,14 +2605,26 @@ sum_p <- mort_disagg |> group_by(age, sa2_code) |>
 mort_disagg <- mort_disagg |> 
   left_join(sum_p, by=c("age","sa2_code")) |>
   rename(rate_ave_educ = rate1000) |>
-  mutate(rate = ifelse(
-    between(age, 25, 84) & (!(sa2_code %in% missing_areas)), 
-    rate_ave_educ * rr_educ / sum_pRR,
-    rate_ave_educ),
-    prob = 1 - exp(-rate/1000)
-  ) |>  select(age, sex, sa2_code, sa2_name, educ, rate, prob) |>
+  mutate(disag_educ = ifelse(between(age, 25, 84) & 
+                               (!(sa2_code %in% missing_areas)), 
+                             rr_educ / sum_pRR, 1),
+         rate = rate_ave_educ * disag_educ,
+         prob = 1 - exp(-rate/1000)) |>  ## SP: is this right? The 'rates' in the life
+      # tables are 'qx' - isn't that actually a proportion/probability, not a continuous rate?
   filter(sa2_code %in% sa2$SA2_MAINCODE_2016[sa2$GCCSA_NAME_2016=="Greater Melbourne"])
+
+# save the combined disaggregation factors for SA2 and education (should be 4635 rows:
+# 309 SA2s * 3 education levels * 5 age groups)
+mort_disagg_factors <- mort_disagg %>%
+  mutate(disagg_factor = RR * disag_educ) %>%
+  dplyr::select(sa2_code, sa2_name, educ, agegroup, disagg_factor) %>%
+  distinct()
+saveRDS(mort_disagg_factors, here("melbourne/health/processed/mort_disagg_factors.rds"))
+
+mort_disagg <- mort_disagg %>%
+  select(age, sex, sa2_code, sa2_name, educ, rate, prob)
 saveRDS(mort_disagg, file=here("melbourne/health/processed/mort_disagg.rds"))
+
 ```
 
 The final dataset produced contains the following columns
@@ -2855,6 +2872,97 @@ cat("Plots have been saved in the 'plots' directory.\n")
 
 ```
 
+```{r}
+# combined table of mortality rates for 2018 (base) and 2019-22 plus
+# projections from 2023-2071
+
+# base year (2018)
+mort_base <- readRDS(here("melbourne/health/processed/mort_base.rds")) %>%
+  rename(rate_2018 = rate)
+
+# life tables 2019-22
+mort_year <- function(mort_year_location, year) {
+  output <- read_xlsx(here(mort_year_location), sheet = "Table_1.2", skip = 6,
+                      col_names = TRUE, n_max = 102) %>%
+    rename_with(~ c("age", "male_lx", "male_qx", "male_Lx", "male_ex",
+                    "female_lx", "female_qx", "female_Lx", "female_ex")) %>%
+    dplyr::select(age, Male = male_qx, Female = female_qx) %>%
+    pivot_longer(cols = c("Male", "Female"), names_to = "sex",
+                 values_to = paste0("rate_", year))
+}
+mort_2019 <- mort_year("melbourne/health/original/ABS/3302055001DO001_20172019.xlsx", 2019)
+mort_2020 <- mort_year("melbourne/health/original/ABS/3302055001DO001_20182020.xlsx", 2020)
+mort_2021 <- mort_year("melbourne/health/original/ABS/3302055001DO001_20192021.xlsx", 2021)
+mort_2022 <- mort_year("melbourne/health/original/ABS/3302055001DO001_20202022.xlsx", 2022)
+
+# projections in wide format, from 2023
+mort_proj <- mort_trends_ord %>%
+  dplyr::select(Year, age = Age, sex, rate) %>%
+  filter(Year >= 2023) %>%
+  mutate(sex = str_to_title(sex)) %>%
+  pivot_wider(names_from = Year, names_prefix = "rate_", values_from = rate) 
+  
+  
+mort_years <- mort_base %>%
+  left_join(mort_2019, by = c("age", "sex")) %>%
+  left_join(mort_2020, by = c("age", "sex")) %>%
+  left_join(mort_2021, by = c("age", "sex")) %>%
+  left_join(mort_2022, by = c("age", "sex")) %>%
+  left_join(mort_proj, by = c("age", "sex"))
+
+# plot the outputs
+mort_years_long <- mort_years %>%
+  pivot_longer(cols = starts_with("rate"), names_to = "year", values_to = "rate") %>%
+  mutate(year = as.numeric(gsub("rate_", "", year)))
+
+# Create a directory to save the plots
+output_dir <-  file.path(here("images/mortality_trends/"))
+if (!dir.exists(output_dir)) {
+  dir.create(output_dir)
+}
+
+# Define the number of facets per page
+facets_per_page <- 20  # Adjust this number as needed
+
+# Split ages into chunks based on the desired number of facets per page
+ages <- unique(mort_years_long$age)
+chunks <- split(ages, ceiling(seq_along(ages) / facets_per_page))
+
+# Function to save plots
+save_plot <- function(plot, page_number) {
+  file_name <- file.path(output_dir, paste0("plot_years_", page_number, ".png"))
+  ggsave(file_name, plot = plot, width = 12, height = 10, bg = "white")  # Adjust dimensions as needed
+}
+
+# Generate and save plots
+for (i in seq_along(chunks)) {
+  # Subset data for current chunk
+  age_subset <- mort_years_long[mort_years_long$age %in% chunks[[i]], ]
+  
+  # Calculate y-axis limits
+  y_min <- min(age_subset$rate, na.rm = TRUE)
+  y_max <- max(age_subset$rate, na.rm = TRUE)
+  y_padding <- 0.1 * (y_max - y_min)  # Add 10% padding to the range
+  y_limits <- c(y_min - y_padding, y_max + y_padding)
+  
+  # Create the plot with adjusted y-axis and white background
+  p <- ggplot(age_subset, aes(x = year, y = rate, color = sex, group = sex)) +
+    geom_line() +
+    labs(title = paste("Line Chart by Sex Group - Page", i),
+         x = "Year", y = "Rate") +
+    facet_wrap(~ age, ncol = 5) +  # Adjust number of columns to fit your layout
+    scale_y_continuous(limits = y_limits) +  # Set y-axis limits
+    theme_minimal() +
+    theme(panel.background = element_rect(fill = "white"),
+          plot.background = element_rect(fill = "white"))  # Ensure plot background is white
+  
+  # Save the plot to a file
+  save_plot(p, i)
+}
+
+```
+
+
 ## Prevalence trends
 
 Prevalence rates for 2018 and subsequent years. We have not identified
@@ -2974,5 +3082,42 @@ copd_prev <- copd_prev_interp %>%
 # combine and save
 prev_trends <- bind_rows(gbd_prev, dem_prev, dia_prev, copd_prev)
 saveRDS(prev_trends, file=here("melbourne/health/processed/health_prev_trends.rds"))
+
+```
+
+
+# Mortality outputs
+
+Combine saved mortality tables:
+-   `mort_base.rds`: mortality rates for the base year of 2018 by age and sex.
+-   `[filename]` : \[mortality trend factors for subsequent years\].
+-   `mort_disagg_rates.rds`: relative rates to apply to the mortality rates to disaggregate by SA2 and education.
+
+**SP note: Currently this only combines the mortality rates and disaggregating factors for 2018.  This section needs to be expanded so it also picks up subsequent years (work in progress).**
+
+```{r}
+# read in the saved tables
+mort_base <- readRDS(here("melbourne/health/processed/mort_base.rds"))
+mort_disagg_factors <- readRDS(here("melbourne/health/processed/mort_disagg_factors.rds"))
+
+mort <- mort_base %>%
+  # agegroup column to match the groups in mort_disagg_rates
+  mutate(agegroup = cut(age, c(0, 25, 45, 65, 85, Inf),
+                        right=FALSE, include.lowest = TRUE)) %>%
+  # join the disagg_rates (disaggregated for SA2 and education)
+  left_join(mort_disagg_factors, by = c("agegroup"),
+            relationship = "many-to-many") %>%
+  # calculate rate (per 1000, and disaggregated) and prob 
+  mutate(rate = rate * 1000 * disagg_factor,
+         prob = 1 - exp(-rate/1000)) %>% ## SP: is this right? The 'rates' in the life tables
+      # are 'qx' - isn't that actually a proportion/probability, not a continuous rate?
+  # select required fields
+  dplyr::select(age, sex, sa2_code, sa2_name, educ, rate, prob)
+
+# checking that the results are the same as 'mort_disag' - they are - will delete this check
+chk <- mort_disagg %>% 
+  left_join(mort, by = c("age", "sex", "sa2_code", "sa2_name", "educ")) %>%
+  mutate(rate.diff = rate.x - rate.y,
+         prob.diff = prob.x - prob.y)
 
 ```
