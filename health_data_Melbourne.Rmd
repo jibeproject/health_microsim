@@ -2608,9 +2608,11 @@ mort_disagg <- mort_disagg |>
   mutate(disag_educ = ifelse(between(age, 25, 84) & 
                                (!(sa2_code %in% missing_areas)), 
                              rr_educ / sum_pRR, 1),
-         rate = rate_ave_educ * disag_educ,
-         prob = 1 - exp(-rate/1000)) |>  ## SP: is this right? The 'rates' in the life
-      # tables are 'qx' - isn't that actually a proportion/probability, not a continuous rate?
+         rate = rate_ave_educ * disag_educ) |>
+  # these 'rates' are derived from qx ("the proportion of persons dying between 
+  # exact age x and exact age x+1"), so treat as a probability and calculate rate
+  mutate(prob = rate / 1000,  # note 'rate' was per 1000 people
+         rate = -log(1 - prob) * 1000) %>%
   filter(sa2_code %in% sa2$SA2_MAINCODE_2016[sa2$GCCSA_NAME_2016=="Greater Melbourne"])
 
 # save the combined disaggregation factors for SA2 and education (should be 4635 rows:
@@ -2867,7 +2869,7 @@ for (i in seq_along(chunks)) {
   save_plot(p, i)
 }
 
-cat("Plots have been saved in the 'plots' directory.\n")
+cat("Plots have been saved in the 'images/mortality_trends' directory.\n")
 
 
 ```
@@ -2909,6 +2911,9 @@ mort_years <- mort_base %>%
   left_join(mort_2021, by = c("age", "sex")) %>%
   left_join(mort_2022, by = c("age", "sex")) %>%
   left_join(mort_proj, by = c("age", "sex"))
+
+# save the output
+saveRDS(mort_years, here("melbourne/health/processed/mort_years.rds"))
 
 # plot the outputs
 mort_years_long <- mort_years %>%
@@ -3089,35 +3094,42 @@ saveRDS(prev_trends, file=here("melbourne/health/processed/health_prev_trends.rd
 # Mortality outputs
 
 Combine saved mortality tables:
--   `mort_base.rds`: mortality rates for the base year of 2018 by age and sex.
--   `[filename]` : \[mortality trend factors for subsequent years\].
--   `mort_disagg_rates.rds`: relative rates to apply to the mortality rates to disaggregate by SA2 and education.
+-   `mort_years.rds`: mortality rates for the years 2018 to 2017 by age and sex.
+-   `mort_disagg_factors.rds`: relative rates to apply to the mortality rates to disaggregate by SA2 and education.
 
-**SP note: Currently this only combines the mortality rates and disaggregating factors for 2018.  This section needs to be expanded so it also picks up subsequent years (work in progress).**
 
 ```{r}
 # read in the saved tables
-mort_base <- readRDS(here("melbourne/health/processed/mort_base.rds"))
+mort_years <- readRDS(here("melbourne/health/processed/mort_years.rds"))
 mort_disagg_factors <- readRDS(here("melbourne/health/processed/mort_disagg_factors.rds"))
 
-mort <- mort_base %>%
-  # agegroup column to match the groups in mort_disagg_rates
+# calculate disaggregated rates, with option to select a single year
+mort <- mort_years %>%
+  
+  # convert to long form
+  pivot_longer(cols = starts_with("rate"), names_to = "year", values_to = "rate") %>%
+  mutate(year = as.numeric(gsub("rate_", "", year))) %>%
+  
+  # # filter to specific year if required
+  # filter(year == 2018) %>%
+  
+  # add agegroup column to match the groups in mort_disagg_factors
   mutate(agegroup = cut(age, c(0, 25, 45, 65, 85, Inf),
                         right=FALSE, include.lowest = TRUE)) %>%
-  # join the disagg_rates (disaggregated for SA2 and education)
+  
+  # join the disagg_factors (disaggregated for SA2 and education)
   left_join(mort_disagg_factors, by = c("agegroup"),
             relationship = "many-to-many") %>%
-  # calculate rate (per 1000, and disaggregated) and prob 
-  mutate(rate = rate * 1000 * disagg_factor,
-         prob = 1 - exp(-rate/1000)) %>% ## SP: is this right? The 'rates' in the life tables
-      # are 'qx' - isn't that actually a proportion/probability, not a continuous rate?
+  
+  # calculate disaggregated rates (per 1000)
+  mutate(rate = rate * 1000 * disagg_factor) %>%
+  
+  # these 'rates' are derived from qx ("the proportion of persons dying between 
+  # exact age x and exact age x+1"), so treat as a probability and calculate rate
+  mutate(prob = rate / 1000,  # note 'rate' was per 1000 people
+         rate = -log(1 - prob) * 1000) %>%
+  
   # select required fields
   dplyr::select(age, sex, sa2_code, sa2_name, educ, rate, prob)
-
-# checking that the results are the same as 'mort_disag' - they are - will delete this check
-chk <- mort_disagg %>% 
-  left_join(mort, by = c("age", "sex", "sa2_code", "sa2_name", "educ")) %>%
-  mutate(rate.diff = rate.x - rate.y,
-         prob.diff = prob.x - prob.y)
 
 ```
