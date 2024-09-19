@@ -75,7 +75,8 @@ deaths_lsoa_eng  <- deaths_lsoa_eng  %>%
 deaths_lsoa_eng  <- deaths_lsoa_eng  %>%
   group_by(lsoa_code) %>%
   mutate(total_population = sum(population),   
-         population_weight = population/total_population)
+         population_weight = population/total_population) %>%
+  ungroup()
 
 # Age-standardized Rate
 deaths_lsoa_eng  <- deaths_lsoa_eng  %>%
@@ -83,7 +84,9 @@ deaths_lsoa_eng  <- deaths_lsoa_eng  %>%
   summarise(
     pop = sum(population),                       
     deaths = sum(deaths),
-    stdrate = sum(age_specific_rate*population_weight))
+    stdrate = sum(age_specific_rate*population_weight)) %>%
+  ungroup()
+
 
 # BZD: given the many 0s we discussed replacing with MSOA when strrate is 0
 
@@ -95,6 +98,8 @@ deaths_lsoa_eng  <- deaths_lsoa_eng  %>%
 deaths_lsoa_eng <- deaths_lsoa_eng |>
   mutate(stdrate_ave = with(.data, sum(stdrate*pop,na.rm = TRUE)/sum(pop))) |>
   mutate(RR = stdrate / stdrate_ave)
+
+
 
 # Filter for Greater Manchester Only:
 
