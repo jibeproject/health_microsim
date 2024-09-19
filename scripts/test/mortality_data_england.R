@@ -11,11 +11,11 @@ lapply(packages, library, character.only = TRUE)
 # Data for England
 # Mortality Data by LSOA by age and sex
 # [Source]: https://www.ons.gov.uk/peoplepopulationandcommunity/birthsdeathsandmarriages/deaths/adhocs/1028deathregistrationsbysexfiveyearagegroupandlowerlayersuperoutputareaslsoa2011censusboundariesenglandandwales2001to2021
-deaths_england <- fread('manchester/health/processed/deaths_england.csv')
-population_england <- fread('manchester/health/processed/population_england.csv')
+deaths_england <- fread('manchester/health/processed/ons/deaths_england.csv')
+population_england <- fread('manchester/health/processed/ons/population_england.csv')
 
 # [Source]: https://geoportal.statistics.gov.uk/datasets/e7c49b62898a417192a336aca17e3a3f/about
-msoa <- fread('manchester/health/original/lsoa_to_msoa.csv')
+msoa <- fread('manchester/health/original/ons/lsoa_to_msoa.csv')
 
 # Life Tables for England
 # [Source]: https://www.ons.gov.uk/peoplepopulationandcommunity/birthsdeathsandmarriages/lifeexpectancies/datasets/nationallifetablesenglandreferencetables/current
