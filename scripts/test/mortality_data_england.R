@@ -19,7 +19,7 @@ msoa <- fread('manchester/health/original/ons/lsoa_to_msoa.csv')
 
 # Life Tables for England
 # [Source]: https://www.ons.gov.uk/peoplepopulationandcommunity/birthsdeathsandmarriages/lifeexpectancies/datasets/nationallifetablesenglandreferencetables/current
-eng <- fread('manchester/health/original/life_tables_20172019.csv',skip = 5)
+eng <- fread('manchester/health/original/ons/life_tables_20172019.csv',skip = 5)
 
 ## Mortality by year of age and sex, for England (not by LSOAs)
 
@@ -27,7 +27,9 @@ eng <- fread('manchester/health/original/life_tables_20172019.csv',skip = 5)
 # exactly will die before reaching age (x+1)".
 # It is also converted to a rate per 1000 people.
 
-eng <- eng[ , -c(2,7,8,9)]
+
+## BZD: the life table should have the rate not the probability, rate is mx
+eng <- eng[ , -c(2,7,8,9)] ## BZD@ here we need to remove column 3 and 10 for qx and leave 2 and 9 for mx
 
 mf <- rep(c("male","female"),each=4)
 names1 <- rep(c("rate","denom","deaths","le"), 2)
