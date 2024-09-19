@@ -85,6 +85,8 @@ deaths_lsoa_eng  <- deaths_lsoa_eng  %>%
     deaths = sum(deaths),
     stdrate = sum(age_specific_rate*population_weight))
 
+# BZD: given the many 0s we discussed replacing with MSOA when strrate is 0
+
 # From Chris' code: A relative mortality rate is produced for each area,
 # defined as the rate relative to the average mortality in the state.
 # This average mortality is defined as a weighted average
