@@ -115,3 +115,52 @@ deaths_lsoa_manchester <- deaths_lsoa_eng %>%
       str_starts(lsoa_name, "Tameside") |
       str_starts(lsoa_name, "Trafford") |
       str_starts(lsoa_name, "Wigan"))
+
+##  Mortality by MSOA small areas in England (not by age and sex)
+
+# Population estimates by age and sex by MSOA 
+
+msoa <- msoa %>%
+  select(2:5) %>%
+  distinct()
+
+deaths_msoa <- merge(deaths_england, msoa, by.x = "lsoa_code", by.y = "LSOA11CD", all.x = TRUE)
+
+deaths_msoa <- deaths_msoa %>% 
+  select(-c(1,2,6)) %>% 
+  rename("msoa_code" = "MSOA11CD",
+         "msoa_name" = "MSOA11NM") %>% 
+  group_by(msoa_code, msoa_name, gender, age) %>% 
+  summarise(deaths = sum(deaths, na.rm = TRUE))
+
+population_msoa <- merge(population_england, msoa, by.x = "lsoa_code", by.y = "LSOA11CD", all.x = TRUE)
+
+population_msoa <- population_msoa %>% 
+  select(-c(1,2,6)) %>% 
+  rename("msoa_code" = "MSOA11CD",
+         "msoa_name" = "MSOA11NM") %>% 
+  group_by(msoa_code, msoa_name, gender, age) %>% 
+  summarise(population = sum(population, na.rm = TRUE))
+
+deaths_msoa_eng <- merge(deaths_msoa, population_msoa, by = c("msoa_code", "msoa_name", "gender", "age"), all.x = TRUE)
+
+# Age-specific (mortality) rates
+deaths_msoa_eng  <- deaths_msoa_eng  %>%
+  mutate(age_specific_rate = deaths/population*1000)
+
+# Instead of per 100,000 it is per 1000 similar to Victoria 
+
+# Population weight for each age group
+deaths_msoa_eng  <- deaths_msoa_eng  %>%
+  group_by(msoa_code) %>%
+  mutate(total_population = sum(population),   
+         population_weight = population/total_population)
+
+# Age-standardized Rate
+deaths_msoa_eng  <- deaths_msoa_eng  %>%
+  group_by(msoa_code, msoa_name) %>%
+  summarise(
+    pop = sum(population),                       
+    deaths = sum(deaths),
+    stdrate = sum(age_specific_rate*population_weight))
+
