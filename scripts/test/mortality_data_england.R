@@ -140,7 +140,8 @@ population_msoa <- population_msoa %>%
   rename("msoa_code" = "MSOA11CD",
          "msoa_name" = "MSOA11NM") %>% 
   group_by(msoa_code, msoa_name, gender, age) %>% 
-  summarise(population = sum(population, na.rm = TRUE))
+  summarise(population = sum(population, na.rm = TRUE)) %>%
+  ungroup()
 
 deaths_msoa_eng <- merge(deaths_msoa, population_msoa, by = c("msoa_code", "msoa_name", "gender", "age"), all.x = TRUE)
 
@@ -154,7 +155,8 @@ deaths_msoa_eng  <- deaths_msoa_eng  %>%
 deaths_msoa_eng  <- deaths_msoa_eng  %>%
   group_by(msoa_code) %>%
   mutate(total_population = sum(population),   
-         population_weight = population/total_population)
+         population_weight = population/total_population) %>%
+  ungroup()
 
 # Age-standardized Rate
 deaths_msoa_eng  <- deaths_msoa_eng  %>%
@@ -162,5 +164,6 @@ deaths_msoa_eng  <- deaths_msoa_eng  %>%
   summarise(
     pop = sum(population),                       
     deaths = sum(deaths),
-    stdrate = sum(age_specific_rate*population_weight))
+    stdrate = sum(age_specific_rate*population_weight)) %>%
+  ungroup()
 
