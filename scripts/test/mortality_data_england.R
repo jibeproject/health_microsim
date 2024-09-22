@@ -23,13 +23,13 @@ eng <- fread('manchester/health/original/ons/life_tables_20172019.csv',skip = 5)
 
 ## Mortality by year of age and sex, for England (not by LSOAs)
 
-# The mortality rate is defined as "the probability that a person aged x 
-# exactly will die before reaching age (x+1)".
-# It is also converted to a rate per 1000 people.
-
+# The mortality rate `mx` is defined as "the number of deaths at age x 
+# last birthday in the three year period (2016-2019) 
+# divided by the average population at that age over the same period."
 
 ## BZD: the life table should have the rate not the probability, rate is mx
-eng <- eng[ , -c(2,7,8,9)] ## BZD@ here we need to remove column 3 and 10 for qx and leave 2 and 9 for mx
+eng <- eng[ , -c(3,7,8,10)] ## BZD@ here we need to remove column 3 and 10 for qx and leave 2 and 9 for mx 
+# Marina: fixed
 
 mf <- rep(c("male","female"),each=4)
 names1 <- rep(c("rate","denom","deaths","le"), 2)
@@ -60,6 +60,7 @@ england_lifetable <- eng |>
 # then multiplying each of the age-specific rates by the proportion of 
 # the population belonging to the particular age group (standard population weight)
 ## BZD: for what population is the proportion by age group that you are multiplying by?
+# Marina: I multiply the age-standardized mortality rate for each age group by the population weight of each age group in a given lsoa
 
 # Source: https://www.statcan.gc.ca/en/dai/btd/asr
 
@@ -89,54 +90,30 @@ deaths_lsoa_eng  <- deaths_lsoa_eng  %>%
 
 
 # BZD: given the many 0s we discussed replacing with MSOA when strrate is 0
-
-# From Chris' code: A relative mortality rate is produced for each area,
-# defined as the rate relative to the average mortality in the state.
-# This average mortality is defined as a weighted average
-# of the area-specific rates, weighted by the population of each area.
-
-deaths_lsoa_eng <- deaths_lsoa_eng |>
-  mutate(stdrate_ave = with(.data, sum(stdrate*pop,na.rm = TRUE)/sum(pop))) |>
-  mutate(RR = stdrate / stdrate_ave)
-
-
-
-# Filter for Greater Manchester Only:
-
-deaths_lsoa_manchester <- deaths_lsoa_eng %>% 
-  filter(
-    str_starts(lsoa_name, "Bolton") |
-      str_starts(lsoa_name, "Bury") |
-      str_starts(lsoa_name, "Manchester") |
-      str_starts(lsoa_name, "Oldham") |
-      str_starts(lsoa_name, "Rochdale") |
-      str_starts(lsoa_name, "Salford") |
-      str_starts(lsoa_name, "Stockport") |
-      str_starts(lsoa_name, "Tameside") |
-      str_starts(lsoa_name, "Trafford") |
-      str_starts(lsoa_name, "Wigan"))
+# Marina: done, please verify 
 
 ##  Mortality by MSOA small areas in England (not by age and sex)
 
 # Population estimates by age and sex by MSOA 
 
 msoa <- msoa %>%
-  select(2:5) %>%
+  select(2:7) %>%
   distinct()
 
 deaths_msoa <- merge(deaths_england, msoa, by.x = "lsoa_code", by.y = "LSOA11CD", all.x = TRUE)
 
 deaths_msoa <- deaths_msoa %>% 
-  select(-c(1,2,6)) %>% 
+  select(-c(1,2,6,9,10)) %>% 
   rename("msoa_code" = "MSOA11CD",
          "msoa_name" = "MSOA11NM") %>% 
   group_by(msoa_code, msoa_name, gender, age) %>% 
-  summarise(deaths = sum(deaths, na.rm = TRUE))
+  summarise(deaths = sum(deaths, na.rm = TRUE)) %>% 
+  ungroup()
 
 population_msoa <- merge(population_england, msoa, by.x = "lsoa_code", by.y = "LSOA11CD", all.x = TRUE)
 
 population_msoa <- population_msoa %>% 
-  select(-c(1,2,6)) %>% 
+  select(-c(1,2,6,9,10)) %>% 
   rename("msoa_code" = "MSOA11CD",
          "msoa_name" = "MSOA11NM") %>% 
   group_by(msoa_code, msoa_name, gender, age) %>% 
@@ -167,3 +144,107 @@ deaths_msoa_eng  <- deaths_msoa_eng  %>%
     stdrate = sum(age_specific_rate*population_weight)) %>%
   ungroup()
 
+##  Mortality by (local authority districts) LAD areas in England 
+
+# Population estimates by age and sex by LAD 
+
+deaths_lad <- merge(deaths_england, msoa, by.x = "lsoa_code", by.y = "LSOA11CD", all.x = TRUE)
+
+deaths_lad <- deaths_lad %>% 
+  select(-c(1,2,6,7,8)) %>% 
+  rename("lad_code" = "LAD20CD",
+         "lad_name" = "LAD20NM") %>% 
+  group_by(lad_code, lad_name, gender, age) %>% 
+  summarise(deaths = sum(deaths, na.rm = TRUE)) %>% 
+  ungroup()
+
+population_lad <- merge(population_england, msoa, by.x = "lsoa_code", by.y = "LSOA11CD", all.x = TRUE)
+
+population_lad <- population_lad %>% 
+  select(-c(1,2,6,7,8)) %>% 
+  rename("lad_code" = "LAD20CD",
+         "lad_name" = "LAD20NM") %>% 
+  group_by(lad_code, lad_name, gender, age) %>% 
+  summarise(population = sum(population, na.rm = TRUE)) %>%
+  ungroup()
+
+deaths_lad_eng <- merge(deaths_lad, population_lad, by = c("lad_code", "lad_name", "gender", "age"), all.x = TRUE)
+
+# Age-specific (mortality) rates
+deaths_lad_eng  <- deaths_lad_eng  %>%
+  mutate(age_specific_rate = deaths/population*1000)
+
+# Instead of per 100,000 it is per 1000 similar to Victoria 
+
+# Population weight for each age group
+deaths_lad_eng  <- deaths_lad_eng  %>%
+  group_by(lad_code) %>%
+  mutate(total_population = sum(population),   
+         population_weight = population/total_population) %>%
+  ungroup()
+
+# Age-standardized Rate
+deaths_lad_eng  <- deaths_lad_eng  %>%
+  group_by(lad_code, lad_name) %>%
+  summarise(
+    pop = sum(population),                       
+    deaths = sum(deaths),
+    stdrate = sum(age_specific_rate*population_weight)) %>%
+  ungroup()
+
+# From Chris' code: A relative mortality rate is produced for each area,
+# defined as the rate relative to the average mortality in the state.
+# This average mortality is defined as a weighted average
+# of the area-specific rates, weighted by the population of each area.
+
+england_lsoa_deaths <- deaths_lsoa_eng |>
+  left_join(msoa, join_by(lsoa_code == LSOA11CD)) |>
+  select(lsoa_code, lsoa_name, msoa_code = "MSOA11CD", lad_code = "LAD20CD",pop, deaths, stdrate) |>
+  distinct() |>
+  mutate(stdrate_ave = with(.data, sum(stdrate*pop,na.rm = TRUE)/sum(pop))) |>
+  left_join(deaths_msoa_eng |> select(msoa_code, stdrate_msoa = stdrate, deaths_msoa = deaths), by="msoa_code") |>
+  left_join(deaths_lad_eng |> select(lad_code, stdrate_lad = stdrate), by="lad_code")|>
+  # Use MSOA rate if LSOA std rate is missing or has fewer than 10 deaths, and use LAD if msoa deaths are fewer than 20
+  mutate(stdrate = ifelse(
+    is.na(stdrate) | deaths < 10,   # if NA or fewer than 10 deaths at the lsoa level, use msoa
+    ifelse(
+      deaths_msoa > 20,             # if fewer than 20 deaths at the msoa level, use lad
+      stdrate_msoa,
+      stdrate_lad),
+    stdrate)) |>                    # if not NA and more than or equal to 10, use lsoa
+  mutate(RR = stdrate / stdrate_ave)
+
+# Filter for Greater Manchester Only:
+
+manchester_lsoa_deaths <- england_lsoa_deaths %>% 
+  filter(
+    str_starts(lsoa_name, "Bolton") |
+      str_starts(lsoa_name, "Bury") |
+      str_starts(lsoa_name, "Manchester") |
+      str_starts(lsoa_name, "Oldham") |
+      str_starts(lsoa_name, "Rochdale") |
+      str_starts(lsoa_name, "Salford") |
+      str_starts(lsoa_name, "Stockport") |
+      str_starts(lsoa_name, "Tameside") |
+      str_starts(lsoa_name, "Trafford") |
+      str_starts(lsoa_name, "Wigan"))
+
+# Plot: LSOA by Level of Deprivation
+
+deprivation <- deprivation %>%
+  filter(`Indices of Deprivation` == "a. Index of Multiple Deprivation (IMD)" & Measurement == "Decile") # Score and Rank are also options
+
+england_lsoa_deaths <- england_lsoa_deaths |>
+  left_join(deprivation |> select(deprivation_decile = Value, lsoa_code = FeatureCode), by = "lsoa_code") 
+
+rr_plot <- ggplot(england_lsoa_deaths, aes(x = deprivation_decile, y = RR)) +
+  geom_line() +                    
+  geom_point() +                    
+  labs(
+    title = "Relative Mortality Risk for LSOA by Deprivation Decile, England (2016-2019)",
+    x = "Deprivation Decile (1 - Most Deprived, 10 - Least Deprived)",
+    y = "Relative Mortality Risk (RR)"
+  ) +
+  scale_x_continuous(breaks = 1:10) +
+  theme_minimal() +
+  theme(panel.grid.minor = element_blank())
