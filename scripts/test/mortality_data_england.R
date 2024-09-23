@@ -9,17 +9,22 @@ packages <- c("tidyverse",
 lapply(packages, library, character.only = TRUE)
 
 # Data for England
-# Mortality Data by LSOA by age and sex
+# Mortality and Population Data by LSOA by age and sex (Average for 2016-2019)
 # [Source]: https://www.ons.gov.uk/peoplepopulationandcommunity/birthsdeathsandmarriages/deaths/adhocs/1028deathregistrationsbysexfiveyearagegroupandlowerlayersuperoutputareaslsoa2011censusboundariesenglandandwales2001to2021
 deaths_england <- fread('manchester/health/processed/ons/deaths_england.csv')
 population_england <- fread('manchester/health/processed/ons/population_england.csv')
 
+# Geographical Hierarchy (as of 2021)
 # [Source]: https://geoportal.statistics.gov.uk/datasets/e7c49b62898a417192a336aca17e3a3f/about
 msoa <- fread('manchester/health/original/ons/lsoa_to_msoa.csv')
 
-# Life Tables for England
+# Life Tables for England (2017-2019)
 # [Source]: https://www.ons.gov.uk/peoplepopulationandcommunity/birthsdeathsandmarriages/lifeexpectancies/datasets/nationallifetablesenglandreferencetables/current
 eng <- fread('manchester/health/original/ons/life_tables_20172019.csv',skip = 5)
+
+# English Indices of Deprivation by LSOA (2019)
+# [Source]: https://opendatacommunities.org/resource?uri=http%3A%2F%2Fopendatacommunities.org%2Fdata%2Fsocietal-wellbeing%2Fimd2019%2Findices
+deprivation <- fread('manchester/health/original/ons/imd2019lsoa.csv') 
 
 ## Mortality by year of age and sex, for England (not by LSOAs)
 
