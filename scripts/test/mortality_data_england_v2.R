@@ -8,6 +8,9 @@ packages <- c("tidyverse",
               "readxl")
 lapply(packages, library, character.only = TRUE)
 
+# Disable scientific notation globally
+options(scipen = 999)
+
 # Data for England
 # Mortality and Population Data by LSOA by age and sex (Average for 2016-2019). BZD: is this 2026-2019 (4 years) or 2017-2019 (3 years)
 # [Source]: https://www.ons.gov.uk/peoplepopulationandcommunity/birthsdeathsandmarriages/deaths/adhocs/1028deathregistrationsbysexfiveyearagegroupandlowerlayersuperoutputareaslsoa2011censusboundariesenglandandwales2001to2021
@@ -344,19 +347,20 @@ england_lifetable_lsoa <- deaths_england_final %>% rename (sex = gender) %>%
   cross_join(england_lifetable) %>% 
   select(lsoa_code, lsoa_name, sex = sex.x, age, rate1000, imd_decile)
 
-
-# Graphs
-p_england <- ggplot(england_lifetable_lsoa, aes(x = age, y = rate1000, col = lsoa_code)) +
-  geom_line(lwd = 1) +  # Draw lines with specified width
-  facet_grid(imd_decile ~ sex, scales = "free_y") +  # Facet by both imd_decile (rows) and sex (columns)
-  ylab("Mortality rate (per 1,000)") +  # Label for y-axis
-  xlab("Age (years)") +  # Label for x-axis
-  scale_color_discrete(guide = "none") +  # Disable legend for lsoa_code if too many colors
-  theme_minimal() +  # Use a clean theme
-  theme(legend.position = "none")  # Remove legend if not needed
-
-# Print the plot
-print(p_england)
+# BZD: the graphs need some work, the idea is to show differences in mortality rates across imd. A line for the 
+# English average in each decile graph would be useful
+# # Graphs
+# p_england <- ggplot(england_lifetable_lsoa, aes(x = age, y = rate1000, col = lsoa_code)) +
+#   geom_line(lwd = 1) +  # Draw lines with specified width
+#   facet_grid(imd_decile ~ sex, scales = "free_y") +  # Facet by both imd_decile (rows) and sex (columns)
+#   ylab("Mortality rate (per 1,000)") +  # Label for y-axis
+#   xlab("Age (years)") +  # Label for x-axis
+#   scale_color_discrete(guide = "none") +  # Disable legend for lsoa_code if too many colors
+#   theme_minimal() +  # Use a clean theme
+#   theme(legend.position = "none")  # Remove legend if not needed
+# 
+# # Print the plot
+# print(p_england)
 
 
 # Filter for Greater Manchester Only:
@@ -372,44 +376,44 @@ manchester_lifetable_lsoa <- england_lifetable_lsoa %>%
       str_starts(lsoa_name, "Stockport") |
       str_starts(lsoa_name, "Tameside") |
       str_starts(lsoa_name, "Trafford") |
-      str_starts(lsoa_name, "Wigan"))
+      str_starts(lsoa_name, "Wigan")) %>%
+  mutate(prob=1-(exp(-rate1000/1000)))
 
-
-
+saveRDS(manchester_lifetable_lsoa, "manchester/health/processed/mort_lsoa.RDS")
 
 # Graphs
-p_manchester <- ggplot(manchester_lifetable_lsoa, aes(x = age, y = rate1000, col = lsoa_code)) +
-  geom_line(lwd = 1) +  # Draw lines with specified width
-  facet_grid(imd_decile ~ sex, scales = "free_y") +  # Facet by both imd_decile (rows) and sex (columns)
-  ylab("Mortality rate (per 1,000)") +  # Label for y-axis
-  xlab("Age (years)") +  # Label for x-axis
-  scale_color_discrete(guide = "none") +  # Disable legend for lsoa_code if too many colors
-  theme_minimal() +  # Use a clean theme
-  theme(legend.position = "none")  # Remove legend if not needed
-
-# Print the plot
-print(p_manchester)
-
-
-# Plot: LSOA by Level of Deprivation
-
-deprivation <- deprivation %>%
-  filter(`Indices of Deprivation` == "a. Index of Multiple Deprivation (IMD)" & Measurement == "Decile") # Score and Rank are also options
-
-england_lsoa_deaths <- england_lsoa_deaths |>
-  left_join(deprivation |> select(deprivation_decile = Value, lsoa_code = FeatureCode), by = "lsoa_code") 
-
-rr_plot <- ggplot(england_lsoa_deaths, aes(x = deprivation_decile, y = RR)) +
-  geom_line() +                    
-  geom_point() +                    
-  labs(
-    title = "Relative Mortality Risk for LSOA by Deprivation Decile, England (2016-2019)",
-    x = "Deprivation Decile (1 - Most Deprived, 10 - Least Deprived)",
-    y = "Relative Mortality Risk (RR)"
-  ) +
-  scale_x_continuous(breaks = 1:10) +
-  theme_minimal() +
-  theme(panel.grid.minor = element_blank())
-
-
-rr_plot
+# p_manchester <- ggplot(manchester_lifetable_lsoa, aes(x = age, y = rate1000, col = lsoa_code)) +
+#   geom_line(lwd = 1) +  # Draw lines with specified width
+#   facet_grid(imd_decile ~ sex, scales = "free_y") +  # Facet by both imd_decile (rows) and sex (columns)
+#   ylab("Mortality rate (per 1,000)") +  # Label for y-axis
+#   xlab("Age (years)") +  # Label for x-axis
+#   scale_color_discrete(guide = "none") +  # Disable legend for lsoa_code if too many colors
+#   theme_minimal() +  # Use a clean theme
+#   theme(legend.position = "none")  # Remove legend if not needed
+# 
+# # Print the plot
+# print(p_manchester)
+# 
+# 
+# # Plot: LSOA by Level of Deprivation
+# 
+# deprivation <- deprivation %>%
+#   filter(`Indices of Deprivation` == "a. Index of Multiple Deprivation (IMD)" & Measurement == "Decile") # Score and Rank are also options
+# 
+# england_lsoa_deaths <- england_lsoa_deaths |>
+#   left_join(deprivation |> select(deprivation_decile = Value, lsoa_code = FeatureCode), by = "lsoa_code") 
+# 
+# rr_plot <- ggplot(england_lsoa_deaths, aes(x = deprivation_decile, y = RR)) +
+#   geom_line() +                    
+#   geom_point() +                    
+#   labs(
+#     title = "Relative Mortality Risk for LSOA by Deprivation Decile, England (2016-2019)",
+#     x = "Deprivation Decile (1 - Most Deprived, 10 - Least Deprived)",
+#     y = "Relative Mortality Risk (RR)"
+#   ) +
+#   scale_x_continuous(breaks = 1:10) +
+#   theme_minimal() +
+#   theme(panel.grid.minor = element_blank())
+# 
+# 
+# rr_plot
