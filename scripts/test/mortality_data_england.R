@@ -9,7 +9,7 @@ packages <- c("tidyverse",
 lapply(packages, library, character.only = TRUE)
 
 # Data for England
-# Mortality and Population Data by LSOA by age and sex (Average for 2016-2019)
+# Mortality and Population Data by LSOA by age and sex (Average for 2016-2019). BZD: is this 2026-2019 (4 years) or 2017-2019 (3 years)
 # [Source]: https://www.ons.gov.uk/peoplepopulationandcommunity/birthsdeathsandmarriages/deaths/adhocs/1028deathregistrationsbysexfiveyearagegroupandlowerlayersuperoutputareaslsoa2011censusboundariesenglandandwales2001to2021
 deaths_england <- fread('manchester/health/processed/ons/deaths_england.csv')
 population_england <- fread('manchester/health/processed/ons/population_england.csv')
@@ -32,9 +32,8 @@ deprivation <- fread('manchester/health/original/ons/imd2019lsoa.csv')
 # last birthday in the three year period (2016-2019) 
 # divided by the average population at that age over the same period."
 
-## BZD: the life table should have the rate not the probability, rate is mx
-eng <- eng[ , -c(3,7,8,10)] ## BZD@ here we need to remove column 3 and 10 for qx and leave 2 and 9 for mx 
-# Marina: fixed
+eng <- eng[ , -c(3,7,8,10)] 
+
 
 mf <- rep(c("male","female"),each=4)
 names1 <- rep(c("rate","denom","deaths","le"), 2)
@@ -77,7 +76,7 @@ deaths_lsoa_eng  <- deaths_lsoa_eng  %>%
 
 # Instead of per 100,000 it is per 1000 similar to Victoria 
 
-# Population weight for each age group
+# Population weight for each age group within a lsoa
 deaths_lsoa_eng  <- deaths_lsoa_eng  %>%
   group_by(lsoa_code) %>%
   mutate(total_population = sum(population),   
@@ -253,3 +252,6 @@ rr_plot <- ggplot(england_lsoa_deaths, aes(x = deprivation_decile, y = RR)) +
   scale_x_continuous(breaks = 1:10) +
   theme_minimal() +
   theme(panel.grid.minor = element_blank())
+
+
+rr_plot
