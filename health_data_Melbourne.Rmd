@@ -325,7 +325,7 @@ The cancer sites are reported differently between the AIHW tables on
 incidence by age/sex and incidence by socioeconomic quintiles and also
 from the cancer ATLAS. While the final data uses ATLAS, as opposed to
 AIHW, initial code from Chris used AIHW and we also include the AIHW
-socioeconomic data below for comparison perposes, so we still harmonise,
+socioeconomic data below for comparison purposes, so we still harmonise,
 also to match standard names used across different inputs (i.e. health
 data, dose response functions).
 
