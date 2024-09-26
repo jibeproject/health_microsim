@@ -117,15 +117,12 @@ deaths_lsoas <- deaths_lsoa_eng %>%
 # Calculate the age-standardized rate per LSOA
 deaths_lsoa_eng_asdr  <- deaths_lsoa_eng %>%
   left_join(population_weights_England, by = c("age", "gender"))  %>%
-  filter(population != 0) %>%  # BZD: some lsoas have a population of 0 but some deaths?
+  # filter(population != 0) %>%  # BZD: some lsoas have a population of 0 but some deaths?
   group_by(lsoa_code, lsoa_name, gender) %>%
   summarise(
     stdrate = sum(age_specific_rate * weight, na.rm = TRUE)) %>%
     ungroup() %>% 
-  left_join(population_lsoas) %>%
-  group_by(gender) %>%
-  mutate(stdrate_ave = with(.data, sum(stdrate*population_lsoa,na.rm = TRUE)/sum(population_lsoa))) %>%
-  left_join(deaths_lsoas)
+  left_join(population_lsoas)
 
 # Merge with index of deprivation 
 
@@ -305,7 +302,8 @@ deaths_england_final <- deaths_lsoa_eng_asdr %>%
     stdrate_lsoa)) %>%
   group_by(gender) %>%
   mutate(stdrate_ave = sum(stdrate*population,na.rm = TRUE)/sum(population)) %>%
-  mutate(RR = stdrate / stdrate_ave) 
+  mutate(RR = stdrate / stdrate_ave) %>%
+  ungroup()
 
 ## Graph by index of multiple deprivation
 # Note: for the whole of England, clear gradient on overall age and sex standardised rates and by gender. 
