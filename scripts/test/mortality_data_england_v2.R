@@ -134,11 +134,6 @@ socio <- deprivation %>%
   select(lsoa_code, imd_decile=Value, deprivation)
 
 
-# Add to lsoa_deaths dataset. 
-
-deaths_lsoa_eng_asdr <- deaths_lsoa_eng_asdr %>% left_join(socio) %>%
-  mutate(rr=stdrate/stdrate_ave)
-
 # BZD: given the many 0s we discussed replacing with MSOA when strrate is 0
 # Marina: done, please verify 
 
