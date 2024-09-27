@@ -7,6 +7,8 @@ library(tidyverse)
 library(future.apply)
 # For directory/file structure
 library(here)
+# For DR PA 
+library(drpa)
 
 plan(multisession)
 
@@ -17,10 +19,33 @@ set.seed(2)
 # synth_pop_base <- read_csv("data/siloMitoMatsim_modelOutput/pp_health_2012.csv")
 
 ### Belen 7.03.24: change folder to Jibe working group
-synth_pop_orig <- readRDS(here("data/siloMitoMatsim_modelOutput/population_final.rds"))
+synth_pop_orig <- read_csv(here("data/manchester/pphealth_pa.csv"))
 
-synth_pop <- synth_pop_orig |> ungroup() |> dplyr::select(AgentId, Age, Gender, age_cat, education, SA2_MAINCODE) |> 
-  rename (id = AgentId, age = Age, sex = Gender) #|> sample_n(1000) #|> filter(age > 90) 
+# Comment out code specific to melbourne synthetic column names
+# synth_pop <- synth_pop_orig |> ungroup() |> dplyr::select(AgentId, Age, Gender, age_cat, education, SA2_MAINCODE) |> 
+#   rename (id = AgentId, age = Age, sex = Gender) #|> sample_n(1000) #|> filter(age > 90) 
+
+# Assume the background PA is of intense nature
+vigorous_mmet = 3
+
+# Read manchester specific synth_pop filename
+synth_pop <- synth_pop_orig |> 
+  ungroup() |> 
+  dplyr::select(id, age, gender, mmetHr_bicycle, mmetHr_walk, otherSport_wkhr) |> 
+  rename (sex = gender) |> 
+  mutate(total_tr_pa = mmetHr_bicycle + mmetHr_walk, total_non_tr_pa = otherSport_wkhr * vigorous_mmet,
+                                  total_mmet = total_tr_pa+total_non_tr_pa) #|> 
+  #sample_n(10000) #|> filter(age > 90) 
+
+
+rr <- synth_pop |> mutate(across(ends_with("mmet"), ~ drpa::dose_response(
+  cause = "all-cause-mortality", outcome_type = "fatal",
+  dose = .x, censor_method = "WHO-DRL") |> pull())) |> 
+  dplyr::select(ends_with("mmet")) |> 
+  rename_with(~ gsub("mmet", "rr", .x, fixed = TRUE))
+
+synth_pop <- cbind(synth_pop, rr |> rename(rr_all = total_rr))
+
 
 # # Read pp health dataset (of Munich) using read_csv_arrow from arrow library
 # synth_pop_scen <- read_csv("data/siloMitoMatsim_modelOutput/pp_health_2012_scen.csv")
@@ -31,18 +56,26 @@ synth_pop <- synth_pop_orig |> ungroup() |> dplyr::select(AgentId, Age, Gender, 
 # Read probability dataset by age and sex for Australia
 hd <- read_rds("data/siloMitoMatsim_modelOutput/health_transitions_melbourne.rds")
 
-sa2_ses <- readxl::read_excel("data/SES/2033055001 - sa2 indexes.xls", skip = 4, sheet = "Table 2")
+hd <- hd |> filter(sex %in% c("Male", "Female") & educ == "medium") |> 
+  dplyr::select(-c(sa2_code, sa2_name, educ)) |> 
+  distinct(age, sex, cause, measure, .keep_all = T) |> 
+  mutate(sex = case_when(
+    grepl("Male", sex) ~ 1,
+    grepl("Female", sex) ~ 2
+  ))
 
-ses <- sa2_ses[-1,] |> 
-  dplyr::select(`2016 Statistical Area Level 2  (SA2) 9-Digit Code`, "...7") |> 
-  rename(rank = "...7", sa2_code = `2016 Statistical Area Level 2  (SA2) 9-Digit Code`) |> 
-  mutate_if(is.character, as.numeric) |> mutate(rank = round(rank/2))
-n_distinct(ses$sa2_code)
-
-# Append SES rank to the synthetic population
-synth_pop <- synth_pop |> rename(sa2_code = SA2_MAINCODE) |> left_join(ses)
-
-hd <- hd |> filter(sa2_code %in% synth_pop$sa2_code)
+# sa2_ses <- readxl::read_excel("data/SES/2033055001 - sa2 indexes.xls", skip = 4, sheet = "Table 2")
+# 
+# ses <- sa2_ses[-1,] |> 
+#   dplyr::select(`2016 Statistical Area Level 2  (SA2) 9-Digit Code`, `2016 Statistical Area Level 2 (SA2) Name`, "...7") |> 
+#   rename(rank = "...7", sa2_code = `2016 Statistical Area Level 2  (SA2) 9-Digit Code`) |> 
+#   mutate_if(is.character, as.numeric) |> mutate(rank = round(rank/2))
+# n_distinct(ses$sa2_code)
+# 
+# # Append SES rank to the synthetic population
+# synth_pop <- synth_pop |> rename(sa2_code = SA2_MAINCODE) |> left_join(ses)
+# 
+# hd <- hd |> filter(sa2_code %in% synth_pop$sa2_code)
 
 hd <- hd |> mutate(cause = str_replace(cause, " ", "_"))
 
@@ -52,7 +85,7 @@ hd <- hd |> mutate(cause = str_replace(cause, " ", "_"))
 n.i <- synth_pop |> nrow()
 
 # Number of cycles
-n.c <- 1000
+n.c <- 10
 
 # everyone begins in the healthy state 
 v.M_1 <- rep("H", n.i)
@@ -75,12 +108,14 @@ prob_age_sex <- function(data, hdata, colname = "sick_prob_allc", seed = 1, cycl
   # The cycle is the current year and is added to the baseline's age of an individuals to get the current age
   # So age = baseline_age + cycle - 1 - as cycle starts with 1 hence subtracting 1 from it
   nsick_prob <- hdata |> 
-    filter(age == (data["age"] |> as.numeric()) + cycle - 1, sex == c(data["sex"] |> as.character()),
-           educ == (data["education"] |> as.character()), sa2_code == (data["sa2_code"] |> as.numeric())) |> 
+    # filter(age == (data["age"] |> as.numeric()) + cycle - 1, sex == c(data["sex"] |> as.character()),
+    #        educ == (data["education"] |> as.character()), sa2_code == (data["sa2_code"] |> as.numeric())) |> 
+    filter(age == (data["age"] |> as.numeric()) + cycle - 1, sex == c(data["sex"] |> as.numeric())) |> 
     dplyr::select(colname) |> 
     pull()
   # If sick_prob is undefined then return 0
   if (length(nsick_prob) == 0){
+    browser()
     nsick_prob <- 0
   }
   return(nsick_prob)
@@ -137,7 +172,7 @@ get_state <- function(rd, cycle = 1, cause = "allc", cm) {
 }
 
 # Create a df for 
-synth_pop_wprob <- synth_pop|> rownames_to_column()
+synth_pop_wprob <- synth_pop|> rownames_to_column() |> dplyr::select(-c(mmetHr_bicycle, mmetHr_walk, otherSport_wkhr, contains("total")))
 # 
 # Matrix to save current states
 # with dimensions: (rows: number of individuals, cols: number of classes (or years) + 1 (for the 0th year))
@@ -168,9 +203,11 @@ for (i in 1:n.c){
   if (stop)
     break
   for (dis in diseases){
+    # i <- 1
     # for (ind in 1:nrow(synth_pop_wprob)){
     #   prob_age_sex(synth_pop_wprob[ind,], hdata = hd, colname = "prob", seed = 1, cycle = i)
     # }
+    
     ind_prob <- future_apply(synth_pop_wprob, 1, prob_age_sex, future.seed = T,
                              hdata = hd, cycle = i, colname = "prob")
     synth_pop_wprob <- bind_cols(synth_pop_wprob, ind_prob)
@@ -214,8 +251,8 @@ ggplot(l) +
   labs(x = "Years", y = "Frequency (%)", title = "State transitions over the years") +
   theme_minimal()
 
-# # Save the diagram
-ggsave(paste0("diagrams/state_trans-n.c-",n.c, "-n.i-", n.i, "-n.d-", length(diseases), ".png"), height = 5, width = 10, units = "in", dpi = 600, scale = 1)
-# 
-# # Also save state transitions as a CSV
-write_csv(m |> as.data.frame(), paste0("data/state_trans-n.c-",n.c, "-n.i-", n.i, "-n.d-", length(diseases), ".csv"))
+# # # Save the diagram
+# ggsave(paste0("diagrams/state_trans-n.c-",n.c, "-n.i-", n.i, "-n.d-", length(diseases), ".png"), height = 5, width = 10, units = "in", dpi = 600, scale = 1)
+# # 
+# # # Also save state transitions as a CSV
+# write_csv(m |> as.data.frame(), paste0("data/state_trans-n.c-",n.c, "-n.i-", n.i, "-n.d-", length(diseases), ".csv"))
