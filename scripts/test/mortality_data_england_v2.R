@@ -405,12 +405,12 @@ manchester_lifetable_lsoa <- england_lifetable_lsoa %>%
       str_starts(lsoa_name, "Wigan")) %>%
   mutate(prob=1-(exp(-rate1000/1000)))
 
-saveRDS(manchester_lifetable_lsoa, "manchester/health/processed/mort_lsoa.RDS")
+saveRDS(manchester_lifetable_lsoa, "manchester/health/processed/manchester_mortality_lsoa.RDS")
 
 # Graphs
 # Assuming england_lifetable_lsoa contains columns: age, rate1000, and sex
 
-ggplot(manchester_lifetable_lsoa, aes(x = age, y = rate1000)) + 
+plot1 <- ggplot(manchester_lifetable_lsoa, aes(x = age, y = rate1000)) + 
   geom_line(lwd=0.2) +   
   facet_grid(imd_decile ~ sex, scales = "free_y") + 
   # scale_color_manual(values = c("Males" = "#29B6A4", "Females" = "#E54060")) + 
@@ -447,129 +447,129 @@ ggplot(manchester_lifetable_lsoa, aes(x = age, y = rate1000)) +
 
 ### European Standard Population 2013
 
-european_pop <- european_pop %>%
-  mutate(Sex = ifelse(Sex == "Male", "Males", "Females")) %>%
-  rename(
-    "age" = "AgeGroup",
-    "gender" = "Sex",
-    "population" = "EuropeanStandardPopulation"
-  ) %>%
-  mutate(age = case_when(
-    age == "90plus years" | age == "85-89 years" ~ "over 85",
-    TRUE ~ str_replace(age, "(\\d+)-(\\d+)", "\\1 to \\2")
-  )) %>%
-  mutate(age = str_replace_all(age, "\\b(\\d)\\b", "0\\1")) %>%
-  mutate(age = str_replace(age, " years", "")) %>%  # Remove 'years'
-  mutate(age = ifelse(age == "00 to 04", "01 to 04", age)) %>%  # Rename '00 to 04'
-  group_by(age, gender) %>%
-  summarise(population = sum(population), .groups = 'drop')
-
-
-# Calculate age-specific population and join with gender totals
-population_weights_europe <- european_pop %>%
-  select(gender, age, population) %>%
-  group_by(gender, age) %>%
-  summarise(age_population = sum(population)) %>%  # Total population by gender and age
-  ungroup() %>% 
-  mutate(weight=age_population/100000)
-
-# lsoa
-deaths_lsoa_eng_eu  <- deaths_lsoa_eng %>%
-  left_join(population_weights_europe, by = c("age", "gender")) %>% 
-  group_by(lsoa_code, lsoa_name, gender) %>%
-  filter(population != 0) %>% 
-  summarise(
-    stdrate = sum(age_specific_rate * weight, na.rm = TRUE),
-    population_lsoa = sum(population),
-    deaths_lsoa = sum(deaths))
-
-#msoa
-deaths_msoa_eng_eu  <- deaths_msoa_eng  %>%
-  left_join(population_weights_europe, by = c("age", "gender")) %>% 
-  filter(population != 0) %>% 
-  group_by(msoa_code, msoa_name, gender) %>%
-  summarise(
-    stdrate = sum(age_specific_rate * weight, na.rm = TRUE),
-    deaths_msoa = sum(deaths)) %>%
-  ungroup() 
-
-#lad 
-deaths_lad_eng_eu  <- deaths_lad_eng  %>%
-  left_join(population_weights_europe, by = c("age", "gender")) %>%
-  filter(population != 0) %>% 
-  group_by(lad_code, lad_name, gender) %>%
-  summarise(
-    stdrate = sum(age_specific_rate*weight,  na.rm = TRUE)) %>%
-  ungroup()
-
-england_lsoa_deaths_eu <- deaths_lsoa_eng_eu |>
-  left_join(msoa, join_by(lsoa_code == LSOA11CD)) |>
-  select(lsoa_code, lsoa_name, msoa_code = "MSOA11CD", lad_code = "LAD20CD",gender,population_lsoa, deaths_lsoa, stdrate) |>
-  distinct() |>
-  left_join(deaths_msoa_eng_eu |> select(msoa_code, stdrate_msoa = stdrate, deaths_msoa,gender), by= c("msoa_code","gender")) |>
-  left_join(deaths_lad_eng_eu |> select(lad_code, stdrate_lad = stdrate,gender), by=c("lad_code","gender")) %>% 
-  group_by (gender) %>% 
-  # Use MSOA rate if LSOA std rate is missing or has fewer than 10 deaths, and use LAD if msoa deaths are fewer than 20
-  mutate(stdrate_ave = with(.data, sum(stdrate*population_lsoa,na.rm = TRUE)/sum(population_lsoa)),
-         stdrate = ifelse(
-           is.na(stdrate) | deaths_lsoa < 10,   # if NA or fewer than 10 deaths at the lsoa level, use msoa
-           ifelse(
-             deaths_msoa > 20,             # if fewer than 20 deaths at the msoa level, use lad
-             stdrate_msoa,
-             stdrate_lad),
-           stdrate)) |>                    # if not NA and more than or equal to 10, use lsoa
-  mutate(RR = stdrate / stdrate_ave)
-
-# Adding level of deprivation 
-
-england_deaths_socio_eu <- england_lsoa_deaths_eu %>%
-  left_join(deprivation, by = "lsoa_code")
-
-# For All
-mortality_socio_all_eu <- england_deaths_socio_eu %>% 
-  group_by(imd_decile) %>%
-  summarise(
-    # Only calculate the weighted mean if both rate_area_100000 and population are available
-    ASR = sum(stdrate*population_lsoa, na.rm=TRUE)/sum(population_lsoa),
-    .groups = "drop"
-  )  %>%
-  ungroup()
-
-### Sex specific ASR
-
-mortality_socio_gender_eu <- england_deaths_socio_eu %>%
-  group_by(imd_decile, gender) %>%
-  summarise(
-    # Only calculate the weighted mean if both rate_area_100000 and population are available
-    ASR = sum(stdrate*population_lsoa, na.rm=TRUE)/sum(population_lsoa),
-    .groups = "drop"
-  )  %>%
-  ungroup()
-
-# lad of Greater Manchester Only
-
-deaths_lad_man_eu <- deaths_lad_eng_eu %>% 
-  filter(
-    str_starts(lad_name, "Bolton") |
-      str_starts(lad_name, "Bury") |
-      str_starts(lad_name, "Manchester") |
-      str_starts(lad_name, "Oldham") |
-      str_starts(lad_name, "Rochdale") |
-      str_starts(lad_name, "Salford") |
-      str_starts(lad_name, "Stockport") |
-      str_starts(lad_name, "Tameside") |
-      str_starts(lad_name, "Trafford") |
-      str_starts(lad_name, "Wigan"))
-
-deaths_lad_man_eng <- deaths_lad_eng_asdr %>% 
-  filter(
-    str_starts(lad_name, "Bolton") |
-      str_starts(lad_name, "Bury") |
-      str_starts(lad_name, "Manchester") |
-      str_starts(lad_name, "Oldham") |
-      str_starts(lad_name, "Rochdale") |
-      str_starts(lad_name, "Salford") |
-      str_starts(lad_name, "Stockport") |
-      str_starts(lad_name, "Tameside") |
-      str_starts(lad_name, "Trafford") |
-      str_starts(lad_name, "Wigan"))
+# european_pop <- european_pop %>%
+#   mutate(Sex = ifelse(Sex == "Male", "Males", "Females")) %>%
+#   rename(
+#     "age" = "AgeGroup",
+#     "gender" = "Sex",
+#     "population" = "EuropeanStandardPopulation"
+#   ) %>%
+#   mutate(age = case_when(
+#     age == "90plus years" | age == "85-89 years" ~ "over 85",
+#     TRUE ~ str_replace(age, "(\\d+)-(\\d+)", "\\1 to \\2")
+#   )) %>%
+#   mutate(age = str_replace_all(age, "\\b(\\d)\\b", "0\\1")) %>%
+#   mutate(age = str_replace(age, " years", "")) %>%  # Remove 'years'
+#   mutate(age = ifelse(age == "00 to 04", "01 to 04", age)) %>%  # Rename '00 to 04'
+#   group_by(age, gender) %>%
+#   summarise(population = sum(population), .groups = 'drop')
+# 
+# 
+# # Calculate age-specific population and join with gender totals
+# population_weights_europe <- european_pop %>%
+#   select(gender, age, population) %>%
+#   group_by(gender, age) %>%
+#   summarise(age_population = sum(population)) %>%  # Total population by gender and age
+#   ungroup() %>% 
+#   mutate(weight=age_population/100000)
+# 
+# # lsoa
+# deaths_lsoa_eng_eu  <- deaths_lsoa_eng %>%
+#   left_join(population_weights_europe, by = c("age", "gender")) %>% 
+#   group_by(lsoa_code, lsoa_name, gender) %>%
+#   filter(population != 0) %>% 
+#   summarise(
+#     stdrate = sum(age_specific_rate * weight, na.rm = TRUE),
+#     population_lsoa = sum(population),
+#     deaths_lsoa = sum(deaths))
+# 
+# #msoa
+# deaths_msoa_eng_eu  <- deaths_msoa_eng  %>%
+#   left_join(population_weights_europe, by = c("age", "gender")) %>% 
+#   filter(population != 0) %>% 
+#   group_by(msoa_code, msoa_name, gender) %>%
+#   summarise(
+#     stdrate = sum(age_specific_rate * weight, na.rm = TRUE),
+#     deaths_msoa = sum(deaths)) %>%
+#   ungroup() 
+# 
+# #lad 
+# deaths_lad_eng_eu  <- deaths_lad_eng  %>%
+#   left_join(population_weights_europe, by = c("age", "gender")) %>%
+#   filter(population != 0) %>% 
+#   group_by(lad_code, lad_name, gender) %>%
+#   summarise(
+#     stdrate = sum(age_specific_rate*weight,  na.rm = TRUE)) %>%
+#   ungroup()
+# 
+# england_lsoa_deaths_eu <- deaths_lsoa_eng_eu |>
+#   left_join(msoa, join_by(lsoa_code == LSOA11CD)) |>
+#   select(lsoa_code, lsoa_name, msoa_code = "MSOA11CD", lad_code = "LAD20CD",gender,population_lsoa, deaths_lsoa, stdrate) |>
+#   distinct() |>
+#   left_join(deaths_msoa_eng_eu |> select(msoa_code, stdrate_msoa = stdrate, deaths_msoa,gender), by= c("msoa_code","gender")) |>
+#   left_join(deaths_lad_eng_eu |> select(lad_code, stdrate_lad = stdrate,gender), by=c("lad_code","gender")) %>% 
+#   group_by (gender) %>% 
+#   # Use MSOA rate if LSOA std rate is missing or has fewer than 10 deaths, and use LAD if msoa deaths are fewer than 20
+#   mutate(stdrate_ave = with(.data, sum(stdrate*population_lsoa,na.rm = TRUE)/sum(population_lsoa)),
+#          stdrate = ifelse(
+#            is.na(stdrate) | deaths_lsoa < 10,   # if NA or fewer than 10 deaths at the lsoa level, use msoa
+#            ifelse(
+#              deaths_msoa > 20,             # if fewer than 20 deaths at the msoa level, use lad
+#              stdrate_msoa,
+#              stdrate_lad),
+#            stdrate)) |>                    # if not NA and more than or equal to 10, use lsoa
+#   mutate(RR = stdrate / stdrate_ave)
+# 
+# # Adding level of deprivation 
+# 
+# england_deaths_socio_eu <- england_lsoa_deaths_eu %>%
+#   left_join(deprivation, by = "lsoa_code")
+# 
+# # For All
+# mortality_socio_all_eu <- england_deaths_socio_eu %>% 
+#   group_by(imd_decile) %>%
+#   summarise(
+#     # Only calculate the weighted mean if both rate_area_100000 and population are available
+#     ASR = sum(stdrate*population_lsoa, na.rm=TRUE)/sum(population_lsoa),
+#     .groups = "drop"
+#   )  %>%
+#   ungroup()
+# 
+# ### Sex specific ASR
+# 
+# mortality_socio_gender_eu <- england_deaths_socio_eu %>%
+#   group_by(imd_decile, gender) %>%
+#   summarise(
+#     # Only calculate the weighted mean if both rate_area_100000 and population are available
+#     ASR = sum(stdrate*population_lsoa, na.rm=TRUE)/sum(population_lsoa),
+#     .groups = "drop"
+#   )  %>%
+#   ungroup()
+# 
+# # lad of Greater Manchester Only
+# 
+# deaths_lad_man_eu <- deaths_lad_eng_eu %>% 
+#   filter(
+#     str_starts(lad_name, "Bolton") |
+#       str_starts(lad_name, "Bury") |
+#       str_starts(lad_name, "Manchester") |
+#       str_starts(lad_name, "Oldham") |
+#       str_starts(lad_name, "Rochdale") |
+#       str_starts(lad_name, "Salford") |
+#       str_starts(lad_name, "Stockport") |
+#       str_starts(lad_name, "Tameside") |
+#       str_starts(lad_name, "Trafford") |
+#       str_starts(lad_name, "Wigan"))
+# 
+# deaths_lad_man_eng <- deaths_lad_eng_asdr %>% 
+#   filter(
+#     str_starts(lad_name, "Bolton") |
+#       str_starts(lad_name, "Bury") |
+#       str_starts(lad_name, "Manchester") |
+#       str_starts(lad_name, "Oldham") |
+#       str_starts(lad_name, "Rochdale") |
+#       str_starts(lad_name, "Salford") |
+#       str_starts(lad_name, "Stockport") |
+#       str_starts(lad_name, "Tameside") |
+#       str_starts(lad_name, "Trafford") |
+#       str_starts(lad_name, "Wigan"))
