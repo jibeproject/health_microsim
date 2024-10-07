@@ -44,7 +44,7 @@ gbdp <- gbd %>%
                             TRUE  ~  to_age),
          agediff = to_age - from_age + 1,
          val1yr = rate_1) %>% 
-  #we do not distribute amongst age groups as it is a rate but assume same within age group
+  #we do not distribute among age groups as it is a rate but assume same within age group
   rename(agegroup = age) 
 
 # Data preparation to match diseases and names from Cambridge physical activity meta-analysis
@@ -190,7 +190,8 @@ gbdp <- gbdp %>%
 # 
 # 
 
-# Now stretch the data out using an index, to create a data frame with 1 row per year of age and create a variable for year of age. The age group rate repeats within single years of age in the group. 
+# Now stretch the data out using an index, to create a data frame with 1 row per year of age and create a variable for year of age. 
+# The age group rate repeats within single years of age in the group. 
 index <- rep(1:nrow(gbdp), gbdp$agediff)
 gbdpyrd5 <- gbdp[index,] %>%
   mutate(ageyr = from_age + sequence(gbdp$agediff) - 1)
@@ -220,6 +221,8 @@ gbdpyr_interp <- gbdpyr_interp %>%
 
 saveRDS(gbdpyr_interp, "manchester/health/processed/manchester_diseases_lad.RDS")
 
+write.csv(gbdpyr_interp, "manchester/health/processed/manchester_diseases_lad.csv")
+
 #Join with original data where rates are the same within groups to validate interpolated data
 gbdpyr_interp <- gbdpyr_interp %>%
   left_join(gbdpyrd5, by = c("measure", "year", "ageyr", "sex", "cause", "location"))
@@ -232,7 +235,6 @@ plot_data <- gbdpyr_interp %>%
   select(measure, cause, sex, ageyr, rate_1, val_interpolated, location) %>%
   pivot_longer(cols = c(rate_1, val_interpolated), names_to = "type", values_to = "value")
 
-write.csv(plot_data, "Manchester/health/processed/plot_gbd_data.csv")
 
 library(ggplot2)
 library(dplyr)
