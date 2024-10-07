@@ -44,15 +44,15 @@ msoa <- msoa %>%
 
 # Life Tables for England (2017-2019)
 # [Source]: https://www.ons.gov.uk/peoplepopulationandcommunity/birthsdeathsandmarriages/lifeexpectancies/datasets/nationallifetablesenglandreferencetables/current
-lifetable_england <- fread('./data/original/life_tables_20172019.csv',skip = 5)
+lifetable_england  <- fread('manchester/health/original/ons/life_tables_20172019.csv',skip = 5)
 
 # English Indices of Deprivation by LSOA (2019)
 # [Source]: https://opendatacommunities.org/resource?uri=http%3A%2F%2Fopendatacommunities.org%2Fdata%2Fsocietal-wellbeing%2Fimd2019%2Findices
-deprivation <- fread('./data/original/imd2019lsoa.csv') 
+deprivation <- fread('manchester/health/original/ons/imd2019lsoa.csv') 
 
 # European Standard Population 2013
 # [Source]: https://publichealthscotland.scot/services/national-data-catalogue/national-datasets/search-the-datasets/european-standard-population/#:~:text=The%20European%20Standard%20Population%20(ESP,was%20originally%20introduced%20in%201976.
-european_pop <- fread('./data/original/european_standard_population_by_sex.csv')
+european_pop <- fread('manchester/health/original/ons/european_standard_population_by_sex.csv')
 
 # Population Estimates in England 
 # [Source]: https://www.ons.gov.uk/peoplepopulationandcommunity/populationandmigration/populationestimates/datasets/analysisofpopulationestimatestoolforuk
@@ -405,7 +405,7 @@ manchester_lifetable_lsoa <- england_lifetable_lsoa %>%
       str_starts(lsoa_name, "Wigan")) %>%
   mutate(prob=1-(exp(-rate1000/1000)))
 
-saveRDS(manchester_lifetable_lsoa, "./data/processed/manchester_mortality_lsoa.RDS")
+saveRDS(manchester_lifetable_lsoa, "manchester/health/processed/manchester_mortality_lsoa.RDS")
 
 # Graphs
 # Assuming england_lifetable_lsoa contains columns: age, rate1000, and sex
