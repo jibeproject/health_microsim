@@ -8,7 +8,7 @@ rm(list = ls())
 library(tidyverse)
 library(readxl)
 library(readr)
-library(esquisse)
+library(esquisse) #ai graphs tool
 
 # functions
 source("docs/functions/interpolation.R")
@@ -52,11 +52,11 @@ gbdp <- gbd %>%
 # Some specific cancers need adjustment to match GBD data to standardised
 # JIBE disease list. Apart from name changes, the following cancers need transformation:
   
-#  -   Head and neck cancer: sum of Larynx cancer + Lip and oral cavity cancer + Nasopharynx cancer + Other pharynx cancer
+#  -   Priority: Head and neck cancer: sum of Larynx cancer + Lip and oral cavity cancer + Nasopharynx cancer + Other pharynx cancer
 
-#  -   Colon cancer, Rectum cancer: Colon and rectum cancer, apportioned based on ? incidence/prevalence rates
+#  -   Less priority: Colon cancer, Rectum cancer: Colon and rectum cancer, apportioned based on ? incidence/prevalence rates
 
-# -   Lung cancer: Tracheal, bronchus, and lung cancer, apportioned based on comparison of ?
+# -   Less priority: Lung cancer: Tracheal, bronchus, and lung cancer, apportioned based on comparison of ?
 
 gbdp <- gbdp %>%
   filter (cause %in% c("Stroke", "Ischemic heart disease", "Breast cancer", 
