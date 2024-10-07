@@ -83,116 +83,119 @@ gbdp <- gbdp %>%
   ))
 
 
-# sum rates for head an neck cancers
+# Sum rates for head an neck cancers
 hanc <- c("Larynx cancer", "Lip and oral cavity cancer", "Nasopharynx cancer",
           "Other pharynx cancer")
-prev_agesex_hanc <- prev_agesex_all %>%
-  filter(cause %in% hanc) %>%
-  group_by(year, sex, age) %>%
-  summarise(rate = sum(rate), .groups = "drop") %>%
-  mutate(cause = "Head and neck cancer")
 
-prev_agesex_all <- prev_agesex_all %>%
+gbdp_hanc <- gbdp %>%
+  filter(cause %in% hanc) %>%
+  group_by(measure, location, sex, agegroup, from_age, to_age, metric, year, agediff) %>%
+  summarise(val = sum(val),
+            rate_1 = sum(rate_1),
+            val1yr = sum(val1yr),.groups = "drop") %>%
+  mutate(cause = "Head and neck cancer") %>% 
+  select(1:6,13,7,8,10,11,9,12)
+
+gbdp <- gbdp %>%
   filter(!cause %in% hanc) %>%
-  bind_rows(prev_agesex_hanc)
+  bind_rows(gbdp_hanc)
 
 
 # split rates for colon and rectum cancers by reference to the AIHW incidence
 # rates for those two diseases
 # AIHW incidence proportions for colon and rectum cancer
-inc_crc <- incyr %>% 
-  filter(site %in% c("colon cancer", "rectum cancer")) %>%
-  dplyr::select(site, sex, ageyr, rate_1) %>%
-  mutate(site = case_when(site == "colon cancer"  ~ "colon",
-                          site == "rectum cancer" ~ "rectum"),
-         sex = case_when(sex == "Females" ~ "Female",
-                         sex == "Males"   ~ "Male")) %>%
-  pivot_wider(names_from = site, values_from = rate_1) %>%
-  # total of the two rates (with small constant to avoid zeros)
-  mutate(total = colon + rectum) %>%
-  mutate(total = ifelse(total == 0, 1e-6, total)) %>%
-  # proportions
-  mutate(colon_prop = colon/total,
-         rectum_prop = rectum/total) %>%
-  dplyr::select(sex, age = ageyr, colon_prop, rectum_prop)
-
-# apportion colon and rectum cancer by rates
-prev_agesex_crc <-
-  prev_agesex_all %>%
-  filter(cause == "Colon and rectum cancer") %>%
-  # join the proportions and calculate proportionate rates
-  left_join(inc_crc, by = c("sex", "age")) %>%
-  mutate(Colon = rate * colon_prop,
-         Rectum = rate * rectum_prop) %>%
-  # pivot into separate rows for colon and rectum
-  dplyr::select(year, age, sex, Colon, Rectum) %>%
-  pivot_longer(cols = c("Colon", "Rectum"), names_to = "cause",
-               names_transform = ~ paste(., "cancer"),
-               values_to = "rate")
-
-prev_agesex_all <- prev_agesex_all %>%
-  filter(!cause == "Colon and rectum cancer") %>%
-  bind_rows(prev_agesex_crc)
-
-
-# lung cancer: use incidence numbers from AIHW (lung) and GBD (tracheal, bronchus
-# and lung) to determine a proportion for lung, and apply to GBD prevalence (tracheal,
-# bronchus and lung)
-lung_proportion <- incyr_interp %>%  # AIHW incidence - use 2018 to match GBD
-  filter(year == 2018 & site == "lung cancer") %>%
-  mutate(sex = case_when(sex == "Females" ~ "Female", sex == "Males" ~ "Male")) %>%
-  dplyr::select(sex, ageyr, lung_val = val_interpolated) %>%
-  left_join(gbdpyr_interp %>%  # GBD incidence for 2018
-              filter(measure == "Incidence" & year == 2018) %>%
-              filter(cause == "Tracheal, bronchus, and lung cancer") %>%
-              dplyr::select(sex, ageyr, tbalc_val = val_interpolated),
-            by = c("sex", "ageyr")) %>%
-  mutate(lung_prop = lung_val / tbalc_val)
-
-# plot the respective rates
-ggplot(lung_proportion %>%
-         rename(lung_val_AIHW = lung_val, tbalc_val_GBD = tbalc_val) %>%
-         pivot_longer(cols = c("lung_val_AIHW", "tbalc_val_GBD"), 
-                      names_to = "site", values_to = "value") %>%
-         mutate(sex_site = paste0(sex, "_", site))) +
-  geom_line(aes(x = ageyr, y = value, colour = sex_site), lwd = 1) +
-  scale_color_brewer(palette = "Paired") +
-  labs(title = "AIHW lung cancer incidence vs GBD tbalc incidence",
-       x = "Age (years)",
-       y = "Incidence rate (per 100,000)") +
-  theme_minimal()
-
-# multiply tbalc_rate by lung_prop to get lung rate - but some years have higher 
-# lung than tbalc, so in that case just use the tbalc figure
-prev_agesex_lung <- prev_agesex_all %>%
-  filter(cause == "Tracheal, bronchus, and lung cancer") %>%
-  rename(tbalc_rate = rate) %>%
-  left_join(lung_proportion %>%
-              dplyr::select(sex, age = ageyr, lung_prop),
-            by = c("sex", "age")) %>%
-  mutate(rate = ifelse(lung_prop < 1, tbalc_rate * lung_prop, tbalc_rate)) %>%
-  dplyr::select(-tbalc_rate, -lung_prop) %>%
-  mutate(cause = "Lung cancer")
-
-prev_agesex_all <- prev_agesex_all %>%
-  filter(!cause == "Tracheal, bronchus, and lung cancer") %>%
-  bind_rows(prev_agesex_lung)
-
-# filter to 2018 values
-prev_agesex <- prev_agesex_all %>%
-  filter(year == 2018) %>%
-  dplyr::select(-year)
-
-
-
+# inc_crc <- incyr %>% 
+#   filter(site %in% c("colon cancer", "rectum cancer")) %>%
+#   dplyr::select(site, sex, ageyr, rate_1) %>%
+#   mutate(site = case_when(site == "colon cancer"  ~ "colon",
+#                           site == "rectum cancer" ~ "rectum"),
+#          sex = case_when(sex == "Females" ~ "Female",
+#                          sex == "Males"   ~ "Male")) %>%
+#   pivot_wider(names_from = site, values_from = rate_1) %>%
+#   # total of the two rates (with small constant to avoid zeros)
+#   mutate(total = colon + rectum) %>%
+#   mutate(total = ifelse(total == 0, 1e-6, total)) %>%
+#   # proportions
+#   mutate(colon_prop = colon/total,
+#          rectum_prop = rectum/total) %>%
+#   dplyr::select(sex, age = ageyr, colon_prop, rectum_prop)
+# 
+# # apportion colon and rectum cancer by rates
+# prev_agesex_crc <-
+#   prev_agesex_all %>%
+#   filter(cause == "Colon and rectum cancer") %>%
+#   # join the proportions and calculate proportionate rates
+#   left_join(inc_crc, by = c("sex", "age")) %>%
+#   mutate(Colon = rate * colon_prop,
+#          Rectum = rate * rectum_prop) %>%
+#   # pivot into separate rows for colon and rectum
+#   dplyr::select(year, age, sex, Colon, Rectum) %>%
+#   pivot_longer(cols = c("Colon", "Rectum"), names_to = "cause",
+#                names_transform = ~ paste(., "cancer"),
+#                values_to = "rate")
+# 
+# prev_agesex_all <- prev_agesex_all %>%
+#   filter(!cause == "Colon and rectum cancer") %>%
+#   bind_rows(prev_agesex_crc)
+# 
+# 
+# # lung cancer: use incidence numbers from AIHW (lung) and GBD (tracheal, bronchus
+# # and lung) to determine a proportion for lung, and apply to GBD prevalence (tracheal,
+# # bronchus and lung)
+# lung_proportion <- incyr_interp %>%  # AIHW incidence - use 2018 to match GBD
+#   filter(year == 2018 & site == "lung cancer") %>%
+#   mutate(sex = case_when(sex == "Females" ~ "Female", sex == "Males" ~ "Male")) %>%
+#   dplyr::select(sex, ageyr, lung_val = val_interpolated) %>%
+#   left_join(gbdpyr_interp %>%  # GBD incidence for 2018
+#               filter(measure == "Incidence" & year == 2018) %>%
+#               filter(cause == "Tracheal, bronchus, and lung cancer") %>%
+#               dplyr::select(sex, ageyr, tbalc_val = val_interpolated),
+#             by = c("sex", "ageyr")) %>%
+#   mutate(lung_prop = lung_val / tbalc_val)
+# 
+# # plot the respective rates
+# ggplot(lung_proportion %>%
+#          rename(lung_val_AIHW = lung_val, tbalc_val_GBD = tbalc_val) %>%
+#          pivot_longer(cols = c("lung_val_AIHW", "tbalc_val_GBD"), 
+#                       names_to = "site", values_to = "value") %>%
+#          mutate(sex_site = paste0(sex, "_", site))) +
+#   geom_line(aes(x = ageyr, y = value, colour = sex_site), lwd = 1) +
+#   scale_color_brewer(palette = "Paired") +
+#   labs(title = "AIHW lung cancer incidence vs GBD tbalc incidence",
+#        x = "Age (years)",
+#        y = "Incidence rate (per 100,000)") +
+#   theme_minimal()
+# 
+# # multiply tbalc_rate by lung_prop to get lung rate - but some years have higher 
+# # lung than tbalc, so in that case just use the tbalc figure
+# prev_agesex_lung <- prev_agesex_all %>%
+#   filter(cause == "Tracheal, bronchus, and lung cancer") %>%
+#   rename(tbalc_rate = rate) %>%
+#   left_join(lung_proportion %>%
+#               dplyr::select(sex, age = ageyr, lung_prop),
+#             by = c("sex", "age")) %>%
+#   mutate(rate = ifelse(lung_prop < 1, tbalc_rate * lung_prop, tbalc_rate)) %>%
+#   dplyr::select(-tbalc_rate, -lung_prop) %>%
+#   mutate(cause = "Lung cancer")
+# 
+# prev_agesex_all <- prev_agesex_all %>%
+#   filter(!cause == "Tracheal, bronchus, and lung cancer") %>%
+#   bind_rows(prev_agesex_lung)
+# 
+# # filter to 2018 values
+# prev_agesex <- prev_agesex_all %>%
+#   filter(year == 2018) %>%
+#   dplyr::select(-year)
+# 
+# 
+# 
 
 # Now stretch the data out using an index, to create a data frame with 1 row per year of age and create a variable for year of age. The age group rate repeats within single years of age in the group. 
 index <- rep(1:nrow(gbdp), gbdp$agediff)
 gbdpyrd5 <- gbdp[index,] %>%
   mutate(ageyr = from_age + sequence(gbdp$agediff) - 1)
 gbdpyrd5 <- gbdpyrd5 %>% 
-  select(measure, ageyr, sex, agegroup, from_age, to_age, cause, year, val1yr,rate_1, location) 
-
+  select(measure, ageyr, sex, agegroup, from_age, to_age, cause, year, val1yr,rate_1, location)
 
 # Apply the disaggregation function
 
@@ -205,6 +208,17 @@ gbdp_grp <- gbdp %>%
 # Apply function (select a function from 'functions/interpolation.R'). Smooth_spline does a good job.
 gbdpyr_interp <- group_modify(gbdp_grp, disagg_smooth_spline) %>%
   ungroup()
+
+# Add LAD code
+lad <- fread('manchester/health/original/ons/lsoa_to_msoa.csv')
+lad <- lad %>%
+  select(6,7) %>%
+  distinct()
+
+gbdpyr_interp <- gbdpyr_interp %>%
+  left_join(lad, by = c("location" = "LAD20NM"))
+
+saveRDS(gbdpyr_interp, "manchester/health/processed/manchester_diseases_lad.RDS")
 
 #Join with original data where rates are the same within groups to validate interpolated data
 gbdpyr_interp <- gbdpyr_interp %>%
