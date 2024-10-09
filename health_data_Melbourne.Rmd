@@ -2967,7 +2967,6 @@ for (i in seq_along(chunks)) {
 
 ```
 
-
 ## Prevalence trends
 
 Prevalence rates for 2018 and subsequent years. We have not identified
@@ -3090,13 +3089,12 @@ saveRDS(prev_trends, file=here("melbourne/health/processed/health_prev_trends.rd
 
 ```
 
-
 # Mortality outputs
 
-Combine saved mortality tables:
--   `mort_years.rds`: mortality rates for the years 2018 to 2017 by age and sex.
--   `mort_disagg_factors.rds`: relative rates to apply to the mortality rates to disaggregate by SA2 and education.
-
+Combine saved mortality tables: - `mort_years.rds`: mortality rates for
+the years 2018 to 2017 by age and sex. - `mort_disagg_factors.rds`:
+relative rates to apply to the mortality rates to disaggregate by SA2
+and education.
 
 ```{r}
 # read in the saved tables

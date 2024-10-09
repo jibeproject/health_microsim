@@ -12,7 +12,7 @@ allcause <- readRDS("manchester/health/processed/manchester_mortality_lsoa.RDS")
 # Process data 
 
 allcause_data <- allcause %>%
-  mutate(cause = "all cause",
+  mutate(cause = "all_cause_mortality",
          measure = "deaths") %>%  
   rename(location_code = lsoa_code,
          location_name = lsoa_name) %>%

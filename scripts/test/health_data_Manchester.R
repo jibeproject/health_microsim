@@ -17,14 +17,16 @@ source("docs/functions/interpolation.R")
 options("scipen"=100, "digits"=4)
 
 
-# GBD data for Melbourne. 
+# GBD data for Manchester 
 gbd <- bind_rows(
   read.csv("manchester/health/original/GBD/IHME-GBD_2021_data-bfdf8007-1.csv"), 
   read.csv("manchester/health/original/gbd/IHME-GBD_2021_DATA-125d4b23-1.csv"), 
   read.csv("manchester/health/original/gbd/IHME-GBD_2021_DATA-1316cd33-1.csv"),
   read.csv("manchester/health/original/gbd/IHME-GBD_2021_DATA-cffadb37-1.csv"),
   read.csv("manchester/health/original/gbd/IHME-GBD_2021_DATA-131cf659-1.csv"),
-  read.csv("manchester/health/original/gbd/IHME-GBD_2021_DATA-4fbe0549-1.csv"))
+  read.csv("manchester/health/original/gbd/IHME-GBD_2021_DATA-4fbe0549-1.csv"), 
+  read.csv("manchester/health/original/gbd/parkinsons1.csv"),
+  read.csv("manchester/health/original/gbd/parkinsons3.csv"))
 
 # Filter data to needed variables and remove strings from GBD age variable and create from_age and to_age needed for interpolation. 
 
@@ -62,25 +64,31 @@ gbdp <- gbdp %>%
   filter (cause %in% c("Stroke", "Ischemic heart disease", "Breast cancer", 
                        "Uterine cancer", "Tracheal, bronchus, and lung cancer", 
                        "Colon and rectum cancer", "Esophageal cancer", 
-                       "Liver cancer", "Kidney cancer", 
+                       "Liver cancer",  
                        "Stomach cancer", "Chronic myeloid leukemia", "Multiple myeloma", 
                        "Larynx cancer", "Lip and oral cavity cancer", "Nasopharynx cancer",
-                       "Other pharynx cancer", "Bladder cancer", "Prostate cancer", 
-                       "Malignant skin melanoma", "Depressive disorders", 
-                       "Major depressive disorder", "Alzheimer's disease and other dementias", 
-                       "Diabetes mellitus type 2", "Chronic obstructive pulmonary disease")) %>%
+                       "Other pharynx cancer", "Bladder cancer",  
+                        "Depressive disorders",  "Alzheimer's disease and other dementias", 
+                       "Diabetes mellitus type 2", "Chronic obstructive pulmonary disease", "Parkinson's disease")) %>%
   mutate(cause = case_when(
-    cause == "Ischemic heart disease"    ~ "Coronary heart disease",
-    cause == "Uterine cancer"            ~ "Endometrial cancer",
-    cause == "Stomach cancer"            ~ "Gastric cardia cancer",
-    cause == "Chronic myeloid leukemia"  ~ "Myeloid leukemia",
-    cause == "Multiple myeloma"          ~ "Myeloma",
-    cause == "Malignant skin melanoma"   ~ "Malignant melanoma",
-    cause == "Major depressive disorder" ~ "Major depression",
-    cause == "Alzheimer's disease and other dementias" ~ "All cause dementia",
-    cause == "Diabetes mellitus type 2"  ~ "Diabetes type 2",
-    .default = cause
-  ))
+    cause == "Ischemic heart disease"    ~ "coronary_heart_disease",
+    cause == "Uterine cancer"            ~ "endometrial_cancer",
+    cause == "Stomach cancer"            ~ "gastric_cardia_cancer",
+    cause == "Chronic myeloid leukemia"  ~ "myeloid_leukemia",
+    cause == "Multiple myeloma"          ~ "myeloma",
+    cause == "Depressive disorders" ~ "depression",
+    cause == "Alzheimer's disease and other dementias" ~ "all_cause_dementia",
+    cause == "Diabetes mellitus type 2"  ~ "diabetes",
+    cause == "Stroke" ~ "stroke", 
+    cause == "Tracheal, bronchus, and lung cancer" ~ "lung_cancer", 
+    cause == "Breast cancer" ~ "breast_cancer", 
+    cause == "Colon and rectum cancer" ~ "colon_cancer", 
+    cause == "Bladder cancer" ~ "bladder_cancer", 
+    cause == "Esophageal cancer" ~ "esophageal_cancer",
+    cause == "Liver cancer" ~ "liver_cancer", 
+    cause == "Chronic obstructive pulmonary disease" ~ "COPD",
+    cause == "Parkinson's disease"  ~ "parkinson’s_disease",
+    .default = cause))
 
 
 # Sum rates for head an neck cancers
@@ -93,13 +101,12 @@ gbdp_hanc <- gbdp %>%
   summarise(val = sum(val),
             rate_1 = sum(rate_1),
             val1yr = sum(val1yr),.groups = "drop") %>%
-  mutate(cause = "Head and neck cancer") %>% 
+  mutate(cause = "head_and_neck_cancer") %>% 
   select(1:6,13,7,8,10,11,9,12)
 
 gbdp <- gbdp %>%
   filter(!cause %in% hanc) %>%
-  bind_rows(gbdp_hanc)
-
+  bind_rows(gbdp_hanc) 
 
 # split rates for colon and rectum cancers by reference to the AIHW incidence
 # rates for those two diseases
