@@ -24,7 +24,9 @@ gbd <- bind_rows(
   read.csv("manchester/health/original/gbd/IHME-GBD_2021_DATA-1316cd33-1.csv"),
   read.csv("manchester/health/original/gbd/IHME-GBD_2021_DATA-cffadb37-1.csv"),
   read.csv("manchester/health/original/gbd/IHME-GBD_2021_DATA-131cf659-1.csv"),
-  read.csv("manchester/health/original/gbd/IHME-GBD_2021_DATA-4fbe0549-1.csv"))
+  read.csv("manchester/health/original/gbd/IHME-GBD_2021_DATA-4fbe0549-1.csv"),
+  read.csv("manchester/health/original/gbd/parkinsons1.csv"),
+  read.csv("manchester/health/original/gbd/parkinsons3.csv"))
 
 # Filter data to needed variables and remove strings from GBD age variable and create from_age and to_age needed for interpolation. 
 
@@ -68,7 +70,7 @@ gbdp <- gbdp %>%
                        "Other pharynx cancer", "Bladder cancer", "Prostate cancer", 
                        "Malignant skin melanoma", "Depressive disorders", 
                        "Major depressive disorder", "Alzheimer's disease and other dementias", 
-                       "Diabetes mellitus type 2", "Chronic obstructive pulmonary disease")) %>%
+                       "Diabetes mellitus type 2", "Chronic obstructive pulmonary disease", "Parkinson's disease")) %>%
   mutate(cause = case_when(
     cause == "Ischemic heart disease"    ~ "Coronary heart disease",
     cause == "Uterine cancer"            ~ "Endometrial cancer",
