@@ -67,7 +67,7 @@ gbdp <- gbdp %>%
                        "Liver cancer",  
                        "Stomach cancer", "Chronic myeloid leukemia", "Multiple myeloma", 
                        "Larynx cancer", "Lip and oral cavity cancer", "Nasopharynx cancer",
-                       "Other pharynx cancer", "Bladder cancer",  
+ "Other pharynx cancer", "Bladder cancer",  
                         "Depressive disorders",  "Alzheimer's disease and other dementias", 
                        "Diabetes mellitus type 2", "Chronic obstructive pulmonary disease", "Parkinson's disease")) %>%
   mutate(cause = case_when(
@@ -265,7 +265,6 @@ for (i in 1:nrow(combinations)) {
            cause == combinations$cause[i],
            sex == combinations$sex[i],
            location == combinations$location[i])
-  
   p <- ggplot(subset_df, aes(x = ageyr, y = value, color = type)) +
     geom_line() +
     labs(title = paste("Measure:", combinations$measure[i], 
