@@ -217,6 +217,17 @@ gbdp_grp <- gbdp %>%
 gbdpyr_interp <- group_modify(gbdp_grp, disagg_smooth_spline) %>%
   ungroup()
 
+# Filter the rows where ageyr is 95
+age_95_data <- gbdpyr_interp %>% filter(ageyr == 95)
+
+# Create new rows for ageyr 96 to 100, repeating the values for val_interpolated
+new_rows <- age_95_data %>%
+  mutate(ageyr = list(96:100)) %>%
+  unnest(ageyr) 
+
+# Combine the original data frame with the new rows
+gbdpyr_interp <- bind_rows(gbdpyr_interp, new_rows)
+
 # Add LAD code
 lad <- fread('manchester/health/original/ons/lsoa_to_msoa.csv')
 lad <- lad %>%
