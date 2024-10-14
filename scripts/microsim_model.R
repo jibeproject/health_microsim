@@ -10,10 +10,17 @@ library(here)
 # For DR PA 
 library(drpa)
 
+library(glue)
+
 plan(multisession)
 
 # For reproducibility set seed
 set.seed(2)
+
+
+options(future.globals.maxSize = +Inf)
+
+sample_size <- 10^5
 
 # Read pp health dataset (of Munich) using read_csv_arrow from arrow library
 # synth_pop_base <- read_csv("data/siloMitoMatsim_modelOutput/pp_health_2012.csv")
@@ -34,17 +41,16 @@ synth_pop <- synth_pop_orig |>
   dplyr::select(id, age, gender, mmetHr_bicycle, mmetHr_walk, otherSport_wkhr) |> 
   rename (sex = gender) |> 
   mutate(total_tr_pa = mmetHr_bicycle + mmetHr_walk, total_non_tr_pa = otherSport_wkhr * vigorous_mmet,
-                                  total_mmet = total_tr_pa+total_non_tr_pa) #|> 
-  #sample_n(10000) #|> filter(age > 90) 
+                                  total_mmet = total_tr_pa+total_non_tr_pa) |> sample_n(sample_size) #|> filter(age > 90) 
 
 
-rr <- synth_pop |> mutate(across(ends_with("mmet"), ~ drpa::dose_response(
-  cause = "all-cause-mortality", outcome_type = "fatal",
-  dose = .x, censor_method = "WHO-DRL") |> pull())) |> 
-  dplyr::select(ends_with("mmet")) |> 
-  rename_with(~ gsub("mmet", "rr", .x, fixed = TRUE))
-
-synth_pop <- cbind(synth_pop, rr |> rename(rr_all = total_rr))
+# rr <- synth_pop |> mutate(across(ends_with("mmet"), ~ drpa::dose_response(
+#   cause = "all-cause-mortality", outcome_type = "fatal",
+#   dose = .x, censor_method = "WHO-DRL") |> pull())) |> 
+#   dplyr::select(ends_with("mmet")) |> 
+#   rename_with(~ gsub("mmet", "rr", .x, fixed = TRUE))
+# 
+# synth_pop <- cbind(synth_pop, rr |> rename(rr_all = total_rr))
 
 
 # # Read pp health dataset (of Munich) using read_csv_arrow from arrow library
@@ -54,32 +60,13 @@ synth_pop <- cbind(synth_pop, rr |> rename(rr_all = total_rr))
 
 
 # Read probability dataset by age and sex for Australia
-hd <- read_rds("data/siloMitoMatsim_modelOutput/health_transitions_melbourne.rds")
+hd <- read_csv("data/manchester/health_transitions_manchester.csv")
 
-hd <- hd |> filter(sex %in% c("Male", "Female") & educ == "medium") |> 
-  dplyr::select(-c(sa2_code, sa2_name, educ)) |> 
-  distinct(age, sex, cause, measure, .keep_all = T) |> 
-  mutate(sex = case_when(
-    grepl("Male", sex) ~ 1,
-    grepl("Female", sex) ~ 2
-  ))
-
-# sa2_ses <- readxl::read_excel("data/SES/2033055001 - sa2 indexes.xls", skip = 4, sheet = "Table 2")
-# 
-# ses <- sa2_ses[-1,] |> 
-#   dplyr::select(`2016 Statistical Area Level 2  (SA2) 9-Digit Code`, `2016 Statistical Area Level 2 (SA2) Name`, "...7") |> 
-#   rename(rank = "...7", sa2_code = `2016 Statistical Area Level 2  (SA2) 9-Digit Code`) |> 
-#   mutate_if(is.character, as.numeric) |> mutate(rank = round(rank/2))
-# n_distinct(ses$sa2_code)
-# 
-# # Append SES rank to the synthetic population
-# synth_pop <- synth_pop |> rename(sa2_code = SA2_MAINCODE) |> left_join(ses)
-# 
-# hd <- hd |> filter(sa2_code %in% synth_pop$sa2_code)
-
-hd <- hd |> mutate(cause = str_replace(cause, " ", "_"))
-
-#hd <- hd |> dplyr::select(-c(rate)) |> pivot_wider(id_cols = c(age, sex, sa2_code, sa2_name, educ, socio), names_from = cause, values_from = prob) 
+hd <- hd |> # & educ == "medium") |> 
+  dplyr::select(-c(...1, location_code, location_type)) |> 
+  distinct(age, sex, cause, .keep_all = T) |> 
+  mutate(cause = str_replace_all(cause, " ", "_"))
+  # mutate(cause = str_replace_all(cause, "_| ", "-"))
 
 # Number of individuals
 n.i <- synth_pop |> nrow()
@@ -90,41 +77,8 @@ n.c <- 10
 # everyone begins in the healthy state 
 v.M_1 <- rep("H", n.i)
 
-# # Mutate sex to numeric values with male ~ 1 and female ~ 2
-# # Also modify all columns with deaths rate into prob by 1 - exp(-deaths_rate)
-# back_hdata <-  back_hdata |>  
-#   rename_with(~ gsub("deaths_rate", "sick_prob", .x, fixed = TRUE)) |> 
-#   mutate(sex = case_when(sex == 'male' ~ 1, sex == 'female' ~ 2),
-#          across(starts_with("sick_prob"), ~(1 - (exp(-.))))) |> 
-#   dplyr::select(age, sex, starts_with("sick_prob"))
-
-# Combine baseline demographics and exposure data with background health data
-# synth_pop <- left_join(synth_pop, hd)
-
 # Function to return 
-prob_age_sex <- function(data, hdata, colname = "sick_prob_allc", seed = 1, cycle = 1) {
-  set.seed(seed)
-  # Get age and sex specific sick_prob from background death rate
-  # The cycle is the current year and is added to the baseline's age of an individuals to get the current age
-  # So age = baseline_age + cycle - 1 - as cycle starts with 1 hence subtracting 1 from it
-  nsick_prob <- hdata |> 
-    # filter(age == (data["age"] |> as.numeric()) + cycle - 1, sex == c(data["sex"] |> as.character()),
-    #        educ == (data["education"] |> as.character()), sa2_code == (data["sa2_code"] |> as.numeric())) |> 
-    filter(age == (data["age"] |> as.numeric()) + cycle - 1, sex == c(data["sex"] |> as.numeric())) |> 
-    dplyr::select(colname) |> 
-    pull()
-  # If sick_prob is undefined then return 0
-  if (length(nsick_prob) == 0){
-    browser()
-    nsick_prob <- 0
-  }
-  return(nsick_prob)
-}
 
-
-# Get the state for each individual by looking at the transition probability
-# If transition probability is less than sick_prob, then it happens, otherwise the agent (or the individual)
-# remain in the same state
 get_state <- function(rd, cycle = 1, cause = "allc", cm) {
   # Get unique index for the agent
   vi <- rd["rowname"] |> as.numeric()
@@ -134,21 +88,25 @@ get_state <- function(rd, cycle = 1, cause = "allc", cm) {
   curr_state <-  cm[vi, 2] |> as.character()
   # Create cause specific state name
   curr_cause <- paste0('S_', toupper(cause))
+  # Get age, sex and disease specific prob
+  dis_prob <- rd[cause] |> as.numeric()
+    # Get age, sex and all-cause-mortality prob
+  all_cause_prob <- rd["all_cause_mortality"] |> as.numeric()
+  
+  # print(vi)
+  # print(cause)
   
   # If the agent has already died, then they remain in the same 'dead' state
-  if (prev_state == 'D' ||
-      (!is.na(curr_state) && curr_state == 'D') ||
-      ((paste0("prob_allc_", cycle) %in% names(rd)) && 
-       rd[paste0("prob_allc_", cycle)] |> as.numeric() == 0))
+  if (prev_state == 'D' || (!is.na(curr_state) && curr_state == 'D') || (all_cause_prob == 0))
     return('D')
   else{
     # prob <- rbernoulli(1, p = rd[paste0("prob_", cause, "_", cycle)] |> as.numeric())
     # If however the uniform random probablity is greater than age and sex specific sick_prob, then transition to the
     # specific cause (curr_cause) takes place
     prob <- runif(1)
-    if (prob < rd[paste0("prob_", cause, "_", cycle)] |> as.numeric()){
+    if (prob < dis_prob){
       # All-cause mortality is a special cause that takes an agent to the 'dead' state
-      if (cause == 'all_cause')
+      if (cause == 'all_cause_mortality')
         return ('D')
       else{
         # If the cause is not all-cause, use current cause (curr_cause) as the new state
@@ -172,7 +130,11 @@ get_state <- function(rd, cycle = 1, cause = "allc", cm) {
 }
 
 # Create a df for 
-synth_pop_wprob <- synth_pop|> rownames_to_column() |> dplyr::select(-c(mmetHr_bicycle, mmetHr_walk, otherSport_wkhr, contains("total")))
+synth_pop_wprob <- synth_pop |> rownames_to_column() |> dplyr::select(-c(mmetHr_bicycle, mmetHr_walk, otherSport_wkhr, contains("total"))) |> left_join(hd |> pivot_wider(id_cols = c(age, sex), names_from = cause, values_from = prob))
+
+# Replace NAs with 0 prob
+synth_pop_wprob[is.na(synth_pop_wprob)] <- 0 
+
 # 
 # Matrix to save current states
 # with dimensions: (rows: number of individuals, cols: number of classes (or years) + 1 (for the 0th year))
@@ -184,6 +146,7 @@ m <- matrix(nrow = n.i, ncol = n.c + 1,
 m[,1] <- v.M_1
 # Read the names of all columns starting with the 'sick' word, so that list of causes (or diseases) can be generated
 diseases <- unique(hd$cause)
+
 # Select only a handful of cause for now, which are: all-cause-mortality, ischaemic heart disease", stroke and lung Cancer
 # diseases <- c("allc", "ishd", "tbalc", "strk")
 
@@ -191,39 +154,37 @@ diseases <- unique(hd$cause)
 #                "kdnc", "espc", "lwri", "mltm", "adaod", "brsc", "bldc", "prkd", "chml", "dprd", "prsc",
 #                "utrc" )
 # 
-# diseases <- c("allc", "utrc")
-# diseases <- c("npls", "ishd")
-# diseases <- c("ishd", "npls")
-
 # Record the time it takes to run the piece of code with tic()
 require(tictoc)
 tic()
 stop <- F
-for (i in 1:n.c){
+for (incyc in 1:n.c){
   if (stop)
     break
   for (dis in diseases){
-    # i <- 1
-    # for (ind in 1:nrow(synth_pop_wprob)){
-    #   prob_age_sex(synth_pop_wprob[ind,], hdata = hd, colname = "prob", seed = 1, cycle = i)
+    cstate <- list()
+    # dis <- diseases[1]
+    # for (index in 1:nrow(synth_pop_wprob)){
+    #   # index <- 1
+    #   # incyc <- 1
+    #       cstate[index] <- get_state(rd = synth_pop_wprob[index,], cycle = incyc,
+    #                                  cause = dis, cm = m[, c(paste0("c", incyc - 1), paste0("c", incyc))])
+    # 
     # }
+    # 
+    # print(table(unlist(cstate)))
+    cstate <- future_apply(synth_pop_wprob, 1, get_state,
+                           cycle = incyc, cause = dis,
+                           cm = m[, c(paste0("c", incyc - 1), paste0("c", incyc))], future.seed = T)
     
-    ind_prob <- future_apply(synth_pop_wprob, 1, prob_age_sex, future.seed = T,
-                             hdata = hd, cycle = i, colname = "prob")
-    synth_pop_wprob <- bind_cols(synth_pop_wprob, ind_prob)
-    names(synth_pop_wprob)[synth_pop_wprob |> length()] <- paste0("prob_", dis, "_", i)
-  }
-  
-  for (dis in diseases){
-    cstate <- future_apply(synth_pop_wprob, 1, get_state, cycle = i, cause = dis, cm = m[, c(paste0("c", i - 1), paste0("c", i))], future.seed = T)
     print(table(cstate))
-    m[, i + 1] <- cstate
+    m[, incyc + 1] <- cstate
 
   }
 }
+
 # Stop recording of time spent running the code
 toc()
-
 
 l <- data.frame(states = c('H', 'D', paste0('S_', toupper(diseases))), freq = 0, c = 0)
 for (ind in 1:n.c){
