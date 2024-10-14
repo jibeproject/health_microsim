@@ -20,7 +20,7 @@ set.seed(2)
 
 options(future.globals.maxSize = +Inf)
 
-sample_size <- 0#^5
+sample_size <- 1000#^5
 
 # Read pp health dataset (of Munich) using read_csv_arrow from arrow library
 # synth_pop_base <- read_csv("data/siloMitoMatsim_modelOutput/pp_health_2012.csv")
@@ -42,7 +42,7 @@ synth_pop <- synth_pop_orig |>
   rename (sex = gender) |> 
   mutate(total_tr_pa = mmetHr_bicycle + mmetHr_walk, total_non_tr_pa = otherSport_wkhr * vigorous_mmet,
                                   total_mmet = total_tr_pa+total_non_tr_pa) %>%
-  {if (sample_size > 0) sample_n(sample_size) else .}
+  {if (sample_size > 0) sample_n(., sample_size)}
 
 
 # rr <- synth_pop |> mutate(across(ends_with("mmet"), ~ drpa::dose_response(
@@ -219,4 +219,4 @@ ggplot(l) +
 # ggsave(paste0("diagrams/state_trans-n.c-",n.c, "-n.i-", n.i, "-n.d-", length(diseases), ".png"), height = 5, width = 10, units = "in", dpi = 600, scale = 1)
 # # 
 # # # Also save state transitions as a CSV
-write_csv(m |> as.data.frame(), paste0("data/state_trans-n.c-",n.c, "-n.i-", n.i, "-n.d-", length(diseases), ".csv"))
+# write_csv(m |> as.data.frame(), paste0("data/state_trans-n.c-",n.c, "-n.i-", n.i, "-n.d-", length(diseases), ".csv"))
