@@ -20,7 +20,7 @@ set.seed(2)
 
 options(future.globals.maxSize = +Inf)
 
-sample_size <- 10^5
+sample_size <- 0#^5
 
 # Read pp health dataset (of Munich) using read_csv_arrow from arrow library
 # synth_pop_base <- read_csv("data/siloMitoMatsim_modelOutput/pp_health_2012.csv")
@@ -41,7 +41,8 @@ synth_pop <- synth_pop_orig |>
   dplyr::select(id, age, gender, mmetHr_bicycle, mmetHr_walk, otherSport_wkhr) |> 
   rename (sex = gender) |> 
   mutate(total_tr_pa = mmetHr_bicycle + mmetHr_walk, total_non_tr_pa = otherSport_wkhr * vigorous_mmet,
-                                  total_mmet = total_tr_pa+total_non_tr_pa) |> sample_n(sample_size) #|> filter(age > 90) 
+                                  total_mmet = total_tr_pa+total_non_tr_pa) %>%
+  {if (sample_size > 0) sample_n(sample_size) else .}
 
 
 # rr <- synth_pop |> mutate(across(ends_with("mmet"), ~ drpa::dose_response(
@@ -72,10 +73,10 @@ hd <- hd |> # & educ == "medium") |>
 n.i <- synth_pop |> nrow()
 
 # Number of cycles
-n.c <- 10
+n.c <- 2
 
 # everyone begins in the healthy state 
-v.M_1 <- rep("H", n.i)
+v.M_1 <- rep("healthy", n.i)
 
 # Function to return 
 
@@ -87,7 +88,8 @@ get_state <- function(rd, cycle = 1, cause = "allc", cm) {
   # Get current state of the agent
   curr_state <-  cm[vi, 2] |> as.character()
   # Create cause specific state name
-  curr_cause <- paste0('S_', toupper(cause))
+  # curr_cause <- paste0('S_', toupper(cause))
+  curr_cause <- cause
   # Get age, sex and disease specific prob
   dis_prob <- rd[cause] |> as.numeric()
     # Get age, sex and all-cause-mortality prob
@@ -97,8 +99,8 @@ get_state <- function(rd, cycle = 1, cause = "allc", cm) {
   # print(cause)
   
   # If the agent has already died, then they remain in the same 'dead' state
-  if (prev_state == 'D' || (!is.na(curr_state) && curr_state == 'D') || (all_cause_prob == 0))
-    return('D')
+  if (prev_state == 'death' || (!is.na(curr_state) && curr_state == 'death') || (all_cause_prob == 0))
+    return('death')
   else{
     # prob <- rbernoulli(1, p = rd[paste0("prob_", cause, "_", cycle)] |> as.numeric())
     # If however the uniform random probablity is greater than age and sex specific sick_prob, then transition to the
@@ -107,7 +109,7 @@ get_state <- function(rd, cycle = 1, cause = "allc", cm) {
     if (prob < dis_prob){
       # All-cause mortality is a special cause that takes an agent to the 'dead' state
       if (cause == 'all_cause_mortality')
-        return ('D')
+        return ('death')
       else{
         # If the cause is not all-cause, use current cause (curr_cause) as the new state
         if(is.na(curr_state))
@@ -118,8 +120,8 @@ get_state <- function(rd, cycle = 1, cause = "allc", cm) {
           if (grepl(curr_cause, curr_state, ignore.case = F))
             return(curr_state)
           else
-            return(trimws(str_replace_all(paste(curr_cause, curr_state, sep = " "), " H", "")))
-          # return(unique(unlist(strsplit(trimws(str_replace_all(paste(curr_cause, curr_state, sep = " "), " H", "")), " "))))
+            return(trimws(str_replace_all(paste(curr_cause, curr_state, sep = " "), " healthy", "")))
+          # return(unique(unlist(strsplit(trimws(str_replace_all(paste(curr_cause, curr_state, sep = " "), " healthy", "")), " "))))
         }
       }
     }else{
@@ -186,7 +188,8 @@ for (incyc in 1:n.c){
 # Stop recording of time spent running the code
 toc()
 
-l <- data.frame(states = c('H', 'D', paste0('S_', toupper(diseases))), freq = 0, c = 0)
+# l <- data.frame(states = c('healthy', 'death', paste0('S_', toupper(diseases))), freq = 0, c = 0)
+l <- data.frame(states = c('healthy', 'death', diseases |> str_subset(pattern = "all_cause_mortality", negate = TRUE)), freq = 0, c = 0)
 for (ind in 1:n.c){
   df <- unlist(strsplit(m[, ind], " ")) |> 
     as.data.frame()
@@ -199,7 +202,7 @@ for (ind in 1:n.c){
   l <- plyr::rbind.fill(l, tbl)
 }
 
-l[l$c == 0 & l$states == 'H',]$freq <- 100
+l[l$c == 0 & l$states == 'healthy',]$freq <- 100
 
 l$c <- as.factor(l$c)
 
@@ -216,4 +219,4 @@ ggplot(l) +
 # ggsave(paste0("diagrams/state_trans-n.c-",n.c, "-n.i-", n.i, "-n.d-", length(diseases), ".png"), height = 5, width = 10, units = "in", dpi = 600, scale = 1)
 # # 
 # # # Also save state transitions as a CSV
-# write_csv(m |> as.data.frame(), paste0("data/state_trans-n.c-",n.c, "-n.i-", n.i, "-n.d-", length(diseases), ".csv"))
+write_csv(m |> as.data.frame(), paste0("data/state_trans-n.c-",n.c, "-n.i-", n.i, "-n.d-", length(diseases), ".csv"))
