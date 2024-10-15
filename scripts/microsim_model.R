@@ -26,7 +26,7 @@ sample_size <- 1000#^5
 # synth_pop_base <- read_csv("data/siloMitoMatsim_modelOutput/pp_health_2012.csv")
 
 ### Belen 7.03.24: change folder to Jibe working group
-synth_pop_orig <- read_csv(here("data/manchester/pphealth_pa.csv"))
+synth_pop_orig <- read_csv(here("C:/Users/aa797/RMIT University/JIBE working group - manchester/synPop/sp_2021/pp_health_2021.csv"))
 
 # Comment out code specific to melbourne synthetic column names
 # synth_pop <- synth_pop_orig |> ungroup() |> dplyr::select(AgentId, Age, Gender, age_cat, education, SA2_MAINCODE) |> 
@@ -38,10 +38,10 @@ vigorous_mmet = 3
 # Read manchester specific synth_pop filename
 synth_pop <- synth_pop_orig |> 
   ungroup() |> 
-  dplyr::select(id, age, gender, mmetHr_bicycle, mmetHr_walk, otherSport_wkhr) |> 
-  rename (sex = gender) |> 
-  mutate(total_tr_pa = mmetHr_bicycle + mmetHr_walk, total_non_tr_pa = otherSport_wkhr * vigorous_mmet,
-                                  total_mmet = total_tr_pa+total_non_tr_pa) %>%
+  dplyr::select(id, age, gender, mmetHr_cycle, mmetHr_walk) |> 
+  rename (sex = gender) %>%
+  # mutate(total_tr_pa = mmetHr_cycle + mmetHr_walk, total_non_tr_pa = otherSport_wkhr * vigorous_mmet,
+  #                                 total_mmet = total_tr_pa+total_non_tr_pa) 
   {if (sample_size > 0) sample_n(., sample_size)}
 
 
@@ -61,7 +61,7 @@ synth_pop <- synth_pop_orig |>
 
 
 # Read probability dataset by age and sex for Australia
-hd <- read_csv("data/manchester/health_transitions_manchester.csv")
+hd <- read_csv("C:/Users/aa797/RMIT University/JIBE working group - manchester/health/processed/health_transitions_manchester.csv")
 
 hd <- hd |> # & educ == "medium") |> 
   dplyr::select(-c(...1, location_code, location_type)) |> 
@@ -132,7 +132,7 @@ get_state <- function(rd, cycle = 1, cause = "allc", cm) {
 }
 
 # Create a df for 
-synth_pop_wprob <- synth_pop |> rownames_to_column() |> dplyr::select(-c(mmetHr_bicycle, mmetHr_walk, otherSport_wkhr, contains("total"))) |> left_join(hd |> pivot_wider(id_cols = c(age, sex), names_from = cause, values_from = prob))
+synth_pop_wprob <- synth_pop |> rownames_to_column() |> dplyr::select(-c(mmetHr_cycle, mmetHr_walk, )) |> left_join(hd |> pivot_wider(id_cols = c(age, sex), names_from = cause, values_from = prob))
 
 # Replace NAs with 0 prob
 synth_pop_wprob[is.na(synth_pop_wprob)] <- 0 
@@ -215,6 +215,16 @@ ggplot(l) +
   labs(x = "Years", y = "Frequency (%)", title = "State transitions over the years") +
   theme_minimal()
 
+
+print(m |> as.data.frame() |> 
+        rownames_to_column("id") |> 
+        pivot_longer(cols = -c(id)) |> 
+        group_by(name, value) |> 
+        summarise(nv = dplyr::n(), 
+                  freq = round(100 * nv / nrow(m), 4)) |>  
+        filter(freq > 0) |> 
+        pivot_wider(id_cols = value, 
+                    names_from = name, values_from = freq))
 # # # Save the diagram
 # ggsave(paste0("diagrams/state_trans-n.c-",n.c, "-n.i-", n.i, "-n.d-", length(diseases), ".png"), height = 5, width = 10, units = "in", dpi = 600, scale = 1)
 # # 
