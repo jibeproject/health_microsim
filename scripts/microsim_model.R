@@ -20,13 +20,15 @@ set.seed(2)
 
 options(future.globals.maxSize = +Inf)
 
-sample_size <- 1000#^5
+sample_size <- 0#1000#^5
 
 # Read pp health dataset (of Munich) using read_csv_arrow from arrow library
 # synth_pop_base <- read_csv("data/siloMitoMatsim_modelOutput/pp_health_2012.csv")
 
 ### Belen 7.03.24: change folder to Jibe working group
-synth_pop_orig <- read_csv(here("C:/Users/aa797/RMIT University/JIBE working group - manchester/synPop/sp_2021/pp_health_2021.csv"))
+# synth_pop_orig <- read_csv(here("C:/Users/aa797/RMIT University/JIBE working group - manchester/synPop/sp_2021/pp_health_2021.csv"))
+
+synth_pop_orig <- read_csv(here("C:/Users/aa797/RMIT University/JIBE working group - manchester/health/pp_health_2021_base_withSport.csv"))
 
 # Comment out code specific to melbourne synthetic column names
 # synth_pop <- synth_pop_orig |> ungroup() |> dplyr::select(AgentId, Age, Gender, age_cat, education, SA2_MAINCODE) |> 
@@ -42,7 +44,7 @@ synth_pop <- synth_pop_orig |>
   rename (sex = gender) %>%
   # mutate(total_tr_pa = mmetHr_cycle + mmetHr_walk, total_non_tr_pa = otherSport_wkhr * vigorous_mmet,
   #                                 total_mmet = total_tr_pa+total_non_tr_pa) 
-  {if (sample_size > 0) sample_n(., sample_size)}
+  {if (sample_size > 0) sample_n(., sample_size) else .}
 
 
 # rr <- synth_pop |> mutate(across(ends_with("mmet"), ~ drpa::dose_response(
@@ -61,19 +63,22 @@ synth_pop <- synth_pop_orig |>
 
 
 # Read probability dataset by age and sex for Australia
-hd <- read_csv("C:/Users/aa797/RMIT University/JIBE working group - manchester/health/processed/health_transitions_manchester.csv")
+# hd <- read_csv("C:/Users/aa797/RMIT University/JIBE working group - manchester/health/processed/health_transitions_manchester.csv")
 
-hd <- hd |> # & educ == "medium") |> 
-  dplyr::select(-c(...1, location_code, location_type)) |> 
-  distinct(age, sex, cause, .keep_all = T) |> 
-  mutate(cause = str_replace_all(cause, " ", "_"))
+# Read probability dataset by age and sex for Australia - created by Qin
+hd <- read_csv("D:/Users/aa797/manchester/input/health/health_transitions_melbourne_reduced.csv")
+
+# hd <- hd |> # & educ == "medium") |> 
+#   dplyr::select(-c(...1, location_code, location_type)) |> 
+#   distinct(age, sex, cause, .keep_all = T) |> 
+#   mutate(cause = str_replace_all(cause, " ", "_"))
   # mutate(cause = str_replace_all(cause, "_| ", "-"))
 
 # Number of individuals
 n.i <- synth_pop |> nrow()
 
 # Number of cycles
-n.c <- 2
+n.c <- 10
 
 # everyone begins in the healthy state 
 v.M_1 <- rep("healthy", n.i)
@@ -99,8 +104,8 @@ get_state <- function(rd, cycle = 1, cause = "allc", cm) {
   # print(cause)
   
   # If the agent has already died, then they remain in the same 'dead' state
-  if (prev_state == 'death' || (!is.na(curr_state) && curr_state == 'death') || (all_cause_prob == 0))
-    return('death')
+  if (prev_state == 'dead' || (!is.na(curr_state) && curr_state == 'dead') || (all_cause_prob == 0))
+    return('dead')
   else{
     # prob <- rbernoulli(1, p = rd[paste0("prob_", cause, "_", cycle)] |> as.numeric())
     # If however the uniform random probablity is greater than age and sex specific sick_prob, then transition to the
@@ -109,7 +114,7 @@ get_state <- function(rd, cycle = 1, cause = "allc", cm) {
     if (prob < dis_prob){
       # All-cause mortality is a special cause that takes an agent to the 'dead' state
       if (cause == 'all_cause_mortality')
-        return ('death')
+        return ('dead')
       else{
         # If the cause is not all-cause, use current cause (curr_cause) as the new state
         if(is.na(curr_state))
@@ -132,7 +137,7 @@ get_state <- function(rd, cycle = 1, cause = "allc", cm) {
 }
 
 # Create a df for 
-synth_pop_wprob <- synth_pop |> rownames_to_column() |> dplyr::select(-c(mmetHr_cycle, mmetHr_walk, )) |> left_join(hd |> pivot_wider(id_cols = c(age, sex), names_from = cause, values_from = prob))
+synth_pop_wprob <- synth_pop |> rownames_to_column() |> dplyr::select(-c(mmetHr_cycle, mmetHr_walk)) |> left_join(hd |> pivot_wider(id_cols = c(age, sex), names_from = cause, values_from = prob))
 
 # Replace NAs with 0 prob
 synth_pop_wprob[is.na(synth_pop_wprob)] <- 0 
@@ -161,25 +166,23 @@ require(tictoc)
 tic()
 stop <- F
 for (incyc in 1:n.c){
-  if (stop)
-    break
   for (dis in diseases){
     cstate <- list()
-    # dis <- diseases[1]
-    # for (index in 1:nrow(synth_pop_wprob)){
-    #   # index <- 1
-    #   # incyc <- 1
-    #       cstate[index] <- get_state(rd = synth_pop_wprob[index,], cycle = incyc,
-    #                                  cause = dis, cm = m[, c(paste0("c", incyc - 1), paste0("c", incyc))])
-    # 
-    # }
+    dis <- diseases[1]
+    for (index in 1:nrow(synth_pop_wprob)){
+      # index <- 1
+      # incyc <- 1
+          cstate[index] <- get_state(rd = synth_pop_wprob[index,], cycle = incyc,
+                                     cause = dis, cm = m[, c(paste0("c", incyc - 1), paste0("c", incyc))])
+
+    }
     # 
     # print(table(unlist(cstate)))
     cstate <- future_apply(synth_pop_wprob, 1, get_state,
                            cycle = incyc, cause = dis,
                            cm = m[, c(paste0("c", incyc - 1), paste0("c", incyc))], future.seed = T)
     
-    print(table(cstate))
+    # print(table(cstate))
     m[, incyc + 1] <- cstate
 
   }
@@ -188,8 +191,8 @@ for (incyc in 1:n.c){
 # Stop recording of time spent running the code
 toc()
 
-# l <- data.frame(states = c('healthy', 'death', paste0('S_', toupper(diseases))), freq = 0, c = 0)
-l <- data.frame(states = c('healthy', 'death', diseases |> str_subset(pattern = "all_cause_mortality", negate = TRUE)), freq = 0, c = 0)
+# Create individual states, while ignoring the all_cause_mortality state as dead state already captures it
+l <- data.frame(states = c('healthy', 'dead', diseases |> str_subset(pattern = "all_cause_mortality", negate = TRUE)), freq = 0, c = 0)
 for (ind in 1:n.c){
   df <- unlist(strsplit(m[, ind], " ")) |> 
     as.data.frame()
@@ -208,7 +211,7 @@ l$c <- as.factor(l$c)
 
 l <- l |> filter(!is.na(states))
 
-# Generate historic state transitions of all diseases + death
+# Generate historic state transitions of all diseases + dead
 ggplot(l) +
   aes(x = c, y = freq, fill = states) +
   geom_col() +
