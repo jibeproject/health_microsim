@@ -371,6 +371,7 @@ england_lifetable <- england_lifetable %>%
 england_lifetable_lsoa <- england_deaths_socio %>% 
   rename (sex = gender) %>% 
   cross_join(england_lifetable) %>% 
+  filter(sex.x == sex.y) %>% 
   select(lsoa_code, lsoa_name, sex = sex.x, age, rate1000, imd_decile)
 
 # BZD: the graphs need some work, the idea is to show differences in mortality rates across imd. A line for the 
