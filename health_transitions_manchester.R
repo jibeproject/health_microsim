@@ -22,6 +22,7 @@ allcause_data <- allcause %>%
   select(age, sex, location_code, location_type, cause, prob)
 
 diseases_data <- diseases %>% 
+  filter(measure == "Incidence") %>% 
   mutate(measure = tolower(measure),
          cause = tolower(cause),
          socio = NA) %>% 
