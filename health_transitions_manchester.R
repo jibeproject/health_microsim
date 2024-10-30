@@ -37,5 +37,5 @@ diseases_data <- diseases %>%
 
 health_transitions_manchester <- bind_rows(allcause_data, diseases_data)
 
-saveRDS(health_transitions_manchester, "manchester/health/processed/health_transitions_manchester.RDS")
-write.csv(health_transitions_manchester, "manchester/health/processed/health_transitions_manchester.csv")
+saveRDS(health_transitions_manchester, "manchester/health/processed/health_transitions_manchester_raw.RDS")
+write.csv(health_transitions_manchester, "manchester/health/processed/health_transitions_manchester_raw.csv")
