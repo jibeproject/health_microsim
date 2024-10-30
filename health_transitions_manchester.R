@@ -33,7 +33,7 @@ diseases_data <- diseases %>%
   mutate(location_type="lad")  %>%
   mutate(sex=as.numeric(case_when(sex == "Male" ~ 1,
                                   sex=="Female" ~ 2))) %>%
-  select(age, sex, location_code, location_type, cause, prob)
+  select(age, sex, measure, location_code, location_type, cause, prob)
 
 
 health_transitions_manchester <- bind_rows(allcause_data, diseases_data)
