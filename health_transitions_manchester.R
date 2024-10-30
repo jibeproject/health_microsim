@@ -22,7 +22,7 @@ allcause_data <- allcause %>%
   select(age, sex, location_code, location_type, cause, prob)
 
 diseases_data <- diseases %>% 
-  filter(measure == "Incidence") %>% 
+  filter(measure == "Incidence" & year == 2018) %>% 
   mutate(measure = tolower(measure),
          cause = tolower(cause),
          socio = NA) %>% 
@@ -33,7 +33,7 @@ diseases_data <- diseases %>%
   mutate(location_type="lad")  %>%
   mutate(sex=as.numeric(case_when(sex == "Male" ~ 1,
                                   sex=="Female" ~ 2))) %>%
-  select(age, sex, measure, location_code, location_type, cause, prob)
+  select(age, sex,location_code, location_type, cause, prob)
 
 
 health_transitions_manchester <- bind_rows(allcause_data, diseases_data)
