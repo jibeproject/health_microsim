@@ -20,7 +20,9 @@ set.seed(2)
 
 options(future.globals.maxSize = +Inf)
 
-sample_size <- 0#1000#^5
+set_sep = ";"
+
+sample_size <- 0#10000#1000#^5
 
 # Read pp health dataset (of Munich) using read_csv_arrow from arrow library
 # synth_pop_base <- read_csv("data/siloMitoMatsim_modelOutput/pp_health_2012.csv")
@@ -28,7 +30,15 @@ sample_size <- 0#1000#^5
 ### Belen 7.03.24: change folder to Jibe working group
 # synth_pop_orig <- read_csv(here("C:/Users/aa797/RMIT University/JIBE working group - manchester/synPop/sp_2021/pp_health_2021.csv"))
 
-synth_pop_orig <- read_csv(here("C:/Users/aa797/RMIT University/JIBE working group - manchester/health/pp_health_2021_base_withSport.csv"))
+# synth_pop <- read_csv(here("C:/Users/aa797/RMIT University/JIBE working group - manchester/health/pp_health_2021_base_withSport.csv"))
+
+# synth_pop <- read_csv(here("C:/Users/aa797/RMIT University/JIBE working group - manchester/synPop/sp_2021/pp_health_2021_withSport.csv"))
+
+synth_pop <- read_csv(here("D:/Users/aa797/manchester/input/health/pp_health_2021_withSport.csv"))
+
+# Read probability dataset by age and sex for Australia - created by Qin
+hd <- read_csv("D:/Users/aa797/manchester/input/health/health_transitions_melbourne_reduced.csv")
+
 
 # Comment out code specific to melbourne synthetic column names
 # synth_pop <- synth_pop_orig |> ungroup() |> dplyr::select(AgentId, Age, Gender, age_cat, education, SA2_MAINCODE) |> 
@@ -38,7 +48,7 @@ synth_pop_orig <- read_csv(here("C:/Users/aa797/RMIT University/JIBE working gro
 vigorous_mmet = 3
 
 # Read manchester specific synth_pop filename
-synth_pop <- synth_pop_orig |> 
+synth_pop <- synth_pop |> 
   ungroup() |> 
   dplyr::select(id, age, gender, mmetHr_cycle, mmetHr_walk) |> 
   rename (sex = gender) %>%
@@ -65,9 +75,6 @@ synth_pop <- synth_pop_orig |>
 # Read probability dataset by age and sex for Australia
 # hd <- read_csv("C:/Users/aa797/RMIT University/JIBE working group - manchester/health/processed/health_transitions_manchester.csv")
 
-# Read probability dataset by age and sex for Australia - created by Qin
-hd <- read_csv("D:/Users/aa797/manchester/input/health/health_transitions_melbourne_reduced.csv")
-
 # hd <- hd |> # & educ == "medium") |> 
 #   dplyr::select(-c(...1, location_code, location_type)) |> 
 #   distinct(age, sex, cause, .keep_all = T) |> 
@@ -78,7 +85,7 @@ hd <- read_csv("D:/Users/aa797/manchester/input/health/health_transitions_melbou
 n.i <- synth_pop |> nrow()
 
 # Number of cycles
-n.c <- 10
+n.c <- 2
 
 # everyone begins in the healthy state 
 v.M_1 <- rep("healthy", n.i)
@@ -168,14 +175,14 @@ stop <- F
 for (incyc in 1:n.c){
   for (dis in diseases){
     cstate <- list()
-    dis <- diseases[1]
-    for (index in 1:nrow(synth_pop_wprob)){
-      # index <- 1
-      # incyc <- 1
-          cstate[index] <- get_state(rd = synth_pop_wprob[index,], cycle = incyc,
-                                     cause = dis, cm = m[, c(paste0("c", incyc - 1), paste0("c", incyc))])
-
-    }
+    # dis <- diseases[1]
+    # for (index in 1:nrow(synth_pop_wprob)){
+    #   # index <- 1
+    #   # incyc <- 1
+    #       cstate[index] <- get_state(rd = synth_pop_wprob[index,], cycle = incyc,
+    #                                  cause = dis, cm = m[, c(paste0("c", incyc - 1), paste0("c", incyc))])
+    # 
+    # }
     # 
     # print(table(unlist(cstate)))
     cstate <- future_apply(synth_pop_wprob, 1, get_state,
@@ -219,17 +226,23 @@ ggplot(l) +
   theme_minimal()
 
 
-print(m |> as.data.frame() |> 
-        rownames_to_column("id") |> 
-        pivot_longer(cols = -c(id)) |> 
-        group_by(name, value) |> 
-        summarise(nv = dplyr::n(), 
-                  freq = round(100 * nv / nrow(m), 4)) |>  
-        filter(freq > 0) |> 
-        pivot_wider(id_cols = value, 
-                    names_from = name, values_from = freq))
+m |> as.data.frame() |> 
+  rownames_to_column("id") |> 
+  pivot_longer(cols = -c(id)) |> 
+  mutate(unpacked = str_split(value, " ")) |> 
+  unnest() |> 
+  mutate(value = str_trim(unpacked)) |> 
+  dplyr::select(-unpacked) |> 
+  group_by(name, value)|> 
+  summarise(nv = dplyr::n(), 
+            freq = round(100 * nv / nrow(m), 1)) |>  
+  filter(freq > 0) |> 
+  pivot_wider(id_cols = value, 
+              names_from = name, values_from = freq) |> print()
+
+
 # # # Save the diagram
 # ggsave(paste0("diagrams/state_trans-n.c-",n.c, "-n.i-", n.i, "-n.d-", length(diseases), ".png"), height = 5, width = 10, units = "in", dpi = 600, scale = 1)
 # # 
 # # # Also save state transitions as a CSV
-# write_csv(m |> as.data.frame(), paste0("data/state_trans-n.c-",n.c, "-n.i-", n.i, "-n.d-", length(diseases), ".csv"))
+write_csv(m |> as.data.frame(), paste0("data/state_trans-n.c-",n.c, "-n.i-", n.i, "-n.d-", length(diseases), ".csv"))
