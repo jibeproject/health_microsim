@@ -136,7 +136,7 @@ disagg_smooth_spline <- function(dat, key) {
   })
 }
 
-# Plot for interpolated data ----
+# Plot for interpolated data (single location) ----
 
 # function to print multiple plots per page
 plot_interpolation_pages <- function(plot_data, output_dir) {
@@ -190,4 +190,6 @@ plot_interpolation_pages <- function(plot_data, output_dir) {
   }
   
 }
+
+
 

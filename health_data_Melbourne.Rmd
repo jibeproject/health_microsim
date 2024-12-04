@@ -325,7 +325,7 @@ The cancer sites are reported differently between the AIHW tables on
 incidence by age/sex and incidence by socioeconomic quintiles and also
 from the cancer ATLAS. While the final data uses ATLAS, as opposed to
 AIHW, initial code from Chris used AIHW and we also include the AIHW
-socioeconomic data below for comparison perposes, so we still harmonise,
+socioeconomic data below for comparison purposes, so we still harmonise,
 also to match standard names used across different inputs (i.e. health
 data, dose response functions).
 
@@ -2967,7 +2967,6 @@ for (i in seq_along(chunks)) {
 
 ```
 
-
 ## Prevalence trends
 
 Prevalence rates for 2018 and subsequent years. We have not identified
@@ -3090,13 +3089,12 @@ saveRDS(prev_trends, file=here("melbourne/health/processed/health_prev_trends.rd
 
 ```
 
-
 # Mortality outputs
 
-Combine saved mortality tables:
--   `mort_years.rds`: mortality rates for the years 2018 to 2017 by age and sex.
--   `mort_disagg_factors.rds`: relative rates to apply to the mortality rates to disaggregate by SA2 and education.
-
+Combine saved mortality tables: - `mort_years.rds`: mortality rates for
+the years 2018 to 2017 by age and sex. - `mort_disagg_factors.rds`:
+relative rates to apply to the mortality rates to disaggregate by SA2
+and education.
 
 ```{r}
 # read in the saved tables
