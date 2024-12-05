@@ -61,3 +61,18 @@ combine_rr <- multiply_similar_columns(rr)
 
 hist(combine_rr$RR_cyc_all_cause)
 
+#hh <- read_csv("D:/Users/aa797/manchester/scenOutput/disease/microData/hh_2021.csv")
+dd <- read_csv("D:/Users/aa797/manchester/scenOutput/disease/microData/dd_2021.csv")
+
+ppdf <- left_join(ppdf, dd |> dplyr::select(hhID, zone) |> rename(hhid = hhID))
+
+dir_path <- 'D:/Users/aa797/RMIT University/JIBE working group - General/manchester/'
+
+zones <- read_csv(paste0(dir_path, "synpop/sp_2021/zoneSystem.csv"))
+
+ppdf <- left_join(ppdf, zones |> dplyr::select(oaID, lsoa21cd) |> rename(zone = oaID))
+
+combine_rr <- left_join(combine_rr, ppdf |> dplyr::select(id, age, gender, lsoa21cd))
+
+# write combine_rr
+#write_csv(combine_rr, "data/manchester/cyc_pp_exposure_RR_2021.csv")
