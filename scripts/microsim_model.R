@@ -1,6 +1,3 @@
-# remove any variables in R's memory 
-rm(list = ls()) 
-
 # Load libraries
 library(tidyverse)
 # For parallel processing
@@ -9,6 +6,8 @@ library(future.apply)
 library(here)
 # For DR PA 
 library(drpa)
+# For fast reading/processing
+library(arrow)
 
 library(glue)
 
@@ -17,34 +16,23 @@ plan(multisession)
 # For reproducibility set seed
 set.seed(2)
 
-
 options(future.globals.maxSize = +Inf)
 
 set_sep = ";"
 
-sample_size <- 0#10000#1000#^5
+sample_size <- 0
 
-# Read pp health dataset (of Munich) using read_csv_arrow from arrow library
-# synth_pop_base <- read_csv("data/siloMitoMatsim_modelOutput/pp_health_2012.csv")
+synth_pop <- read_csv("D:/Users/aa797/manchester/scenOutput/disease/microData/pp_2021.csv")
 
-### Belen 7.03.24: change folder to Jibe working group
-# synth_pop_orig <- read_csv(here("C:/Users/aa797/RMIT University/JIBE working group - manchester/synPop/sp_2021/pp_health_2021.csv"))
+synth_pop <- arrow::open_csv_dataset(here("data/manchester/base_pp_exposure_RR_2021.csv"))
+hd <- read_csv("D:/Users/aa797/manchester/input/health/health_transitions_manchester.csv") 
 
-# synth_pop <- read_csv(here("C:/Users/aa797/RMIT University/JIBE working group - manchester/health/pp_health_2021_base_withSport.csv"))
+dir_path <- 'D:/Users/aa797/RMIT University/JIBE working group - General/manchester/'
 
-# synth_pop <- read_csv(here("C:/Users/aa797/RMIT University/JIBE working group - manchester/synPop/sp_2021/pp_health_2021_withSport.csv"))
+ref_trips <- read_csv(paste0(dir_path, "simulationResults/ForUrbanTransition/reference/travel_demand_mito/trips.csv"))
 
-synth_pop <- read_csv(here("D:/Users/aa797/manchester/input/health/pp_health_2021_withSport.csv"))
+zone <- read_csv(paste0(dir_path, "synpop/sp_2021/zoneSystem.csv"))
 
-# Read probability dataset by age and sex for Australia - created by Qin
-hd <- read_csv("D:/Users/aa797/manchester/input/health/health_transitions_melbourne_reduced.csv")
-
-
-# Comment out code specific to melbourne synthetic column names
-# synth_pop <- synth_pop_orig |> ungroup() |> dplyr::select(AgentId, Age, Gender, age_cat, education, SA2_MAINCODE) |> 
-#   rename (id = AgentId, age = Age, sex = Gender) #|> sample_n(1000) #|> filter(age > 90) 
-
-# Assume the background PA is of intense nature
 vigorous_mmet = 3
 
 # Read manchester specific synth_pop filename
@@ -56,30 +44,6 @@ synth_pop <- synth_pop |>
   #                                 total_mmet = total_tr_pa+total_non_tr_pa) 
   {if (sample_size > 0) sample_n(., sample_size) else .}
 
-
-# rr <- synth_pop |> mutate(across(ends_with("mmet"), ~ drpa::dose_response(
-#   cause = "all-cause-mortality", outcome_type = "fatal",
-#   dose = .x, censor_method = "WHO-DRL") |> pull())) |> 
-#   dplyr::select(ends_with("mmet")) |> 
-#   rename_with(~ gsub("mmet", "rr", .x, fixed = TRUE))
-# 
-# synth_pop <- cbind(synth_pop, rr |> rename(rr_all = total_rr))
-
-
-# # Read pp health dataset (of Munich) using read_csv_arrow from arrow library
-# synth_pop_scen <- read_csv("data/siloMitoMatsim_modelOutput/pp_health_2012_scen.csv")
-# 
-# cdf <- left_join(synth_pop_base, synth_pop_scen |> dplyr::select(id, hhid, rr_all) |> rename(scen_rr_all = rr_all))
-
-
-# Read probability dataset by age and sex for Australia
-# hd <- read_csv("C:/Users/aa797/RMIT University/JIBE working group - manchester/health/processed/health_transitions_manchester.csv")
-
-# hd <- hd |> # & educ == "medium") |> 
-#   dplyr::select(-c(...1, location_code, location_type)) |> 
-#   distinct(age, sex, cause, .keep_all = T) |> 
-#   mutate(cause = str_replace_all(cause, " ", "_"))
-  # mutate(cause = str_replace_all(cause, "_| ", "-"))
 
 # Number of individuals
 n.i <- synth_pop |> nrow()
@@ -161,12 +125,6 @@ m[,1] <- v.M_1
 # Read the names of all columns starting with the 'sick' word, so that list of causes (or diseases) can be generated
 diseases <- unique(hd$cause)
 
-# Select only a handful of cause for now, which are: all-cause-mortality, ischaemic heart disease", stroke and lung Cancer
-# diseases <- c("allc", "ishd", "tbalc", "strk")
-
-# diseases <- c( "allc", "npls", "ishd", "tbalc", "carc", "strk", "hanc", "copd", "dmt2", "lvrc", "stmc",
-#                "kdnc", "espc", "lwri", "mltm", "adaod", "brsc", "bldc", "prkd", "chml", "dprd", "prsc",
-#                "utrc" )
 # 
 # Record the time it takes to run the piece of code with tic()
 require(tictoc)
@@ -189,7 +147,6 @@ for (incyc in 1:n.c){
                            cycle = incyc, cause = dis,
                            cm = m[, c(paste0("c", incyc - 1), paste0("c", incyc))], future.seed = T)
     
-    # print(table(cstate))
     m[, incyc + 1] <- cstate
 
   }
