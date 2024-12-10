@@ -115,7 +115,7 @@ all_cause_no <- combined_dose %>%
   mutate(rr = as.numeric(exp(log(rr_no_mort) * (dose / 10)))) %>%  # Adjust rr for the exposure range
   mutate(rr = case_when(
     dose < 7.1 ~ 1,   # If dose is less than 7.1, set rr to 1
-    dose > 129.9 ~ exp(log(rr_no_mort) * (129.9 / 10)),  # Cap rr at the value for dose = 44
+    dose > 129.9 ~ exp(log(rr_no_mort) * (129.9 / 10)),  # Cap rr at the value for dose = 129
     TRUE ~ rr          # For all other cases, keep the calculated rr
   ))
 
@@ -124,3 +124,72 @@ write.csv(all_cause_no, "health/all_cause_no.csv")
 
 # Noise
 
+## IHD incidence for Lden from Engelmann et al 2024 for road traffic noise. 1.041 (1.023, 1.059) per 10 dB
+# Thresholds are: lower Lden=45 and upper Lden=80. Lowest level based on weighted average of lowest exposure in 
+# evaluated studies
+# Log-linear
+
+rr_noise_ihd <- 1.041
+
+
+ihd_noise <- combined_dose %>% 
+  select(dose) %>%  # Select the columns dose and rr_pm_mort
+  mutate(rr = as.numeric(exp(log(rr_noise_ihd) * ((dose - 45) / 10)))) %>%  # Adjust rr for the exposure range
+  mutate(rr = case_when(
+    dose < 53 ~ 1,   # If dose is less than 7.1, set rr to 1
+    dose > 80 ~ exp(log(rr_noise_ihd) * ((80 - 45) / 10)),  # Cap rr at the value for dose = 44
+    TRUE ~ rr          # For all other cases, keep the calculated rr
+  ))
+
+write.csv(ihd_noise, "health/ihd_noise.csv")
+
+## Stroke incidence for Lden from Engelamnn et al 2024 for road traffic noise 1.046 (1.013, 1.081) per 10 dB.
+# Thresholds are: lower Lden=45 and upper Lden=80. No lowest threshold effect determined, so used
+# Log-linear
+
+rr_stroke_noise <- 1.046
+
+stroke_noise <- combined_dose %>% 
+  select(dose) %>%  # Select the columns dose and rr_pm_mort
+  mutate(rr = as.numeric(exp(log(rr_stroke_noise) * ((dose - 45) / 10)))) %>%  # Adjust rr for the exposure range
+  mutate(rr = case_when(
+    dose < 53 ~ 1,   # If dose is less than 7.1, set rr to 1
+    dose > 80 ~ exp(log(rr_stroke_noise) * ((80 - 45) / 10)),  # Cap rr at the value for dose = 44
+    TRUE ~ rr          # For all other cases, keep the calculated rr
+  ))
+
+write.csv(ihd_noise, "health/stroke_noise.csv")
+
+## Diabates incidence for Lden from Engelamnn et al 2024 for road traffic noise 1.062 (1.036, 1.088) per 10 dB
+# Thresholds are: lower Lden=55 and upper Lden=80. No lowest threshold effect determined, so used
+# Log-linear
+
+rr_diabates_noise <- 1.062
+
+diabates_noise <- combined_dose %>% 
+  select(dose) %>%  # Select the columns dose and rr_pm_mort
+  mutate(rr = as.numeric(exp(log(rr_diabates_noise) * ((dose - 45) / 10)))) %>%  # Adjust rr for the exposure range
+  mutate(rr = case_when(
+    dose < 53 ~ 1,   # If dose is less than 7.1, set rr to 1
+    dose > 80 ~ exp(log(rr_diabates_noise) * ((80 - 45) / 10)),  # Cap rr at the value for dose = 44
+    TRUE ~ rr          # For all other cases, keep the calculated rr
+  ))
+
+write.csv(ihd_noise, "health/diabates_noise.csv")
+
+## All cause mortality for Lden from Engelamnn et al 2024 for road traffic noise 1.055 (1.014, 1.069)) per 10 dB
+# Thresholds are: lower Lden=55 and upper Lden=80. No lowest threshold effect determined, so used
+# Log-linear
+
+rr_mortality_noise <- 1.055
+
+diabates_noise <- combined_dose %>% 
+  select(dose) %>%  # Select the columns dose and rr_pm_mort
+  mutate(rr = as.numeric(exp(log(rr_mortality_noise) * ((dose - 45) / 10)))) %>%  # Adjust rr for the exposure range
+  mutate(rr = case_when(
+    dose < 53 ~ 1,   # If dose is less than 7.1, set rr to 1
+    dose > 80 ~ exp(log(rr_mortality_noise) * ((80 - 45) / 10)),  # Cap rr at the value for dose = 44
+    TRUE ~ rr          # For all other cases, keep the calculated rr
+  ))
+
+write.csv(ihd_noise, "health/mortality_noise.csv")

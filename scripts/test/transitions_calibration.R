@@ -10,7 +10,14 @@ library(readr)
 
 # Read file for synthetic population with baseline exposures
 
-synth_pop <- read.csv("manchester/simulationResults/ForUrbanTransition/reference/health/03_exposure_and_rr/pp_health_2021.csv")
+synth_pop <- read.csv("manchester/simulationResults/ForUrbanTransition/reference/health/03_exposure_and_rr/pp_exposure_2021.csv")
+
+synth_pop_rr <- read.csv("manchester/simulationResults/ForUrbanTransition/reference/health/03_exposure_and_rr/pp_rr_2021.csv")
+
+
+write.csv(head(synth_pop,100), 
+  "manchester/simulationResults/ForUrbanTransition/samples/exposures.csv")
+
 
 # Create mmets variable for calculation of pif
 
