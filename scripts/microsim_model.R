@@ -21,28 +21,42 @@ options(future.globals.maxSize = +Inf)
 set_sep = ";"
 
 sample_size <- 0
+synth_pop <- read_csv(here("data/manchester/cyc_pp_exposure_RR_2021.csv"))
 
-synth_pop <- read_csv("D:/Users/aa797/manchester/scenOutput/disease/microData/pp_2021.csv")
+## Clean column names
+# Remove individual causes that have a combined effect
+synth_pop <- synth_pop |> dplyr::select(-contains(c("all_cause", "IHD", "lung_cancer", "stroke", "T2D", "CVD")), starts_with("RR_cyc"))
 
-synth_pop <- arrow::open_csv_dataset(here("data/manchester/base_pp_exposure_RR_2021.csv"))
+# Remove prefix for AP, PA and combined RRs
+synth_pop <- synth_pop |> rename_all(~ stringr::str_replace(., regex("^RR_ap_cyc_|^RR_pa_cyc_|^RR_cyc_", ignore_case = TRUE), ""))
+
+synth_pop <- synth_pop |> rename(all_cause_mortality = all_cause, 
+                                  diabetes = T2D,
+                                  all_cause_dementia = total_dementia,
+                                  coronary_heart_disease = IHD,
+                                  endometrial_cancer = endo_cancer,
+                                  sex = gender) |> janitor::clean_names()
+# sort(names(synth_pop))
+# [1] "age"              "all_cause"        "breast_cancer"    "colon_cancer"     "COPD"             "CVD"              "endo_cancer"     
+# [8] "gender"           "head_neck_cancer" "id"               "IHD"              "liver_cancer"     "LRI"              "lsoa21cd"        
+# [15] "lung_cancer"      "myeloid_leukemia" "myeloma"          "Parkinson"        "respiratory"      "stomach_cancer"   "stroke"          
+# [22] "T2D"              "total_cancer"     "total_dementia"  
+
+ 
+
 hd <- read_csv("D:/Users/aa797/manchester/input/health/health_transitions_manchester.csv") 
 
-dir_path <- 'D:/Users/aa797/RMIT University/JIBE working group - General/manchester/'
 
-ref_trips <- read_csv(paste0(dir_path, "simulationResults/ForUrbanTransition/reference/travel_demand_mito/trips.csv"))
-
-zone <- read_csv(paste0(dir_path, "synpop/sp_2021/zoneSystem.csv"))
-
-vigorous_mmet = 3
-
-# Read manchester specific synth_pop filename
-synth_pop <- synth_pop |> 
-  ungroup() |> 
-  dplyr::select(id, age, gender, mmetHr_cycle, mmetHr_walk) |> 
-  rename (sex = gender) %>%
-  # mutate(total_tr_pa = mmetHr_cycle + mmetHr_walk, total_non_tr_pa = otherSport_wkhr * vigorous_mmet,
-  #                                 total_mmet = total_tr_pa+total_non_tr_pa) 
-  {if (sample_size > 0) sample_n(., sample_size) else .}
+# vigorous_mmet = 3
+# 
+# # Read manchester specific synth_pop filename
+# synth_pop <- synth_pop |> 
+#   ungroup() |> 
+#   dplyr::select(id, age, gender, mmetHr_cycle, mmetHr_walk) |> 
+#   rename (sex = gender) %>%
+#   # mutate(total_tr_pa = mmetHr_cycle + mmetHr_walk, total_non_tr_pa = otherSport_wkhr * vigorous_mmet,
+#   #                                 total_mmet = total_tr_pa+total_non_tr_pa) 
+#   {if (sample_size > 0) sample_n(., sample_size) else .}
 
 
 # Number of individuals
@@ -107,11 +121,49 @@ get_state <- function(rd, cycle = 1, cause = "allc", cm) {
   }
 }
 
-# Create a df for 
-synth_pop_wprob <- synth_pop |> rownames_to_column() |> dplyr::select(-c(mmetHr_cycle, mmetHr_walk)) |> left_join(hd |> pivot_wider(id_cols = c(age, sex), names_from = cause, values_from = prob))
 
-# Replace NAs with 0 prob
-synth_pop_wprob[is.na(synth_pop_wprob)] <- 0 
+multiply_similar_suffix_columns <- function(df, un = "exp_") {
+  # Get all column names
+  col_names <- names(df)
+  
+  # Function to extract the common part of column names
+  extract_common <- function(name) {
+    parts <- strsplit(name, un)[[1]]
+    length_parts <- length(parts)
+    parts[length_parts]
+  }
+  
+  # Get unique common parts
+  common_parts <- unique(sapply(col_names, extract_common))
+  
+  # For each common part, multiply corresponding columns
+  for (part in common_parts) {
+    matching_cols <- col_names[sapply(col_names, function(x) grepl(part, x))]
+    
+    if (length(matching_cols) > 1) {
+      new_col_name <- paste0("RR_", part)
+      df[[new_col_name]] <- Reduce(`*`, df[matching_cols])
+    }
+  }
+  
+  return(df)
+}
+
+
+synth_pop <- synth_pop %>% rename_with(~ paste0("exp_", .x), -c("id","age", "sex", "lsoa21cd")) 
+
+# Create a df for 
+synth_pop_wprob <- synth_pop |> 
+  rownames_to_column() |> 
+  left_join(hd |> 
+              pivot_wider(id_cols = c(age, sex, lsoa21cd), 
+                          names_from = cause, values_from = prob), 
+            join_by(age, sex, lsoa21cd))
+
+# Replace NAs with 1
+synth_pop_wprob[is.na(synth_pop_wprob)] <- 1 
+
+synth_pop_wprob1 <- multiply_similar_suffix_columns(synth_pop_wprob |> dplyr::select(-c("id","age", "sex", "lsoa21cd"))) 
 
 # 
 # Matrix to save current states
