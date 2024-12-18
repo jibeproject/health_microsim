@@ -63,7 +63,7 @@ hd <- read_csv("D:/Users/aa797/manchester/input/health/health_transitions_manche
 n.i <- synth_pop |> nrow()
 
 # Number of cycles
-n.c <- 2
+n.c <- 1
 
 # everyone begins in the healthy state 
 v.M_1 <- rep("healthy", n.i)
@@ -71,8 +71,12 @@ v.M_1 <- rep("healthy", n.i)
 # Function to return 
 
 get_state <- function(rd, cycle = 1, cause = "allc", cm) {
+  
+  
   # Get unique index for the agent
   vi <- rd["rowname"] |> as.numeric()
+  
+  # browser()
   # Get previous state of the agent
   prev_state <-  cm[vi, 1] |> as.character()
   # Get current state of the agent
@@ -96,7 +100,7 @@ get_state <- function(rd, cycle = 1, cause = "allc", cm) {
     # If however the uniform random probablity is greater than age and sex specific sick_prob, then transition to the
     # specific cause (curr_cause) takes place
     prob <- runif(1)
-    if (prob < dis_prob){
+    if (!is.na(dis_prob) && prob < dis_prob){
       # All-cause mortality is a special cause that takes an agent to the 'dead' state
       if (cause == 'all_cause_mortality')
         return ('dead')
@@ -161,9 +165,9 @@ synth_pop_wprob <- synth_pop |>
             join_by(age, sex, lsoa21cd))
 
 # Replace NAs with 1
-synth_pop_wprob[is.na(synth_pop_wprob)] <- 1 
+#synth_pop_wprob[is.na(synth_pop_wprob)] <- 1 
 
-synth_pop_wprob1 <- multiply_similar_suffix_columns(synth_pop_wprob |> dplyr::select(-c("id","age", "sex", "lsoa21cd"))) 
+synth_pop_wprob <- multiply_similar_suffix_columns(synth_pop_wprob |> dplyr::select(-c("id","age", "sex", "lsoa21cd"))) 
 
 # 
 # Matrix to save current states
@@ -177,6 +181,13 @@ m[,1] <- v.M_1
 # Read the names of all columns starting with the 'sick' word, so that list of causes (or diseases) can be generated
 diseases <- unique(hd$cause)
 
+synth_pop_wprob <- synth_pop_wprob |> dplyr::select(c("rowname", contains("RR")))
+
+names(synth_pop_wprob) <- sub("RR_", "", names(synth_pop_wprob), fixed = TRUE)
+
+# sm_synth_pop_wprob <- synth_pop_wprob[1:1000,]
+# sm_m <- m[1:1000,] |> as.matrix()
+
 # 
 # Record the time it takes to run the piece of code with tic()
 require(tictoc)
@@ -187,8 +198,8 @@ for (incyc in 1:n.c){
     cstate <- list()
     # dis <- diseases[1]
     # for (index in 1:nrow(synth_pop_wprob)){
-    #   # index <- 1
-    #   # incyc <- 1
+    #   index <- 1
+    #   incyc <- 1
     #       cstate[index] <- get_state(rd = synth_pop_wprob[index,], cycle = incyc,
     #                                  cause = dis, cm = m[, c(paste0("c", incyc - 1), paste0("c", incyc))])
     # 
@@ -198,7 +209,7 @@ for (incyc in 1:n.c){
     cstate <- future_apply(synth_pop_wprob, 1, get_state,
                            cycle = incyc, cause = dis,
                            cm = m[, c(paste0("c", incyc - 1), paste0("c", incyc))], future.seed = T)
-    
+
     m[, incyc + 1] <- cstate
 
   }
