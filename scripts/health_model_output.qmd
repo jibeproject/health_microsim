@@ -1,0 +1,75 @@
+---
+title: "Health output visualisation"
+author: "Ali Abbas"
+format: html
+editor: source
+---
+
+```{r}
+require(tidyverse)
+require(esquisse)
+
+hd <- read_csv("D:/Users/aa797/manchester/scenOutput/disease/microData/pp_healthDiseaseTracker_2023.csv")
+
+sp <- read_csv("D:/Users/aa797/manchester/input/health/pp_health_2021_base.csv")
+
+spj <- left_join(sp |> select(id, age, gender, relationShip, occupation, driversLicense, workplace, income, disability, schoolId), hd)
+
+hc <- read_csv("D:/Users/aa797/manchester/input/health/health_transitions_manchester.csv")
+
+all_states <- c("healthy", "dead", hc |> dplyr::select(cause) |> distinct() |> filter(cause != "all_cause_mortality") |> pull())
+
+
+ps <- function(df, cn = "", sep = " ", rp = 0, sc = "c1"){
+  return(df |> 
+           pivot_longer(cols = starts_with("20")) |>   
+           mutate(unpacked = str_split(value, sep)) |> 
+           unnest() |> 
+           mutate(value = str_trim(unpacked)) |> 
+           dplyr::select(-unpacked) |> 
+           mutate(value = ifelse(value == "null", "dead", value)) |>  
+           filter(!is.na(value)) |> 
+           group_by(!!as.name(cn), name, value) |> 
+           summarise(nv = dplyr::n(), freq = ifelse(rp > 1, round(100 * nv / nr, rp), 100 * nv / nr))
+  )
+  
+}
+
+
+# # Create individual states, while ignoring the all_cause_mortality state as dead state already captures it
+# 
+n.c <- 3
+l <- data.frame(states = c('healthy', 'dead', unique(hc$cause) |> str_subset(pattern = "all_cause_mortality", negate = TRUE)), freq = 0, c = 0)
+for (ind in 1:n.c){
+  df <- unlist(strsplit(m[, ind], " ")) |>
+    as.data.frame()
+  names(df) <- 'states'
+  tbl <- df |>
+    group_by(states) |>
+    summarise(cn = n()) |>
+    mutate(freq = round(cn / sum(cn) * 100, 1), c = ind) |>
+    dplyr::select(-cn)
+  l <- plyr::rbind.fill(l, tbl)
+}
+
+l[l$c == 0 & l$states == 'healthy',]$freq <- 100
+
+l$c <- as.factor(l$c)
+
+l <- l |> filter(!is.na(states))
+
+# Generate historic state transitions of all diseases + dead
+ggplot(l) +
+  aes(x = c, y = freq, fill = states) +
+  geom_col() +
+  labs(x = "Years", y = "Frequency (%)", title = "State transitions over the years") +
+  theme_minimal()
+
+
+
+```
+
+## Read health dataset
+
+
+
