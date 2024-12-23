@@ -23,6 +23,10 @@ set_sep = ";"
 sample_size <- 0
 synth_pop <- read_csv(here("data/manchester/cyc_pp_exposure_RR_2021.csv"))
 
+
+if (sample_size > 0)
+  synth_pop <- sample_n(synth_pop, sample_size)
+
 ## Clean column names
 # Remove individual causes that have a combined effect
 synth_pop <- synth_pop |> dplyr::select(-contains(c("all_cause", "IHD", "lung_cancer", "stroke", "T2D", "CVD")), starts_with("RR_cyc"))
@@ -63,7 +67,7 @@ hd <- read_csv("D:/Users/aa797/manchester/input/health/health_transitions_manche
 n.i <- synth_pop |> nrow()
 
 # Number of cycles
-n.c <- 1
+n.c <- 5
 
 # everyone begins in the healthy state 
 v.M_1 <- rep("healthy", n.i)
@@ -265,4 +269,4 @@ m |> as.data.frame() |>
 # ggsave(paste0("diagrams/state_trans-n.c-",n.c, "-n.i-", n.i, "-n.d-", length(diseases), ".png"), height = 5, width = 10, units = "in", dpi = 600, scale = 1)
 # # 
 # # # Also save state transitions as a CSV
-write_csv(m |> as.data.frame(), paste0("data/state_trans-n.c-",n.c, "-n.i-", n.i, "-n.d-", length(diseases), ".csv"))
+arrow::write_dataset(m |> as.data.frame(), paste0("data/state_trans-n.c-",n.c, "-n.i-", n.i, "-n.d-", length(diseases), ".parquet"))
