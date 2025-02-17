@@ -1,0 +1,84 @@
+---
+title: "Plot incidence and prevalance by LAD"
+author: "Ali Abbas"
+format: html
+editor: visual
+---
+
+
+
+```{r}
+require(tidyverse)
+require(arrow)
+require(here)
+```
+
+```{r}
+
+get_expanded_rows <- function(health_base_fr, sym = " "){
+  health_base_fr |> 
+    pivot_longer(cols = -c(id, age, gender, lsoa21cd)) |> 
+    mutate(unpacked = str_split(value, sym)) |> 
+    unnest() |> 
+    mutate(value = str_trim(unpacked))  |> 
+    dplyr::select(-unpacked)
+}
+
+
+```
+
+```{r}
+synth_pop <- read_csv(here("data/manchester/cyc_pp_exposure_RR_2021.csv"))
+
+hm <- arrow::open_dataset("data/state_trans-n.c-5-n.i-2812112-n.d-19.parquet/part-0.parquet") |> collect()
+
+hm <- synth_pop |> dplyr::select(id, age, gender, lsoa21cd) |> cbind(hm)
+
+hm <- get_expanded_rows(hm)
+
+dir_path <- 'D:/Users/aa797/RMIT University/JIBE working group - General/manchester/'
+
+zones <- read_csv(paste0(dir_path, "synpop/sp_2021/zoneSystem.csv"))
+
+hm <- hm |> left_join(zones |> dplyr::select(lsoa21cd, ladnm))
+
+df <- hm |> dplyr::select(-c(id, age, gender, lsoa21cd))
+
+l <- df |>
+  group_by(name, value, ladnm)|> 
+  summarise(nv = dplyr::n(), 
+            freq = round(100 * nv / nrow(synth_pop), 3)) |>  
+  filter(freq > 0)# |> 
+  # pivot_wider(id_cols = c(ladnm, value), 
+  #             names_from = name, values_from = freq)
+
+```
+
+```{r}
+plotly::ggplotly(ggplot(l|> filter(value != "healthy")) +
+                   aes(x = value, y = freq, fill = name) +
+                   geom_bar(stat = "summary", fun = "sum", position = "dodge2") +
+                   scale_fill_hue(direction = 1) +
+                   coord_flip() +
+                   theme_minimal() +
+                   facet_wrap(vars(ladnm)))
+
+ggplot(l |> filter(value != "healthy")) +
+  aes(x = value, y = freq, fill = name) +
+  geom_col(position = "dodge2") +
+  scale_fill_hue(direction = 1) +
+  theme_minimal() +
+  facet_wrap(vars(ladnm))
+
+
+plotly::ggplotly(ggplot(l, aes(x = name, y = freq, color = value, group = value)) +
+                   geom_point() +
+                   geom_line() +
+                   facet_wrap(~ ladnm, scales = "free_x") +
+                   labs(title = "Frequency of each cause by LA",
+                        x = "Name",
+                        y = "Frequency") +
+                   theme_minimal())
+
+
+```
