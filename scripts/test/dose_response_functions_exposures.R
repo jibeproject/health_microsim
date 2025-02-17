@@ -236,9 +236,9 @@ ggplot(mortality_ndvi, aes(x = dose, y = rr, color = outcome)) +
   geom_line()
 
 
-#  Stroke incidence/prevalence 0.98 (0.96, 0.99) per 0.1 NDVI increase
+#  Stroke incidence/prevalence 0.98 (0.96, 0.99) per 0.1 NDVI increase. Liu et al 2022
 
-rr_stroke_ndvi <- 0.96
+rr_stroke_ndvi <- 0.98
 
 stroke_ndvi <- dose_ndvi %>% 
   select(dose) %>%
@@ -258,7 +258,7 @@ ggplot(stroke_ndvi, aes(x = dose, y = rr, color = outcome)) +
   geom_line()
 
 
-# Diabetes incidence rr=0.9 (0.87, 0.92) per 0.12 NDVI increase
+# Diabetes incidence rr=0.9 (0.87, 0.92) per 0.12 NDVI increase. Clark et al 2017
 
 rr_diabetes_ndvi <- 0.90
 
@@ -280,23 +280,21 @@ ggplot(diabetes_ndvi, aes(x = dose, y = rr, color = outcome)) +
   geom_line()
 
 
-# Depression rr=0.95 per ?
-
-rr_diabetes_ndvi <- 0.90
-
-diabetes_ndvi <- dose_ndvi %>% 
-  select(dose) %>%
-  mutate(rr = as.numeric(exp(log(rr_diabetes_ndvi) * dose / 0.12))) %>% 
-  mutate(rr = case_when(
-    dose == 0 ~ 1,
-    TRUE ~ rr          # For all other cases, keep the calculated rr
-  )) %>%
-  mutate(outcome="diabetes")
-
-write.csv(diabetes_ndvi, "health/diabetes_ndvi.csv")
-
-
-library(ggplot2)
-
-ggplot(diabetes_ndvi, aes(x = dose, y = rr, color = outcome)) +
-  geom_line()
+# # Depression rr=0.95 per ?
+# 
+# rr_depression_ndvi <- 0.95
+# 
+# diabetes_ndvi <- dose_ndvi %>%
+#   select(dose) %>%
+#   mutate(rr = as.numeric(exp(log(rr_diabetes_ndvi) * dose / 0.12))) %>%
+#   mutate(rr = case_when(dose == 0 ~ 1, TRUE ~ rr          # For all other cases, keep the calculated rr)) %>%
+#                         mutate(outcome = "diabetes")
+#                         
+#                         write.csv(depression_ndvi, "health/depression_ndvi.csv")
+#                         
+#                         
+#                         library(ggplot2)
+#                         
+#                         ggplot(depression_ndvi, aes(x = dose, y = rr, color = outcome)) +
+#                           geom_line()
+#                         
