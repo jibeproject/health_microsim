@@ -20,12 +20,23 @@ options(future.globals.maxSize = +Inf)
 
 set_sep = ";"
 
-sample_size <- 0
-synth_pop <- read_csv(here("data/manchester/cyc_pp_exposure_RR_2021.csv"))
+sample_size <- 1000
+
+# Data ----
+
+## Synthetic population file with exposures and physical activity
+## Belen (19/02/2025): for the paper we might want to start froom the synth pop with PA and exposures and assign RRs.
+synth_pop <- read_csv(here("manchester/simulationResults/ForPaper/1_reference/health/04_exposure_and_rr/pp_exposure_2021.csv"))
+
+## Health transitions
+
+hd <- read_csv(here("manchester/health/processed/health_transitions_manchester_prevalence.csv")) 
 
 
 if (sample_size > 0)
   synth_pop <- sample_n(synth_pop, sample_size)
+
+
 
 ## Clean column names
 # Remove individual causes that have a combined effect
@@ -101,7 +112,7 @@ get_state <- function(rd, cycle = 1, cause = "allc", cm) {
     return('dead')
   else{
     # prob <- rbernoulli(1, p = rd[paste0("prob_", cause, "_", cycle)] |> as.numeric())
-    # If however the uniform random probablity is greater than age and sex specific sick_prob, then transition to the
+    # If however the uniform random probablity is greater (ALi, is this lower?) than age and sex specific sick_prob, then transition to the
     # specific cause (curr_cause) takes place
     prob <- runif(1)
     if (!is.na(dis_prob) && prob < dis_prob){

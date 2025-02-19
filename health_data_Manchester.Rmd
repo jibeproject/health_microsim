@@ -17,20 +17,20 @@ editor_options:
   mode: visual
   markdown:
     wrap: 72
+---s
 ---
 
 # Introduction
 
-This document explains and produces estimates for the health model for
-JIBE Manchester. The model initially has three stages where individuals
-are in a healthy state, might become diseased, and die from any causes
-(regardless health status). For this first iteration of the model we
-need estimates of incidence and all cause mortality. A second iteration
-will be to include prevalence of disease at baseline (as opposed to all
-individuals being healthy) and add a differential all cause mortality
-risk for individuals who have one or more diseases. Last, we need to
-include trends in mortality, incidence of diseases and prevalence of
-diseases.
+This document explains and produces estimates for the inputs for the
+health model for JIBE Manchester. The model initially has four stages
+where individuals are in a healthy state, might become diseased of one
+or more diseases, and die from any causes (regardless health status).
+For this first iteration of the model we need estimates of incidence,
+prevalence and all cause mortality. A second iteration will add a
+differential all cause mortality risk for individuals who have one or
+more diseases. Last, we need might want to include trends in mortality,
+incidence of diseases and prevalence of diseases.
 
 ```{r setup, include=FALSE}
 
@@ -68,7 +68,8 @@ knitr::opts_chunk$set(
 # Mortality and Poplation Data by LSOA by age and sex (2018) 
 # [Source]: https://www.ons.gov.uk/peoplepopulationandcommunity/birthsdeathsandmarriages/deaths/adhocs/1028deathregistrationsbysexfiveyearagegroupandlowerlayersuperoutputareaslsoa2011censusboundariesenglandandwales2001to2021
 
-deaths_england <- fread('manchester/health/processed/ons/deaths_england.csv')
+deaths_england <- fread(here('manchester/health/processed/ons/deaths_england.csv'))
+
 
 deaths_england <- deaths_england %>%
   mutate(age = case_when(
@@ -78,7 +79,7 @@ deaths_england <- deaths_england %>%
   group_by(lsoa_code, lsoa_name, age, gender) %>%
   summarize(deaths = sum(deaths),.groups = "drop")
  
-population_england <- fread('manchester/health/processed/ons/population_england.csv')
+population_england <- fread(here('manchester/health/processed/ons/population_england.csv'))
 
 population_england <- population_england %>%
   mutate(age = case_when(
@@ -91,32 +92,34 @@ population_england <- population_england %>%
 # Geographical Hierarchy (as of 2021)
 # [Source]: https://geoportal.statistics.gov.uk/datasets/e7c49b62898a417192a336aca17e3a3f/about
 
-msoa <- fread('manchester/health/original/ons/PCD_OA21_LSOA21_MSOA21_LAD_AUG24_UK_LU.csv')
+msoa <- fread(here('manchester/health/original/ons/PCD_OA21_LSOA21_MSOA21_LAD_AUG24_UK_LU.csv'))
+
 msoa <- msoa %>%
   select(8:13) %>%
   distinct()
 
 # Life Tables for England (2017-2019)
 # [Source]: https://www.ons.gov.uk/peoplepopulationandcommunity/birthsdeathsandmarriages/lifeexpectancies/datasets/nationallifetablesenglandreferencetables/current
-lifetable_england  <- fread('manchester/health/original/ons/life_tables_20172019.csv',skip = 5)
+lifetable_england  <- fread(here('manchester/health/original/ons/life_tables_2017201.csv'))
 
 # English Indices of Deprivation by LSOA (2019)
 # [Source]: https://opendatacommunities.org/resource?uri=http%3A%2F%2Fopendatacommunities.org%2Fdata%2Fsocietal-wellbeing%2Fimd2019%2Findices
-deprivation <- fread('manchester/health/original/ons/imd2019lsoa.csv') 
+deprivation <- fread(here('manchester/health/original/ons/imd2019lsoa.csv')) 
 
 # European Standard Population 2013
 # [Source]: https://publichealthscotland.scot/services/national-data-catalogue/national-datasets/search-the-datasets/european-standard-population/#:~:text=The%20European%20Standard%20Population%20(ESP,was%20originally%20introduced%20in%201976.
-european_pop <- fread('manchester/health/original/ons/european_standard_population_by_sex.csv')
+european_pop <- fread(here('manchester/health/original/ons/european_standard_population_by_sex.csv'))
 
 # Population Estimates in England 
 # [Source]: https://www.ons.gov.uk/peoplepopulationandcommunity/populationandmigration/populationestimates/datasets/analysisofpopulationestimatestoolforuk
 
 ```
 
-
 ## Mortality by year of age and sex for England
 
-The mortality rate `mx` is defined as "the number of deaths at age x last birthday in the three year period (2017-2019) divided by the average population at that age over the same period.
+The mortality rate `mx` is defined as "the number of deaths at age x
+last birthday in the three year period (2017-2019) divided by the
+average population at that age over the same period.
 
 ```{r}
 
@@ -146,11 +149,12 @@ england_lifetable <- lifetable_england |>
 
 ## Mortality by LSOA small areas in England by sex
 
-The age-standardized mortality rate (ASMR) is calculated by first finding
-the age-specific (mortality) rates for each age group by dividing the number
-of deaths by the respective population, then multiplying the result by 1000,
-then multiplying each of the age-specific rates by the proportion of
-the population belonging to the particular age group (standard population weight)
+The age-standardized mortality rate (ASMR) is calculated by first
+finding the age-specific (mortality) rates for each age group by
+dividing the number of deaths by the respective population, then
+multiplying the result by 1000, then multiplying each of the
+age-specific rates by the proportion of the population belonging to the
+particular age group (standard population weight)
 
 ```{r}
 
@@ -317,10 +321,10 @@ deaths_lad_eng_asdr  <- deaths_lad_eng  %>%
 
 ## Relative Risk by LSOA
 
-A relative mortality rate is produced for each area,
-defined as the rate relative to the average mortality in the state.
-This average mortality is defined as a weighted average
-of the area-specific rates, weighted by the population of each area.
+A relative mortality rate is produced for each area, defined as the rate
+relative to the average mortality in the state. This average mortality
+is defined as a weighted average of the area-specific rates, weighted by
+the population of each area.
 
 ```{r}
 england_lsoa_deaths <- deaths_lsoa_eng_asdr |>
@@ -344,7 +348,8 @@ england_lsoa_deaths <- deaths_lsoa_eng_asdr |>
 
 Adding Index of Multiple Deprivation (IMD)
 
-Note: for the whole of England, clear gradient on overall age and sex standardised rates and by gender. 
+Note: for the whole of England, clear gradient on overall age and sex
+standardised rates and by gender.
 
 ```{r}
 # Merge with index of deprivation 
@@ -389,8 +394,7 @@ mortality_socio_gender <- england_deaths_socio %>%
   ungroup()
 ```
 
-
-## Area-specific age-standardized mortality rate 
+## Area-specific age-standardized mortality rate
 
 We assume that the excess mortality risk associated with living in a
 particular area does not depend on age and sex. We then estimate the
@@ -610,7 +614,7 @@ p_manchester <- ggplot(manchester_lifetable_lsoa, aes(x = age, y = rate1000)) +
 #       str_starts(lad_name, "Wigan"))
 ```
 
-# Disease Incidence 
+# Disease Incidence
 
 ## Data Sources
 
@@ -700,7 +704,7 @@ gbdp <- gbdp %>%
   bind_rows(gbdp_hanc) 
 ```
 
-## Interpolation 
+## Interpolation
 
 ```{r}
 # Now stretch the data out using an index, to create a data frame with 1 row per year of age and create a variable for year of age. 
