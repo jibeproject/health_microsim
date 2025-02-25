@@ -1,7 +1,7 @@
 ---
 title: "health data Melbourne"
 author: "Chris Jackson, Belen Zapata-Diomedi, Steve Pemberton"
-email: "mbzd2@cam.ac.uk, chris.jackson@mrc-bsu.cam.ac.uk, steve.pemberton@rmit.edu.au"
+email: "chris.jackson@mrc-bsu.cam.ac.uk, mbzd2@cam.ac.uk, , steve.pemberton@rmit.edu.au"
 date: today
 format: 
   html:
