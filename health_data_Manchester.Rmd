@@ -364,14 +364,14 @@ england_lsoa_deaths <- deaths_lsoa_eng_asdr %>%
     select(msoa_code, stdrate_msoa = stdrate, deaths_msoa, gender),
             by = c("msoa_code", "gender")) %>%
   left_join(deaths_lad_eng_asdr %>% 
-    select(lad_code, stdrate_lad = stdrate, gender),
+    select(lad_code, stdrate_lad = stdrate, gender, deaths_lad = deaths),
             by = c("lad_code", "gender")) %>% 
   group_by(gender) %>% 
   mutate(
     # Adjust the logic to first check for deaths_lsoa and then deaths_msoa
     stdrate_selected = ifelse(
-      deaths_lsoa == 0,            # If LSOA deaths are 0, use MSOA rate
-      ifelse(deaths_msoa == 0,     # If MSOA deaths are 0, use LAD rate
+      deaths_lsoa <= 10 ,            # If LSOA deaths less than 20, use MSOA rate
+      ifelse(deaths_msoa <= 10,     # If MSOA deaths are 0, use LAD rate
              stdrate_lad,         
              stdrate_msoa),
       stdrate # Otherwise, use LSOA rate
