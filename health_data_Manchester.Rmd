@@ -37,15 +37,11 @@ diseases.
 
 rm(list = ls())
 
-library(tidyverse)
-library(readxl)
-library(openxlsx)
-library(readr)
-library(knitr)
-library(gt)
-library(data.table)
-library(here) # to get files from the current working directory
-
+library(tidyverse)  # Includes dplyr, tidyr, readr, ggplot2, purrr, etc.
+library(readxl)   # Read/write Excel files
+library(knitr)      # Report generation
+library(gt)         # Pretty tables
+library(here)       # File path management
 # Set root directory one level up from current directory
 knitr::opts_knit$set(root.dir = dirname(getwd()))
 
@@ -71,8 +67,17 @@ knitr::opts_chunk$set(
 # [Source]: https://www.ons.gov.uk/peoplepopulationandcommunity/birthsdeathsandmarriages/deaths/adhocs/1028deathregistrationsbysexfiveyearagegroupandlowerlayersuperoutputareaslsoa2011censusboundariesenglandandwales2001to2021
 
 # Import data from ONS
-deaths_males <- read_xlsx('manchester/health/original/ons/DeathsbyLSOAmidyear11to21.xlsx', sheet = "2", skip = 2)
-deaths_females <- read_xlsx('manchester/health/original/ons/DeathsbyLSOAmidyear11to21.xlsx', sheet = "3", skip = 2)
+deaths_males <- read_xlsx(
+  here("manchester/health/original/ons", "DeathsbyLSOAmidyear11to21.xlsx"),
+  sheet = "2",
+  skip = 2
+)
+deaths_females <- read_xlsx(
+  here("manchester/health/original/ons", "DeathsbyLSOAmidyear11to21.xlsx"),
+  sheet = "3",
+  skip = 2
+)
+
 
 # Filter for 2018
 deaths_males <- deaths_males %>% 
@@ -114,8 +119,17 @@ rm(deaths)
 # Population Data by LSOA by age and sex (Year: 2018)
 #[Source]: https://www.ons.gov.uk/peoplepopulationandcommunity/populationandmigration/populationestimates/datasets/lowersuperoutputareamidyearpopulationestimates
 
-pop_males <- read_xlsx('manchester/health/original/ons/SAPE21DT1a-mid-2018-on-2019-LA-lsoa-syoa-estimates-formatted.xlsx', sheet = "Mid-2018 Males", skip = 3)
-pop_females <- read_xlsx('manchester/health/original/ons/SAPE21DT1a-mid-2018-on-2019-LA-lsoa-syoa-estimates-formatted.xlsx', sheet = "Mid-2018 Females", skip = 3)
+pop_males <- read_xlsx(
+  here("manchester/health/original/ons", "SAPE21DT1a-mid-2018-on-2019-LA-lsoa-syoa-estimates-formatted.xlsx"),
+  sheet = "Mid-2018 Males", 
+  skip = 3
+)
+
+pop_females <- read_xlsx(
+  here("manchester/health/original/ons", "SAPE21DT1a-mid-2018-on-2019-LA-lsoa-syoa-estimates-formatted.xlsx"),
+  sheet = "Mid-2018 Females", 
+  skip = 3
+)
 
 # Males
 
@@ -210,7 +224,7 @@ rm(pop_males, pop_females)
 # Geographical Hierarchy (as of 2011)
 # [Source]: https://geoportal.statistics.gov.uk/datasets/ons::lsoa-2011-to-travel-to-work-area-december-2011-exact-fit-lookup-in-the-uk/about
 
-msoa <- fread(here('manchester/health/original/ons/lsoa_2011.csv'))
+msoa <- read.csv(here('manchester/health/original/ons/lsoa_2011.csv'))
 
 msoa <- msoa %>%
   select(2:7) %>%
@@ -219,15 +233,15 @@ msoa <- msoa %>%
 
 # Life Tables for England (2017-2019)
 # [Source]: https://www.ons.gov.uk/peoplepopulationandcommunity/birthsdeathsandmarriages/lifeexpectancies/datasets/nationallifetablesenglandreferencetables/current
-lifetable_england  <- fread(here('manchester/health/original/ons/life_tables_20172019.csv'),skip = 5)
+lifetable_england  <- read.csv(here('manchester/health/original/ons/life_tables_20172019.csv'),skip = 5)
 
 # English Indices of Deprivation by LSOA (2019)
 # [Source]: https://opendatacommunities.org/resource?uri=http%3A%2F%2Fopendatacommunities.org%2Fdata%2Fsocietal-wellbeing%2Fimd2019%2Findices
-deprivation <- fread(here('manchester/health/original/ons/imd2019lsoa.csv')) 
+deprivation <- read.csv(here('manchester/health/original/ons/imd2019lsoa.csv')) 
 
 # European Standard Population 2013
 # [Source]: https://publichealthscotland.scot/services/national-data-catalogue/national-datasets/search-the-datasets/european-standard-population/#:~:text=The%20European%20Standard%20Population%20(ESP,was%20originally%20introduced%20in%201976.
-european_pop <- fread(here('manchester/health/original/ons/european_standard_population_by_sex.csv'))
+european_pop <- read.csv(here('manchester/health/original/ons/european_standard_population_by_sex.csv'))
 
 ```
 
@@ -525,8 +539,8 @@ standardised rates and by gender.
 # Merge with index of deprivation 
 
 deprivation <- deprivation %>%
-  filter(`Indices of Deprivation` == "a. Index of Multiple Deprivation (IMD)") %>%
-  filter(Measurement == "Decile") %>%
+  filter(Indices.of.Deprivation == "a. Index of Multiple Deprivation (IMD)") %>%
+  filter(Measurement == "Decile ") %>%
   mutate(deprivation="IMD") %>%
   rename(lsoa_code=FeatureCode) %>%
   select(lsoa_code, imd_decile=Value, deprivation)
@@ -612,7 +626,10 @@ write.csv(manchester_lifetable_lsoa, here("manchester/health/processed/mancheste
 
 library(viridis)  # For better color scaling
 
+
+### Graph for England
 # imd_decile is a factor
+
 data_plot <- england_lifetable_lsoa %>%
   mutate(
     imd_decile = as.factor(imd_decile),  # Ensure imd_decile is a factor
@@ -627,14 +644,15 @@ p_england <- ggplot(data_plot,
   facet_wrap(~ sex) +  # Compare IMD deciles within each sex
   ylab("Mortality rate (per 1000)") + 
   xlab("Age (years)") +  
-    scale_y_continuous(trans="log", 
+  scale_y_continuous(trans="log", 
                      breaks=c(0.0002, 0.0005, 0.001, 0.005, 0.01, 0.05, 0.1, 0.2)*1000) +
   scale_color_viridis_d(option = "C", name = "IMD Decile") +  # Use discrete color scale
   theme_minimal(base_size = 14) +  
   theme(
     strip.text = element_text(face = "bold"),
     legend.position = "bottom"  # Move legend for readability
-  )
+  ) +
+  ggtitle("Death rates England")  # Add title
 
 # Print the plot
 print(p_england)
@@ -663,7 +681,8 @@ p_manchester <- ggplot(data_plot,
   theme(
     strip.text = element_text(face = "bold"),
     legend.position = "bottom"  # Move legend for readability
-  )
+  )  +
+  ggtitle("Death rates Greater Manchester")  # Add title
 
 # Print the plot
 print(p_manchester)
@@ -688,7 +707,7 @@ rr_plot <- ggplot(manchester_deaths_socio, aes(x = imd_decile, y = RR, color = a
   geom_smooth(method = "lm", se = FALSE, aes(group = 1), color = "blue") +  # Add a linear regression line
   scale_x_continuous(breaks = 1:10) +  # Set x-axis breaks for IMD deciles
   labs(
-    title = "Relative Mortality Risk for LSOA by Deprivation Decile, England (2016-2019)",
+    title = "Relative Mortality Risk for LSOA by Deprivation Decile, Manchester (2016-2019)",
     x = "Deprivation Decile (1 - Most Deprived, 10 - Least Deprived)",
     y = "Relative Mortality Risk (RR)",
     color = "Deprivation Decile"
@@ -702,7 +721,9 @@ rr_plot <- ggplot(manchester_deaths_socio, aes(x = imd_decile, y = RR, color = a
 
 
 rr_plot
-### Marina, we need to do something with the comparison with Europe. I think can be add on sensitivity analysis to the choice of standard population.
+
+
+### Comparison of age standardised rates with ONS data by LAD and our calculations but using weight from the European standard population. We use European standard population to compare because ASDR per LAD from ONS use this weights in their calculations.  
 
 ### European Standard Population 2013
 
