@@ -67,40 +67,155 @@ knitr::opts_chunk$set(
 
 ```{r data-prep}
 
-# Mortality and Poplation Data by LSOA by age and sex (2018) 
+# Mortality by LSOA by age and sex (Year: 2018) 
 # [Source]: https://www.ons.gov.uk/peoplepopulationandcommunity/birthsdeathsandmarriages/deaths/adhocs/1028deathregistrationsbysexfiveyearagegroupandlowerlayersuperoutputareaslsoa2011censusboundariesenglandandwales2001to2021
 
-deaths_england <- fread(here('manchester/health/processed/ons/deaths_england.csv'))
+# Import data from ONS
+deaths_males <- read_xlsx('manchester/health/original/ons/DeathsbyLSOAmidyear11to21.xlsx', sheet = "2", skip = 2)
+deaths_females <- read_xlsx('manchester/health/original/ons/DeathsbyLSOAmidyear11to21.xlsx', sheet = "3", skip = 2)
 
+# Filter for 2018
+deaths_males <- deaths_males %>% 
+  filter(`Mid-year` %in% c(2018))
+deaths_females <- deaths_females %>% 
+  filter(`Mid-year` %in% c(2018))
 
-deaths_england <- deaths_england %>%
+# Merge Males and Females data
+deaths <- merge(deaths_males, deaths_females, by = c("LSOA code"))
+
+rm(deaths_males, deaths_females)
+
+# Reshape the data
+deaths <- deaths %>%
+  pivot_longer(cols = c(starts_with("Males"), starts_with("Females")),  
+               names_to = c("gender", "age"),                          
+               names_pattern = "(Males|Females) (.+)",                 
+               values_to = "deaths")
+
+# Final data clean up 
+deaths_england <- deaths %>% 
+  filter(!str_starts(`LSOA code`, "W")) %>% # Remove Wales
+  select(
+    lsoa_code = `LSOA code`,                     
+    lsoa_name = `LSOA name.x`,                   
+    gender,                
+    age,
+    deaths) %>% 
   mutate(age = case_when(
-    age %in% c("under 1", "01 to 04") ~ "00 to 04",
+    age %in% c("under 1", "01 to 04") ~ "00 to 04", 
     TRUE ~ age
   )) %>%
   group_by(lsoa_code, lsoa_name, age, gender) %>%
   summarize(deaths = sum(deaths),.groups = "drop") %>%
   ungroup()
+
+rm(deaths)
  
-population_england <- fread(here('manchester/health/processed/ons/population_england.csv'))
+# Population Data by LSOA by age and sex (Year: 2018)
+#[Source]: https://www.ons.gov.uk/peoplepopulationandcommunity/populationandmigration/populationestimates/datasets/lowersuperoutputareamidyearpopulationestimates
 
-population_england <- population_england %>%
-  mutate(age = case_when(
-    age %in% c("under 1", "01 to 04") ~ "00 to 04",
-    TRUE ~ age
-  )) %>%
-  group_by(lsoa_code, lsoa_name, age, gender) %>%
-  summarize(population = sum(population),.groups = "drop") %>%
-  ungroup()
+pop_males <- read_xlsx('manchester/health/original/ons/SAPE21DT1a-mid-2018-on-2019-LA-lsoa-syoa-estimates-formatted.xlsx', sheet = "Mid-2018 Males", skip = 3)
+pop_females <- read_xlsx('manchester/health/original/ons/SAPE21DT1a-mid-2018-on-2019-LA-lsoa-syoa-estimates-formatted.xlsx', sheet = "Mid-2018 Females", skip = 3)
 
-# Geographical Hierarchy (as of 2021)
-# [Source]: https://geoportal.statistics.gov.uk/datasets/e7c49b62898a417192a336aca17e3a3f/about
+# Males
 
-msoa <- fread(here('manchester/health/original/ons/PCD_OA21_LSOA21_MSOA21_LAD_AUG24_UK_LU.csv'))
+# Remove Wales
+pop_males <- pop_males %>% 
+  filter(LSOA != '', !str_starts(`Area Codes`,"W")) %>% 
+  rename("lsoa_name" = "LSOA",
+         "lsoa_code" = "Area Codes") %>% 
+  select(-c(2, 4))
+
+# Create age groups
+pop_males <- pop_males %>% 
+  mutate(
+    `00 to 04` = rowSums(select(pop_males, `0`,`1`, `2`, `3`, `4`), na.rm = TRUE),
+    `05 to 09` = rowSums(select(pop_males, `5`, `6`, `7`, `8`, `9`), na.rm = TRUE),
+    `10 to 14` = rowSums(select(pop_males, `10`, `11`, `12`, `13`, `14`), na.rm = TRUE),
+    `15 to 19` = rowSums(select(pop_males, `15`, `16`, `17`, `18`, `19`), na.rm = TRUE),
+    `20 to 24` = rowSums(select(pop_males, `20`, `21`, `22`, `23`, `24`), na.rm = TRUE),
+    `25 to 29` = rowSums(select(pop_males, `25`, `26`, `27`, `28`, `29`), na.rm = TRUE),
+    `30 to 34` = rowSums(select(pop_males, `30`, `31`, `32`, `33`, `34`), na.rm = TRUE),
+    `35 to 39` = rowSums(select(pop_males, `35`, `36`, `37`, `38`, `39`), na.rm = TRUE),
+    `40 to 44` = rowSums(select(pop_males, `40`, `41`, `42`, `43`, `44`), na.rm = TRUE),
+    `45 to 49` = rowSums(select(pop_males, `45`, `46`, `47`, `48`, `49`), na.rm = TRUE),
+    `50 to 54` = rowSums(select(pop_males, `50`, `51`, `52`, `53`, `54`), na.rm = TRUE),
+    `55 to 59` = rowSums(select(pop_males, `55`, `56`, `57`, `58`, `59`), na.rm = TRUE),
+    `60 to 64` = rowSums(select(pop_males, `60`, `61`, `62`, `63`, `64`), na.rm = TRUE),
+    `65 to 69` = rowSums(select(pop_males, `65`, `66`, `67`, `68`, `69`), na.rm = TRUE),
+    `70 to 74` = rowSums(select(pop_males, `70`, `71`, `72`, `73`, `74`), na.rm = TRUE),
+    `75 to 79` = rowSums(select(pop_males, `75`, `76`, `77`, `78`, `79`), na.rm = TRUE),
+    `80 to 84` = rowSums(select(pop_males, `80`, `81`, `82`, `83`, `84`), na.rm = TRUE),
+    `over 85` = rowSums(select(pop_males, `85`:`89`, `90+`), na.rm = TRUE)
+  ) %>%
+  select(`lsoa_code`, lsoa_name, `00 to 04`, `05 to 09`, `10 to 14`, `15 to 19`, `20 to 24`, `25 to 29`, `30 to 34`, 
+         `35 to 39`, `40 to 44`, `45 to 49`, `50 to 54`, `55 to 59`, `60 to 64`, `65 to 69`, 
+         `70 to 74`, `75 to 79`, `80 to 84`, `over 85`)
+
+# Reshape the data
+pop_males <- pop_males %>%
+  pivot_longer(
+    cols = -c(lsoa_name, lsoa_code),
+    names_to = "age",        
+    values_to = "population") %>% 
+  mutate(gender = "Males")
+
+# Females 
+
+# Remove Wales
+pop_females <- pop_females %>% 
+  filter(LSOA != '', !str_starts(`Area Codes`,"W")) %>% 
+  rename("lsoa_name" = "LSOA",
+         "lsoa_code" = "Area Codes") %>% 
+  select(-c(2, 4))
+
+pop_females <- pop_females %>% 
+  mutate(
+    `00 to 04` = rowSums(select(pop_females, `0`,`1`, `2`, `3`, `4`), na.rm = TRUE),
+    `05 to 09` = rowSums(select(pop_females, `5`, `6`, `7`, `8`, `9`), na.rm = TRUE),
+    `10 to 14` = rowSums(select(pop_females, `10`, `11`, `12`, `13`, `14`), na.rm = TRUE),
+    `15 to 19` = rowSums(select(pop_females, `15`, `16`, `17`, `18`, `19`), na.rm = TRUE),
+    `20 to 24` = rowSums(select(pop_females, `20`, `21`, `22`, `23`, `24`), na.rm = TRUE),
+    `25 to 29` = rowSums(select(pop_females, `25`, `26`, `27`, `28`, `29`), na.rm = TRUE),
+    `30 to 34` = rowSums(select(pop_females, `30`, `31`, `32`, `33`, `34`), na.rm = TRUE),
+    `35 to 39` = rowSums(select(pop_females, `35`, `36`, `37`, `38`, `39`), na.rm = TRUE),
+    `40 to 44` = rowSums(select(pop_females, `40`, `41`, `42`, `43`, `44`), na.rm = TRUE),
+    `45 to 49` = rowSums(select(pop_females, `45`, `46`, `47`, `48`, `49`), na.rm = TRUE),
+    `50 to 54` = rowSums(select(pop_females, `50`, `51`, `52`, `53`, `54`), na.rm = TRUE),
+    `55 to 59` = rowSums(select(pop_females, `55`, `56`, `57`, `58`, `59`), na.rm = TRUE),
+    `60 to 64` = rowSums(select(pop_females, `60`, `61`, `62`, `63`, `64`), na.rm = TRUE),
+    `65 to 69` = rowSums(select(pop_females, `65`, `66`, `67`, `68`, `69`), na.rm = TRUE),
+    `70 to 74` = rowSums(select(pop_females, `70`, `71`, `72`, `73`, `74`), na.rm = TRUE),
+    `75 to 79` = rowSums(select(pop_females, `75`, `76`, `77`, `78`, `79`), na.rm = TRUE),
+    `80 to 84` = rowSums(select(pop_females, `80`, `81`, `82`, `83`, `84`), na.rm = TRUE),
+    `over 85` = rowSums(select(pop_females, `85`:`89`, `90+`), na.rm = TRUE)
+  ) %>%
+  select(`lsoa_code`, lsoa_name, `00 to 04`, `05 to 09`, `10 to 14`, `15 to 19`, `20 to 24`, `25 to 29`, `30 to 34`, 
+         `35 to 39`, `40 to 44`, `45 to 49`, `50 to 54`, `55 to 59`, `60 to 64`, `65 to 69`, 
+         `70 to 74`, `75 to 79`, `80 to 84`, `over 85`)
+
+pop_females <- pop_females %>%
+  pivot_longer(
+    cols = -c(lsoa_name, lsoa_code),
+    names_to = "age",        
+    values_to = "population") %>% 
+  mutate(gender = "Females")
+
+# Combine Males and Females
+
+population_england <- bind_rows(pop_males, pop_females)
+
+rm(pop_males, pop_females)
+
+# Geographical Hierarchy (as of 2011)
+# [Source]: https://geoportal.statistics.gov.uk/datasets/ons::lsoa-2011-to-travel-to-work-area-december-2011-exact-fit-lookup-in-the-uk/about
+
+msoa <- fread(here('manchester/health/original/ons/lsoa_2011.csv'))
 
 msoa <- msoa %>%
-  select(8:13) %>%
+  select(2:7) %>%
   distinct()
+# Columns: lsoa code, msoa code, lad code, lsoa name, msoa nmae, lad name
 
 # Life Tables for England (2017-2019)
 # [Source]: https://www.ons.gov.uk/peoplepopulationandcommunity/birthsdeathsandmarriages/lifeexpectancies/datasets/nationallifetablesenglandreferencetables/current
@@ -166,13 +281,26 @@ deaths_lsoa_eng <- merge(deaths_england, population_england, by = c("lsoa_code",
 
 # Age-specific (mortality) rates
 
+#check <- deaths_lsoa_eng %>%
+#  filter(population == 0 & deaths > 0)
+
+#length(unique(check$lsoa_code))
+
+#326 unique LSOAs with 0 population
+#100 cases removed where pop = 0, but deaths > 0 (98 unique LSOAs)
+#Note: 674 cases when there are more deaths than population across age groups
+
+# Remove cases when population is 0 but deaths are more than 0, assign 0 ASR
+
 deaths_lsoa_eng <- deaths_lsoa_eng %>%
-  filter(population != 0) %>%
-  mutate(age_specific_rate = deaths/population*1000)
+  filter(!(population == 0 & deaths > 0)) %>% 
+  mutate(age_specific_rate = if_else(population == 0, 0, (deaths/ population*1000)))
 
 # Population weight for each age group within all lsoas in England. England is our reference population, since the RRs will then be multiplied by death rates by age and sex for the whole of England. 
 
 # Using ONS reported statistics for England population estimates (add refs, mid year population 2018)
+
+# [Source]: https://www.ons.gov.uk/peoplepopulationandcommunity/populationandmigration/populationestimates/datasets/populationestimatesforukenglandandwalesscotlandandnorthernireland
 
 age_groups <- c("00 to 04", "05 to 09", "10 to 14", "15 to 19", "20 to 24", 
                 "25 to 29", "30 to 34", "35 to 39", "40 to 44", 
@@ -240,43 +368,47 @@ deaths_lsoa_eng_asdr  <- deaths_lsoa_eng %>%
 
 ```{r}
 
-deaths_msoa <- merge(deaths_england, msoa, by.x = "lsoa_code", by.y = "lsoa21cd", all.x = TRUE)
+deaths_msoa <- merge(deaths_england, msoa, by.x = "lsoa_code", by.y = "LSOA11CD", all.x = TRUE)
 
 deaths_msoa <- deaths_msoa %>% 
-  select(-c(1,2,7,8,10)) %>% 
-  rename("msoa_code" = "msoa21cd",
-         "msoa_name" = "msoa21nm") %>% 
+  select(-c(1,2,6,9,10)) %>% 
+  rename("msoa_code" = "MSOA11CD",
+         "msoa_name" = "MSOA11NM") %>% 
   group_by(msoa_code, msoa_name, gender, age) %>% 
   summarise(deaths = sum(deaths, na.rm = TRUE)) %>% 
   ungroup()
 
 # Population estimates by age and sex by MSOA 
 
-population_msoa <- merge(population_england, msoa, by.x = "lsoa_code", by.y = "lsoa21cd", all.x = TRUE)
+population_msoa <- merge(population_england, msoa, by.x = "lsoa_code", by.y = "LSOA11CD", all.x = TRUE)
 
 population_msoa <- population_msoa %>% 
-  select(-c(1,2,7,8,10)) %>% 
-  rename("msoa_code" = "msoa21cd",
-         "msoa_name" = "msoa21nm") %>% 
+  select(-c(1,2,6,9,10)) %>% 
+  rename("msoa_code" = "MSOA11CD",
+         "msoa_name" = "MSOA11NM") %>% 
   group_by(msoa_code, msoa_name, gender, age) %>% 
   summarise(population = sum(population, na.rm = TRUE)) %>%
   ungroup()
 
 deaths_msoa_eng <- merge(deaths_msoa, population_msoa, by = c("msoa_code", "msoa_name", "gender", "age"), all.x = TRUE)
 
+  filter(!(population == 0 & deaths > 0)) %>% 
+  mutate(age_specific_rate = if_else(population == 0, 0, (deaths/ population*1000)))
+  
 # Age-specific (mortality) rates
 deaths_msoa_eng  <- deaths_msoa_eng  %>%
-  mutate(age_specific_rate = deaths/population*1000)
+  filter(!(population == 0 & deaths > 0)) %>% 
+  mutate(age_specific_rate = if_else(population == 0, 0, (deaths/ population*1000)))
   
 # Population weight for each age group
 deaths_msoa_eng_asdr  <- deaths_msoa_eng  %>%
   left_join(population_weights_England) %>% #added, the reference population is england
-  filter(population != 0) %>% # should not filter
+#  filter(population != 0) %>% # should not filter
   group_by(msoa_code, msoa_name, gender) %>%
   summarise(
     stdrate = sum(age_specific_rate * weight, na.rm = TRUE),
     deaths_msoa = sum(deaths)) %>%
-  ungroup() 
+  ungroup()
 
 ```
 
@@ -286,23 +418,23 @@ We also calculate ASMR for LADs as some MSOAs might have no deaths or
 small number recorded.
 
 ```{r}
-deaths_lad <- merge(deaths_england, msoa, by.x = "lsoa_code", by.y = "lsoa21cd", all.x = TRUE)
+deaths_lad <- merge(deaths_england, msoa, by.x = "lsoa_code", by.y = "LSOA11CD", all.x = TRUE)
 
 deaths_lad <- deaths_lad %>% 
-  select(-c(1,2,6,8,9)) %>% 
-  rename("lad_code" = "ladcd",
-         "lad_name" = "ladnm") %>% 
+  select(-c(1,2,6,7,8)) %>% 
+  rename("lad_code" = "LAD11CD",
+         "lad_name" = "LAD11NM") %>% 
   group_by(lad_code, lad_name, gender, age) %>% 
   summarise(deaths = sum(deaths, na.rm = TRUE)) %>% 
   ungroup()
 
 # Population estimates by age and sex by LAD 
-population_lad <- merge(population_england, msoa, by.x = "lsoa_code", by.y = "lsoa21cd", all.x = TRUE)
+population_lad <- merge(population_england, msoa, by.x = "lsoa_code", by.y = "LSOA11CD", all.x = TRUE)
 
 population_lad <- population_lad %>% 
-  select(-c(1,2,6,8,9)) %>% 
-  rename("lad_code" = "ladcd",
-         "lad_name" = "ladnm") %>% 
+  select(-c(1,2,6,7,8)) %>% 
+  rename("lad_code" = "LAD11CD",
+         "lad_name" = "LAD11NM") %>% 
   group_by(lad_code, lad_name, gender, age) %>% 
   summarise(population = sum(population, na.rm = TRUE)) %>%
   ungroup()
@@ -311,12 +443,13 @@ deaths_lad_eng <- merge(deaths_lad, population_lad, by = c("lad_code", "lad_name
 
 # Age-specific (mortality) crude rates
 deaths_lad_eng  <- deaths_lad_eng  %>%
-  mutate(age_specific_rate = deaths/population*1000)
+  filter(!(population == 0 & deaths > 0)) %>% 
+  mutate(age_specific_rate = if_else(population == 0, 0, (deaths/ population*1000)))
 
 # Age-standardized Rate
 deaths_lad_eng_asdr  <- deaths_lad_eng  %>%
-  left_join(population_weights_England) %>%
-  filter(population != 0) %>%
+  left_join(population_weights_England) %>% 
+#  filter(population != 0) %>%
   group_by(lad_code, lad_name, gender) %>%
   summarise(
     pop = sum(population),                       
@@ -338,7 +471,6 @@ deaths_lad_eng_asdr_manchester <- deaths_lad_eng_asdr %>%
       str_starts(lad_name, "Tameside") |
       str_starts(lad_name, "Trafford") |
       str_starts(lad_name, "Wigan"))
-
 ```
 
 ## Relative Risk by LSOA
@@ -356,8 +488,8 @@ we might want to improve the calculation of ASDR.
 ```{r}
 
 england_lsoa_deaths <- deaths_lsoa_eng_asdr %>% 
-  left_join(msoa, by = c("lsoa_code" = "lsoa21cd")) %>% 
-  select(lsoa_code, lsoa_name, msoa_code = "msoa21cd", lad_code = "ladcd",
+  left_join(msoa, by = c("lsoa_code" = "LSOA11CD")) %>% 
+  select(lsoa_code, lsoa_name, msoa_code = "MSOA11CD", lad_code = "LAD11CD",
          gender, population_lsoa, deaths_lsoa, stdrate) %>% 
   distinct() %>% 
   left_join(deaths_msoa_eng_asdr %>%  
@@ -370,8 +502,8 @@ england_lsoa_deaths <- deaths_lsoa_eng_asdr %>%
   mutate(
     # Adjust the logic to first check for deaths_lsoa and then deaths_msoa
     stdrate_selected = ifelse(
-      deaths_lsoa <= 10 ,            # If LSOA deaths less than 20, use MSOA rate
-      ifelse(deaths_msoa <= 10,     # If MSOA deaths are 0, use LAD rate
+      deaths_lsoa <= 10 ,            # If LSOA deaths less than 10, use MSOA rate -
+      ifelse(deaths_msoa <= 20,     # If MSOA deaths are less than 20, use LAD rate
              stdrate_lad,         
              stdrate_msoa),
       stdrate # Otherwise, use LSOA rate
@@ -570,7 +702,6 @@ rr_plot <- ggplot(manchester_deaths_socio, aes(x = imd_decile, y = RR, color = a
 
 
 rr_plot
-
 ### Marina, we need to do something with the comparison with Europe. I think can be add on sensitivity analysis to the choice of standard population.
 
 ### European Standard Population 2013
@@ -630,9 +761,56 @@ deaths_lad_eng_eu  <- deaths_lad_eng  %>%
     stdrate = sum(age_specific_rate*weight,  na.rm = TRUE)) %>%
   ungroup()
 
+#Filter for Manchester only
+deaths_lad_eu_asdr_manchester <- deaths_lad_eng_eu %>% 
+  filter(
+    str_starts(lad_name, "Bolton") |
+      str_starts(lad_name, "Bury") |
+      str_starts(lad_name, "Manchester") |
+      str_starts(lad_name, "Oldham") |
+      str_starts(lad_name, "Rochdale") |
+      str_starts(lad_name, "Salford") |
+      str_starts(lad_name, "Stockport") |
+      str_starts(lad_name, "Tameside") |
+      str_starts(lad_name, "Trafford") |
+      str_starts(lad_name, "Wigan"))
+
+######## Compare all three ##################
+
+# Insert ONS data
+
+ons_males <- data.frame(
+  lad_name = c("Bolton", "Bury", "Manchester", "Oldham", "Rochdale", 
+               "Salford", "Stockport", "Tameside", "Trafford", "Wigan"),
+  gender = "Males",
+  stdrate = c(1251.24, 1167.21, 1411.85, 1203.00, 1292.55, 
+              1307.56, 1089.01, 1408.41, 1035.49, 1265.22))
+
+ons_females <- data.frame(
+  lad_name = c("Bolton", "Bury", "Manchester", "Oldham", "Rochdale", 
+               "Salford", "Stockport", "Tameside", "Trafford", "Wigan"),
+  gender = "Females",
+  stdrate = c(954.82, 889.87, 1055.58, 983.05, 973.23, 
+              1063.41, 800.01, 1150.26, 753.01, 1023.83)
+)
+
+ons <- bind_rows(ons_males,ons_females) %>% 
+  mutate(stdrate = stdrate/100,
+         source = "ONS") 
+
+check <- ons %>% 
+  left_join(deaths_lad_eng_asdr_manchester %>% 
+              mutate(source = "England Population") %>% 
+              select(lad_name, gender, stdrate_eng = stdrate, source), by = c("gender", "lad_name")) %>% 
+  left_join(deaths_lad_eu_asdr_manchester %>% 
+             mutate(source = "European Population") %>% 
+              select(lad_name, gender, stdrate_eu = stdrate, source), by = c("gender", "lad_name"))
+
+##### End of comparison ###########
+
 england_lsoa_deaths_eu <- deaths_lsoa_eng_eu |>
-  left_join(msoa, join_by(lsoa_code == lsoa21cd)) |>
-  select(lsoa_code, lsoa_name, msoa_code = "msoa21cd", lad_code = "ladcd",gender,population_lsoa, deaths_lsoa, stdrate) |>
+  left_join(msoa, join_by(lsoa_code == LSOA11CD)) |>
+  select(lsoa_code, lsoa_name, msoa_code = "MSOA11CD", lad_code = "LAD11CD",gender,population_lsoa, deaths_lsoa, stdrate) |>
   distinct() |>
   left_join(deaths_msoa_eng_eu |> select(msoa_code, stdrate_msoa = stdrate, deaths_msoa,gender), by= c("msoa_code","gender")) |>
   left_join(deaths_lad_eng_eu |> select(lad_code, stdrate_lad = stdrate,gender), by=c("lad_code","gender")) %>%
