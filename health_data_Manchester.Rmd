@@ -1118,16 +1118,17 @@ diseases_data <- diseases %>%
                                   sex=="Female" ~ 2))) %>%
   select(age, sex,location_code, location_type, cause, rate, measure)
 
+incindence <- diseases_data %>% filter(measure == "incidence")
 
-health_transitions_manchester <- bind_rows(allcause_data, diseases_data)
+prevalence <- diseases_data %>% filter(measure == "prevalence")
+
+
+health_transitions_manchester <- bind_rows(allcause_data, incindence)
 
 # Save prevalence and incidence (includes deaths from all causes) separetly
 
-health_transitions_manchester_prevalence <- health_transitions_manchester %>% filter(measure == "prevalence")
 
-health_transitions_incidence <- health_transitions_manchester %>% filter(measure %in% c("incidence", "deaths"))
-
-write.csv(health_transitions_manchester_prevalence, here("manchester/health/processed/health_transitions_manchester_prevalence.csv"))
+write.csv(prevalence, here("manchester/health/processed/health_transitions_manchester_prevalence.csv"))
 
 write.csv(health_transitions_incidence, here("manchester/health/processed/health_transitions_manchester_raw.csv"))
 ```
