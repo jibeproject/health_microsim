@@ -1118,12 +1118,12 @@ diseases_data <- diseases %>%
                                   sex=="Female" ~ 2))) %>%
   select(age, sex,location_code, location_type, cause, rate, measure)
 
-incindence <- diseases_data %>% filter(measure == "incidence")
+incidence <- diseases_data %>% filter(measure == "incidence")
 
 prevalence <- diseases_data %>% filter(measure == "prevalence")
 
 
-health_transitions_manchester <- bind_rows(allcause_data, incindence)
+health_transitions_manchester <- bind_rows(allcause_data, incidence)
 
 # Save prevalence and incidence (includes deaths from all causes) separetly
 
