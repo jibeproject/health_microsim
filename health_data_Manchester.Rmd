@@ -1090,19 +1090,19 @@ gbdpyr_interp <- gbdpyr_interp %>%
 ```{r}
 
 diseases <- read.csv(here("manchester/health/processed/manchester_diseases_lad.csv"))
-allcause <- read.csv(here("manchester/health/processed/h.csv"))
+allcause <- read.csv(here("manchester/health/processed/manchester_mortality_lsoa.csv"))
 
 # Process data 
 
 allcause_data <- allcause %>%
   mutate(cause = "all_cause_mortality",
          measure = "deaths") %>%  
-  rename(location_code = LSOA,
+  rename(location_code = lsoa_code,
          location_name = lsoa_name) %>%
   mutate(location_type="lsoa") %>%
   mutate(sex=as.numeric(case_when(sex == "Males" ~ 1,
                                   sex=="Females" ~ 2))) %>%
-  select(age, sex, location_code, location_type, cause, rate)
+  select(age, sex, location_code, location_type, cause, rate, measure)
 
 diseases_data <- diseases %>% 
   filter(year == 2018) %>% 
@@ -1116,10 +1116,18 @@ diseases_data <- diseases %>%
   mutate(location_type="lad")  %>%
   mutate(sex=as.numeric(case_when(sex == "Male" ~ 1,
                                   sex=="Female" ~ 2))) %>%
-  select(age, sex,location_code, location_type, cause, rate)
+  select(age, sex,location_code, location_type, cause, rate, measure)
 
 
 health_transitions_manchester <- bind_rows(allcause_data, diseases_data)
 
-write.csv(health_transitions_manchester, here("manchester/health/processed/health_transitions_manchester_raw.csv"))
+# Save prevalence and incidence (includes deaths from all causes) separetly
+
+health_transitions_manchester_prevalence <- health_transitions_manchester %>% filter(measure == "prevalence")
+
+health_transitions_incidence <- health_transitions_manchester %>% filter(measure %in% c("incidence", "deaths"))
+
+write.csv(health_transitions_manchester_prevalence, here("manchester/health/processed/health_transitions_manchester_prevalence.csv"))
+
+write.csv(health_transitions_incidence, here("manchester/health/processed/health_transitions_manchester_raw.csv"))
 ```
