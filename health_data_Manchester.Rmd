@@ -1130,5 +1130,5 @@ health_transitions_manchester <- bind_rows(allcause_data, incindence)
 
 write.csv(prevalence, here("manchester/health/processed/health_transitions_manchester_prevalence.csv"))
 
-write.csv(health_transitions_incidence, here("manchester/health/processed/health_transitions_manchester_raw.csv"))
+write.csv(health_transitions_manchester, here("manchester/health/processed/health_transitions_manchester_raw.csv"))
 ```
