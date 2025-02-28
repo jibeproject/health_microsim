@@ -1090,14 +1090,14 @@ gbdpyr_interp <- gbdpyr_interp %>%
 ```{r}
 
 diseases <- read.csv(here("manchester/health/processed/manchester_diseases_lad.csv"))
-allcause <- read.csv(here("manchester/health/processed/manchester_mortality_lsoa.csv"))
+allcause <- read.csv(here("manchester/health/processed/h.csv"))
 
 # Process data 
 
 allcause_data <- allcause %>%
   mutate(cause = "all_cause_mortality",
          measure = "deaths") %>%  
-  rename(location_code = lsoa_code,
+  rename(location_code = LSOA,
          location_name = lsoa_name) %>%
   mutate(location_type="lsoa") %>%
   mutate(sex=as.numeric(case_when(sex == "Males" ~ 1,
