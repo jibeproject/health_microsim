@@ -1027,7 +1027,7 @@ new_rows <- age_95_data %>%
 gbdpyr_interp <- bind_rows(gbdpyr_interp, new_rows)
 
 # Add LAD code
-lad <- fread(here('manchester/health/original/ons/lsoa_to_msoa.csv'))
+lad <- read.csv(here('manchester/health/original/ons/lsoa_to_msoa.csv'))
 lad <- lad %>%
   select(6,7) %>%
   distinct()
@@ -1042,45 +1042,47 @@ write.csv(gbdpyr_interp, here("manchester/health/processed/manchester_diseases_l
 gbdpyr_interp <- gbdpyr_interp %>%
   left_join(gbdpyrd5, by = c("measure", "year", "ageyr", "sex", "cause", "location"))
 
+
+### Below takes a long time, unless somethings changes, once graphs generated, no need to run again. 
 # Plot data to check interpolated values against 5-year age group values (original data)
 ## Four interpolation function could be use, the best fit should be used. For now, best fit to the data assessed visually.
 
-# Melt the data to long format for ggplot
-plot_data <- gbdpyr_interp %>%
-  select(measure, cause, sex, ageyr, rate_1, val_interpolated, location) %>%
-  pivot_longer(cols = c(rate_1, val_interpolated), names_to = "type", values_to = "value")
-
-# Define output directory
-output_dir <- "images/manchester/inc_gbd_age_sex/"
-if (!dir.exists(output_dir)) {
-  dir.create(output_dir, recursive = TRUE)
-}
-
-# Get unique combinations of measure, cause, sex, and location
-combinations <- plot_data %>%
-  distinct(measure, cause, sex, location)
-
-# Generate and save plots for each combination
-for (i in 1:nrow(combinations)) {
-  subset_df <- plot_data %>%
-    filter(measure == combinations$measure[i],
-           cause == combinations$cause[i],
-           sex == combinations$sex[i],
-           location == combinations$location[i])
-  p <- ggplot(subset_df, aes(x = ageyr, y = value, color = type)) +
-    geom_line() +
-    labs(title = paste("Measure:", combinations$measure[i], 
-                       "Cause:", combinations$cause[i], 
-                       "Sex:", combinations$sex[i],
-                       "Location:", combinations$location[i]),
-         x = "Age (years)",
-         y = "Value") +
-    theme_minimal(base_family = "Arial") +
-    theme(panel.background = element_rect(fill = "white", color = "white"),
-          plot.background = element_rect(fill = "white", color = "white"))
-# Save the plot
-  ggsave(filename = paste0(output_dir, "plot_", i, ".png"), plot = p, width = 8, height = 6)
-}
+# # Melt the data to long format for ggplot
+# plot_data <- gbdpyr_interp %>%
+#   select(measure, cause, sex, ageyr, rate_1, val_interpolated, location) %>%
+#   pivot_longer(cols = c(rate_1, val_interpolated), names_to = "type", values_to = "value")
+# 
+# # Define output directory
+# output_dir <- "images/manchester/inc_gbd_age_sex/"
+# if (!dir.exists(output_dir)) {
+#   dir.create(output_dir, recursive = TRUE)
+# }
+# 
+# # Get unique combinations of measure, cause, sex, and location
+# combinations <- plot_data %>%
+#   distinct(measure, cause, sex, location)
+# 
+# # Generate and save plots for each combination
+# for (i in 1:nrow(combinations)) {
+#   subset_df <- plot_data %>%
+#     filter(measure == combinations$measure[i],
+#            cause == combinations$cause[i],
+#            sex == combinations$sex[i],
+#            location == combinations$location[i])
+#   p <- ggplot(subset_df, aes(x = ageyr, y = value, color = type)) +
+#     geom_line() +
+#     labs(title = paste("Measure:", combinations$measure[i], 
+#                        "Cause:", combinations$cause[i], 
+#                        "Sex:", combinations$sex[i],
+#                        "Location:", combinations$location[i]),
+#          x = "Age (years)",
+#          y = "Value") +
+#     theme_minimal(base_family = "Arial") +
+#     theme(panel.background = element_rect(fill = "white", color = "white"),
+#           plot.background = element_rect(fill = "white", color = "white"))
+# # Save the plot
+#   ggsave(filename = paste0(output_dir, "plot_", i, ".png"), plot = p, width = 8, height = 6)
+# }
 ```
 
 # Combining All-cause Mortality and Disease Incidence Data
@@ -1119,5 +1121,5 @@ diseases_data <- diseases %>%
 
 health_transitions_manchester <- bind_rows(allcause_data, diseases_data)
 
-write.csv(health_transitions_manchester, here("manchester/health/processed/health_transitions_manchester.csv"))
+write.csv(health_transitions_manchester, here("manchester/health/processed/health_transitions_manchester_raw.csv"))
 ```
