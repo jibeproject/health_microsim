@@ -237,7 +237,7 @@ lifetable_england  <- read.csv(here('manchester/health/original/ons/life_tables_
 
 # English Indices of Deprivation by LSOA (2019)
 # [Source]: https://opendatacommunities.org/resource?uri=http%3A%2F%2Fopendatacommunities.org%2Fdata%2Fsocietal-wellbeing%2Fimd2019%2Findices
-deprivation <- read.csv(here('manchester/health/original/ons/imd2019lsoa.csv')) 
+deprivation <- read_csv(here('manchester/health/original/ons/imd2019lsoa.csv')) 
 
 # European Standard Population 2013
 # [Source]: https://publichealthscotland.scot/services/national-data-catalogue/national-datasets/search-the-datasets/european-standard-population/#:~:text=The%20European%20Standard%20Population%20(ESP,was%20originally%20introduced%20in%201976.
@@ -245,13 +245,18 @@ european_pop <- read.csv(here('manchester/health/original/ons/european_standard_
 
 # Adding Age-Standartised Mortality Rates from ONS as of February, 2025 
 
-nomis_lad <- read_xlsx('manchester/health/original/ons/nomis_2025_02_21_lads_regions.xlsx', skip = 40, n_max = 70) %>% 
+nomis_lad <- read_xlsx(
+here("manchester/health/original/ons/nomis_2025_02_21_lads_regions.xlsx"), 
+     skip = 40, 
+     n_max = 70) %>% 
   slice(c(1, 68)) %>% 
   select(-c(1, 12)) %>% 
   rename_with(~ str_remove(., "^lacu:")) %>% 
   mutate(gender = c("Males", "Females")) %>%
   pivot_longer(-gender, names_to = "lad_name", values_to = "stdrate_ons") %>%  
   mutate(stdrate_ons = as.numeric(stdrate_ons)/100)
+
+
 
 ```
 
