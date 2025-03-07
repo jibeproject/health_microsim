@@ -42,6 +42,7 @@ library(readxl)   # Read/write Excel files
 library(knitr)      # Report generation
 library(gt)         # Pretty tables
 library(here)       # File path management
+library(base)       # Read RDS files
 # Set root directory one level up from current directory
 knitr::opts_knit$set(root.dir = dirname(getwd()))
 
@@ -867,9 +868,12 @@ gbd <- bind_rows(
   read.csv(here("manchester/health/original/gbd/parkinsons1.csv")),
   read.csv(here("manchester/health/original/gbd/parkinsons3.csv")))
 
+
+
 # Filter data to needed variables and remove strings from GBD age variable and create from_age and to_age needed for interpolation. 
 
 gbdp <- gbd %>%
+  filter(year == "2018") %>%  #decreases the size file
   filter(metric %in% "Rate") %>%
   select(-c(upper, lower)) %>%
   filter(!age %in% "All ages") %>%
@@ -975,22 +979,30 @@ new_rows <- age_95_data %>%
 # Combine the original data frame with the new rows
 gbdpyr_interp <- bind_rows(gbdpyr_interp, new_rows)
 
-# Add LAD code
-lad <- read.csv(here('manchester/health/original/ons/lsoa_to_msoa.csv'))
-lad <- lad %>%
-  select(6,7) %>%
-  distinct()
+rm(new_rows, age_95_data)
 
-gbdpyr_interp <- gbdpyr_interp %>%
-  left_join(lad, by = c("location" = "LAD20NM"))
+#Repeat LAD values for LSOA
 
+gbdpyr_interp_lsoa <- msoa %>%
+  select(location = LAD11NM, LSOA11CD, LSOA11NM) %>% 
+  filter(str_starts(location, "Bolton") |
+      str_starts(location, "Bury") |
+      str_starts(location, "Manchester") |
+      str_starts(location, "Oldham") |
+      str_starts(location, "Rochdale") |
+      str_starts(location, "Salford") |
+      str_starts(location, "Stockport") |
+      str_starts(location, "Tameside") |
+      str_starts(location, "Trafford") |
+      str_starts(location, "Wigan")) %>% 
+  left_join(gbdpyr_interp, by = "location")
 
-write.csv(gbdpyr_interp, here("manchester/health/processed/manchester_diseases_lad.csv"))
+#Note: this is a very big file, so changed to RDS
+write_rds(gbdpyr_interp_lsoa, here("manchester/health/processed/manchester_diseases_lsoa_070325.RDS"))
 
 #Join with original data where rates are the same within groups to validate interpolated data
 gbdpyr_interp <- gbdpyr_interp %>%
   left_join(gbdpyrd5, by = c("measure", "year", "ageyr", "sex", "cause", "location"))
-
 
 ### Below takes a long time, unless somethings changes, once graphs generated, no need to run again. 
 # Plot data to check interpolated values against 5-year age group values (original data)
@@ -1038,46 +1050,44 @@ gbdpyr_interp <- gbdpyr_interp %>%
 
 ```{r}
 
-diseases <- read.csv(here("manchester/health/processed/manchester_diseases_lad.csv"))
-allcause <- read.csv(here("manchester/health/processed/manchester_mortality_lsoa.csv"))
+diseases <- readRDS(here("manchester/health/processed/manchester_diseases_lsoa_070325.RDS"))
+allcause <- read.csv(here("manchester/health/processed/manchester_mortality_lsoa_070325.csv"))
+lsoa_11to21 <- read.csv(here("manchester/health/original/ons/lsoa_2011_to_lsoa_2021.csv"))
 
 # Process data 
 
-allcause_data <- allcause %>%
+allcause<- allcause %>%
   mutate(cause = "all_cause_mortality",
          measure = "deaths") %>%  
-  rename(location_code = lsoa_code,
-         location_name = lsoa_name) %>%
-  mutate(location_type="lsoa") %>%
+  rename(LSOA11CD = lsoa_code,
+         prob = rate) %>%
   mutate(sex=as.numeric(case_when(sex == "Males" ~ 1,
                                   sex=="Females" ~ 2))) %>%
-  select(age, sex, location_code, location_type, cause, rate, measure)
+  select(age, sex, LSOA11CD, cause, prob, measure)
 
-diseases_data <- diseases %>% 
-  filter(year == 2018) %>% 
+diseases <- diseases %>% 
   mutate(measure = tolower(measure),
          cause = tolower(cause),
          socio = NA) %>% 
-  rename(location_code = LAD20CD,
-         location_name = location,
-         age = ageyr,
-         rate = val_interpolated) %>%
-  mutate(location_type="lad")  %>%
+  rename(age = ageyr,
+         prob = val_interpolated) %>%
   mutate(sex=as.numeric(case_when(sex == "Male" ~ 1,
                                   sex=="Female" ~ 2))) %>%
-  select(age, sex,location_code, location_type, cause, rate, measure)
+  select(age, sex,LSOA11CD, cause, prob, measure)
 
-incidence <- diseases_data %>% filter(measure == "incidence")
+incidence <- diseases %>% filter(measure == "incidence")
 
-prevalence <- diseases_data %>% filter(measure == "prevalence")
+prevalence <- diseases %>% filter(measure == "prevalence")
 
-
-health_transitions_manchester <- bind_rows(allcause_data, incidence)
+health_transitions_manchester <- bind_rows(allcause_data, incidence) %>% 
+  left_join(lsoa_11to21 %>% 
+              select(LSOA11CD, lsoa21cd = LSOA21CD, change11to21 = CHGIND),
+            by = "LSOA11CD") %>% 
+  select(lsoa21cd, LSOA11CD, age, sex, cause, prob, change11to21)
 
 # Save prevalence and incidence (includes deaths from all causes) separetly
 
+write.csv(prevalence, here("manchester/health/processed/health_transitions_manchester_prevalence_070325.csv"))
 
-write.csv(prevalence, here("manchester/health/processed/health_transitions_manchester_prevalence.csv"))
-
-write.csv(health_transitions_manchester, here("manchester/health/processed/health_transitions_manchester_raw.csv"))
+write.csv(health_transitions_manchester, here("manchester/health/processed/health_transitions_manchester_raw_070325.csv"))
 ```
