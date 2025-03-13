@@ -15,11 +15,14 @@ library(readxl)
 ##### Read files
 
 # Scenario specific
-## Reference (all mmets are zero)
+# Change per scenario
 
-reference <- read_csv("manchester/simulationResults/ForPaper/2_safestreet/health/04_exposure_and_rr/pp_rr_2021.csv")
+# reference <- read_csv("manchester/simulationResults/ForPaper/1_reference/health/04_exposure_and_rr/pp_rr_2021.csv")
 
-reference_exp <- read_csv("manchester/simulationResults/ForPaper/2_safestreet/health/04_exposure_and_rr/pp_exposure_2021.csv")
+safestreet <- read_csv("manchester/simulationResults/ForPaper/2_safestreet/health/04_exposure_and_rr/pp_rr_2021.csv")
+
+# Change per scenario
+synth_pop <- safestreet
 
 # General files: Household & dwelling data 
 
@@ -38,9 +41,6 @@ prevalence <- read.csv("manchester/health/processed/health_transitions_mancheste
 #   left_join(hh, by = c("hhid" = "id")) %>%
 #   left_join(dd, by = c("dwelling" = "id"))
 
-### Syntehtic population for scenario
-
-synth_pop <- reference
 
 ### Assign geographies
 
@@ -65,20 +65,24 @@ synth_pop_wprob <- synth_pop %>%
     select(!rowname)
 
 # Function to allocate disease statuses based on probability
+
+set.seed(123)
+
 allocate_disease <- function(df) {
   df %>%
-    mutate(across(copd:stroke, ~ ifelse(runif(n()) < ., 1, 0), .names = "{.col}_diseased"))
+    mutate(across(copd:stroke, ~ ifelse(runif(n()) < ., 1, 0), .names = "{.col}_status"))
 }
 
 # Apply function to assign diseases
 synth_pop_prev <- allocate_disease(synth_pop_wprob) %>%
-  select(id, age, sex, ladcd, ladnm, ends_with("_diseased"), income, ethnicity, starts_with("RR"))  %>%# Ensure we only keep relevant columns
+  select(id, age, sex, ladcd, ladnm, ends_with("_status"), income, ethnicity, starts_with("RR"))  %>%# Ensure we only keep relevant columns
   mutate(sex = case_when(
     sex == 1 ~ "male",
     sex == 2 ~ "female",
     TRUE ~ as.character(sex)))
 
 # Sample 1000 individuals for calculations
+
 # sample <- sample_n(synth_pop_prev, 1000)
 
 sample <- synth_pop_prev
@@ -167,19 +171,6 @@ sample <- synth_pop_prev
 
 disease_risk <- read.csv("health/disease risks.csv")
 
-# Convert sex in sample_long from numeric (1,2) to character ("male", "female")
-sample_long <- sample %>%
-  rename(
-    "parkinsons_disease_diseased" = "parkinson’s_disease_diseased"
-  ) %>%
-  mutate(sex = case_when(
-    sex == 1 ~ "male",
-    sex == 2 ~ "female",
-    TRUE ~ as.character(sex)  # Keep other values unchanged
-  )) %>%
-  pivot_longer(cols = c(copd_diseased:stroke_diseased), names_to = "risk_factor", values_to = "has_risk_factor") 
-  
-
 # Expand disease_risk_expanded by duplicating "male female" rows
 disease_risk_expanded <- disease_risk %>%
   filter(sex == "male female") %>%
@@ -187,29 +178,49 @@ disease_risk_expanded <- disease_risk %>%
   crossing(sex = c("male", "female")) %>%  
   bind_rows(disease_risk %>% filter(sex %in% c("male", "female")))
 
+# Convert sex in sample_long from numeric (1,2) to character ("male", "female")
+sample_long <- sample %>%
+  rename(
+    "parkinsons_disease_status" = "parkinson’s_disease_status"
+  ) %>%
+  mutate(sex = case_when(
+    sex == 1 ~ "male",
+    sex == 2 ~ "female",
+    TRUE ~ as.character(sex)  # Keep other values unchanged
+  )) %>%
+  pivot_longer(cols = c(copd_status:stroke_status), names_to = "risk_factor", values_to = "has_risk_factor")
+
+  
+
+
+
 # Join sample_long with expanded disease risk data
 sample_with_rr <- sample_long %>%
-  mutate(risk_factor = gsub("_diseased$", "", risk_factor)) %>%
+  mutate(risk_factor = gsub("_status$", "", risk_factor)) %>%
   left_join(disease_risk_expanded, by = c("sex", "risk_factor")) %>%
   
   # Modify outcome for cancer-related risk factors
-  mutate(outcome = if_else(grepl("cancer", risk_factor, ignore.case = TRUE), "all-cause-mortality", outcome)) %>%
+  mutate(outcome = if_else(
+    grepl("cancer|myeloid_leukemia|myeloma", risk_factor, ignore.case = TRUE), 
+    "all_cause_mortality", 
+    outcome
+  )) %>%
   
   # Join again to fetch relative risks for cancer-related risk factors
   left_join(
-    disease_risk_expanded %>% filter(grepl("cancer", risk_factor, ignore.case = TRUE)),  
+    disease_risk_expanded %>% filter(grepl("cancer|myeloid_leukemia|myeloma", risk_factor, ignore.case = TRUE)),  
     by = c("sex", "outcome"),  
     suffix = c("", "_cancer")  
   ) %>%
   
   # Assign relative risk values only if age is between 40 and 70
   mutate(relative_risk = case_when(
-    age >= 40 & age <= 70 & has_risk_factor == 1 & !grepl("cancer", risk_factor, ignore.case = TRUE) ~ relative_risk,
-    age >= 40 & age <= 70 & has_risk_factor == 1 & grepl("cancer", risk_factor, ignore.case = TRUE) ~ coalesce(relative_risk_cancer, 1),
+    age >= 40 & age <= 70 & has_risk_factor == 1 & !grepl("cancer|myeloid_leukemia|myeloma", risk_factor, ignore.case = TRUE) ~ relative_risk,
+    age >= 40 & age <= 70 & has_risk_factor == 1 & grepl("cancer|myeloid_leukemia|myeloma", risk_factor, ignore.case = TRUE) ~ coalesce(relative_risk_cancer, 1),
     TRUE ~ 1  # Assign neutral RR (1) if age is outside the 40-70 range
   )) %>%
   
-  # Create column names for pivoting
+  # Create column names for pivoting (CHECK RISK_FACTORS AND OUTCOMES PAIR, chd MISSING)
   mutate(risk_outcome = paste0("rr_", risk_factor, "^", outcome)) %>%
   
   # Select only relevant columns (remove risk_factor and outcome before pivoting)
@@ -219,8 +230,7 @@ sample_with_rr <- sample_long %>%
   pivot_wider(
     names_from = risk_outcome, 
     values_from = relative_risk,
-    values_fill = list(relative_risk = 1)
-  ) %>% select(!matches("na", ignore.case = TRUE))
+    values_fill = list(relative_risk = 1))
 
 
 # Merge with sample
@@ -358,7 +368,7 @@ query <- sprintf("
       1 - (t.total_pop / NULLIF(t.sum_rr_individual, 0)) AS paf_combined_traditional,  
 
       -- Corrected PIF using product of combined risks
-      1 - ((1 - p.pif_pa) * (1 - p.pif_pm25) * (1 - p.pif_no2) * (1 - p.pif_noise) * (1 - p.pif_ndvi)) AS paf_combined_correct,
+      1 - ((1 - p.pif_pa) * (1 - p.pif_pm25) * (1 - p.pif_no2) * (1 - p.pif_noise) * (1 - p.pif_ndvi) * (1 - p.pif_disease)) AS paf_combined_correct,
 
 
     FROM transformed t
@@ -373,40 +383,44 @@ pif_group <- dbGetQuery(con, query)
 # Disconnect DuckDB
 dbDisconnect(con, shutdown = TRUE)
 
-write.csv(pif_group, "manchester/health/processed/pif_safer_streets_sex.csv")
+write.csv(pif_group, "manchester/health/processed/pif_saferstreet_sex.csv")
 
 
 ### Figures and tables (save csv files)
 
+pif_ref <- read_csv("manchester/health/processed/pif_reference_sex.csv") %>% mutate(scenario = "reference")
 
+pif_safe <- read_csv("manchester/health/processed/pif_saferstreet_sex.csv") %>% mutate(scenario = "safer")
 
 library(ggplot2)
 library(dplyr)
 library(tidyr)
 library(scales)  # For percentage formatting
 
-df <- read_csv("manchester/health/processed/pif_sex_presentation.csv")
 
 # Load necessary library
 library(dplyr)
 
 ####
 
-# Gather the data to long format for easier plotting
-df_long <- df %>%
-  pivot_longer(cols = c(pif_pa, pif_pm25, pif_no2, paf_combined_correct), 
-               names_to = "pif",  # Ensure consistency
-               values_to = "value")
+pif_compare <- bind_rows(pif_ref, pif_safe) %>% 
+              rename(pif_combined = paf_combined_traditional)
 
-# Add a column for the percentage difference between reference and cycling scenarios
+# Gather the data to long format for easier plotting
+df_long <- pif_compare %>%
+  pivot_longer(cols = c(pif_pa, pif_ndvi, pif_pm25, pif_no2, pif_noise, pif_disease, pif_combined), 
+               names_to = "pif",  # Ensure consistency
+               values_to = "value") 
+
+# Add a column for the percentage difference between reference and cycling scenarios (revise, not very intuitive)
 df_long <- df_long %>%
   group_by(outcome, sex, pif) %>%
-  mutate(difference_percentage = (value[scenario == "cycling"] - value[scenario == "reference"]) / value[scenario == "reference"] * 100) %>%
+  mutate(difference_percentage = (value[scenario == "safer"] - value[scenario == "reference"]) / value[scenario == "reference"] * 100) %>%
   ungroup()
 
 # Define unique outcomes and sexes
-outcomes <- unique(df$outcome)
-sexes <- unique(df$sex)
+outcomes <- unique(pif_compare$outcome)
+sexes <- unique(pif_compare$sex)
 
 # Create a list to store plots
 plots <- list()
@@ -426,16 +440,16 @@ for (outcome in outcomes) {
     # Create the plot with a white background
     p <- ggplot(df_filtered, aes(x = scenario, y = value * 100, fill = pif)) +  # Multiply by 100 for percentage
       geom_bar(stat = "identity", position = "dodge") +
-      labs(title = paste("Outcome:", outcome, "- Sex:", sex), y = "PIF Values (%)", fill = "Scenario") +
+      labs(title = paste("Outcome:", outcome, "- Sex:", sex), y = "PIF Values ", fill = "Scenario") +
       scale_y_continuous(labels = label_percent(scale = 1)) +  # Set y-axis as percentages
       theme_minimal() +
       theme(
         panel.background = element_rect(fill = "white", color = NA),  # White background
         plot.background = element_rect(fill = "white", color = NA),   # White outer background
         legend.background = element_rect(fill = "white", color = NA)  # White legend background
-      ) +
+      ) #+
       # Optionally add text labels for the difference in percentages
-      geom_text(aes(label = sprintf("%.1f%%", difference_percentage)), vjust = -0.5, color = "black", size = 3)
+      #geom_text(aes(label = sprintf("%.1f%%", difference_percentage)), vjust = -0.5, color = "black", size = 3)
     
     # Add the plot to the list
     plot_name <- paste(outcome, sex, sep = "_")
