@@ -25,13 +25,18 @@ editor_options:
 This document explains and produces estimates for the inputs for the
 health model for JIBE Manchester. The model initially has four stages
 where individuals are in a healthy state, might become diseased of one
-or more diseases, and die from any causes (regardless health status).
-For this first iteration of the model we need estimates of incidence,
-prevalence (for assignment of initial state) and all cause mortality. A
-second iteration will add a differential all cause mortality risk for
-individuals who have one or more diseases. Last, we might want to
-include trends in mortality, incidence of diseases and prevalence of
-diseases.
+or more diseases, and die from any causes (all cause mortality). All
+cause mortality is also dependent on diseases statues, meaning the if a
+person has a given disease (i.e. diabetes, dementia, parkinson, cancers,
+copd) their probability of dying is higher. Diabetes is a risk factor
+for cardiovascular diseases (ischemic heart disease and stroke) and
+included in the model. The model does not include trend of diseases but
+assumes that current rates by age, sex and area will be observed in the
+future.
+
+The purpose of this document is to produce health inputs for all-cause
+mortality and diseases' incidence and prevalence. Prevalence is used to
+assign initial state as diseased.
 
 ```{r setup, include=FALSE}
 
@@ -61,6 +66,36 @@ knitr::opts_chunk$set(
 # All-Cause Mortality
 
 ## Data Sources
+
+1.  Mortality by LSOA by age and sex for year 2018 from ONS.
+    [https://www.ons.gov.uk/peoplepopulationandcommunity/birthsdeathsandmarriages/deaths/adhocs/](https://www.ons.gov.uk/peoplepopulationandcommunity/birthsdeathsandmarriages/deaths/adhocs/1028deathregistrationsbysexfiveyearagegroupandlowerlayersuperoutputareaslsoa2011censusboundariesenglandandwales2001to2021)
+
+    [1028deathregistrationsbysexfiveyearagegroupandlowerlayersuperoutputareaslsoa2011censusboundariesenglandandwales2001to2021](https://www.ons.gov.uk/peoplepopulationandcommunity/birthsdeathsandmarriages/deaths/adhocs/1028deathregistrationsbysexfiveyearagegroupandlowerlayersuperoutputareaslsoa2011censusboundariesenglandandwales2001to2021)
+
+2.  Population Data by LSOA by age and sex for 2018 mid year from ONS.
+
+    [https://www.ons.gov.uk/peoplepopulationandcommunity/populationandmigration/populationestimates/datasets/](https://www.ons.gov.uk/peoplepopulationandcommunity/populationandmigration/populationestimates/datasets/lowersuperoutputareamidyearpopulationestimates)
+
+    [lowersuperoutputareamidyearpopulationestimates](https://www.ons.gov.uk/peoplepopulationandcommunity/populationandmigration/populationestimates/datasets/lowersuperoutputareamidyearpopulationestimates)
+
+3.  Geographical Hierarchy (as of 2011)
+
+    <https://geoportal.statistics.gov.uk/datasets/ons::lsoa-2011-to-travel-to-work-area-december-2011-exact-fit-lookup-in-the-uk/about>
+
+4.  Life tables England (2017-2019)
+
+    [https://www.ons.gov.uk/peoplepopulationandcommunity/birthsdeathsandmarriages/lifeexpectancies/](https://www.ons.gov.uk/peoplepopulationandcommunity/birthsdeathsandmarriages/lifeexpectancies/datasets/nationallifetablesenglandreferencetables/current)
+
+    [datasets/nationallifetablesenglandreferencetables/current](https://www.ons.gov.uk/peoplepopulationandcommunity/birthsdeathsandmarriages/lifeexpectancies/datasets/nationallifetablesenglandreferencetables/current)
+
+5.  Level of multiple deprivation
+
+    <https://opendatacommunities.org/resource?uri=http%3A%2F%2Fopendatacommunities.org%2Fdata%2Fsocietal-wellbeing%2Fimd2019%2Findices>
+
+6.  Adding Age-Standartised Mortality Rates from ONS as of February,
+    2025
+
+    <https://opendatacommunities.org/resource?uri=http%3A%2F%2Fopendatacommunities.org%2Fdata%2Fsocietal-wellbeing%2Fimd2019%2Findices>
 
 ```{r data-prep}
 
@@ -265,7 +300,9 @@ here("manchester/health/original/ons/nomis_2025_02_21_lads_regions.xlsx"),
 
 The mortality rate `mx` is defined as "the number of deaths at age x
 last birthday in the three year period (2017-2019) divided by the
-average population at that age over the same period.
+average population at that age over the same period. This is the
+starting data to further expand by LSOAs based on the ratio of the
+age-standardised mortality rates by sex.
 
 ```{r}
 
@@ -293,17 +330,67 @@ england_lifetable <- lifetable_england |>
          sex = relevel(sex, "Male"))
 ```
 
-## Mortality by LSOA small areas in England by sex
+## Population weights for age groups and sex for England
 
-The age-standardized mortality rate (ASMR) (direct standarisation) is
-calculated by first finding the age-specific (mortality) rates for each
-age group by dividing the number of deaths by the respective population
-by sex, then multiplying the result by 1000, then the sum of the product
-pf each of the age-specific rates by the proportion of the population
-belonging to the particular age group (standard population weight).
+To derive age-standardized rates for each LSOA by sex and then derive
+ratios of mortality rate for LSOAs by sex, we need population weights
+for our reference population of England. We constructed these weights
+using population data for England. We also, further down the document,
+construct ratios using European standard population for validation
+purposes of data by LAD.
 
-First for LSOAs, however, some lsoas have zero or small number of
-deaths. So next step is to calculate ASMR by gender for MSOAs.
+```{r}
+# Population weight for each age group within all lsoas in England. England is our reference population, since the RRs will then be multiplied by death rates by age and sex for the whole of England. 
+
+# Calculate age-specific population and join with gender totals
+population_england_total <- population_england %>% 
+  group_by(age,gender) %>% 
+  summarise(age_population = sum(population)) %>%
+  ungroup()
+  
+population_gender_England <- population_england %>% 
+  group_by(gender) %>% 
+  summarise(gender_population = sum(population)) %>%
+  ungroup
+
+population_weights_England <- population_england_total %>%
+  select(gender, age, age_population) %>%
+  group_by(gender, age) %>%
+  summarise(age_population = sum(age_population)) %>% 
+  ungroup() %>%
+  left_join(population_gender_England, by = "gender") %>% # Join with total population by gender
+  mutate(weight=age_population/gender_population)
+```
+
+## Relative Risk by LSOA
+
+A relative mortality rate is produced for each area (lsoa), defined as
+the age-standardised mortality rate by sex for each lsoa relative to the
+average mortality in England by sex**.**
+
+The age-standardized mortality rate (ASMR) (direct standardization) by
+sex and lsoa is calculated by first finding the age-specific (mortality)
+rates for each age group (5 years) by dividing the number of deaths by
+the respective population by sex, then multiplying the result by 1000,
+then the sum of the product of each of the age-specific rates by the
+proportion of the population belonging to the particular age group
+(standard population weight) by area and sex. For England as a whole,
+the average mortality is defined as a weighted average of the
+area-specific rates, weighted by the population of each area.
+
+For future reference (
+[https://pmc.ncbi.nlm.nih.gov/articles/PMC9575652](https://pmc.ncbi.nlm.nih.gov/articles/PMC9575652/))
+we might want to improve the calculation of ASDR.
+
+We calculated ASDRs for lsoas, msoas and lads. While we want the
+relative risks for each lsoa compared to England as a whole, some lsoa
+have small deaths numbers, in those cases we replaced by msoas or lads
+if msoas still had small numbers. We applied a rule that if less than 10
+deaths in an age group in an lsoa, then a lad ASDRs should be used, and
+if more than 10 deaths but less than 20 in an MSOA, then use the LAD
+ASDRs.
+
+### LSOAs ASDRs by sex
 
 ```{r}
 
@@ -326,25 +413,6 @@ deaths_lsoa_eng <- deaths_lsoa_eng %>%
   filter(!(population == 0 & deaths > 0)) %>% 
   mutate(age_specific_rate = if_else(population == 0, 0, (deaths/ population*1000)))
 
-# Population weight for each age group within all lsoas in England. England is our reference population, since the RRs will then be multiplied by death rates by age and sex for the whole of England. 
-
-# Calculate age-specific population and join with gender totals
-population_england_total <- population_england %>% 
-  group_by(age,gender) %>% 
-  summarise(age_population = sum(population))
-  
-population_gender_England <- population_england %>% 
-  group_by(gender) %>% 
-  summarise(gender_population = sum(population))
-
-population_weights_England <- population_england_total %>%
-  select(gender, age, age_population) %>%
-  group_by(gender, age) %>%
-  summarise(age_population = sum(age_population)) %>% 
-  ungroup() %>%
-  left_join(population_gender_England, by = "gender") %>% # Join with total population by gender
-  mutate(weight=age_population/gender_population)
-
 # Now this is adding Age-standardized Rate per lsoa
 # Calculate the age-standardized rate per LSOA
 deaths_lsoa_eng_asdr  <- deaths_lsoa_eng %>%
@@ -357,7 +425,7 @@ deaths_lsoa_eng_asdr  <- deaths_lsoa_eng %>%
   ungroup()
 ```
 
-## Mortality by MSOA small areas in England by sex
+## MSOAs ASDRs by sex
 
 ```{r}
 
@@ -401,10 +469,7 @@ deaths_msoa_eng_asdr  <- deaths_msoa_eng  %>%
   ungroup()
 ```
 
-## Mortality by LAD areas in England by sex
-
-We also calculate ASMR for LADs as some MSOAs might have no deaths or
-small number recorded.
+## LADs ASDRs by sex
 
 ```{r}
 deaths_lad <- merge(deaths_england, msoa, by.x = "lsoa_code", by.y = "LSOA11CD", all.x = TRUE)
@@ -462,17 +527,7 @@ deaths_lad_eng_asdr_manchester <- deaths_lad_eng_asdr %>%
       str_starts(lad_name, "Wigan"))
 ```
 
-## Relative Risk by LSOA
-
-A relative mortality rate is produced for each area (lsoa), defined as
-the rate by sex for each lsoa relative to the average mortality in
-England by sex**.** This average mortality is defined as a weighted
-average of the area-specific rates, weighted by the population of each
-area.
-
-For future reference (
-[https://pmc.ncbi.nlm.nih.gov/articles/PMC9575652](https://pmc.ncbi.nlm.nih.gov/articles/PMC9575652/))
-we might want to improve the calculation of ASDR.
+## Calculate relative risks by lad and sex for all cause mortality
 
 ```{r}
 
@@ -506,14 +561,13 @@ england_lsoa_deaths <- deaths_lsoa_eng_asdr %>%
 
 ```
 
-Adding Index of Multiple Deprivation (IMD)
+## Adding Index of Multiple Deprivation (IMD)
 
 Note: for the whole of England, clear gradient on overall age and sex
 standardised rates and by gender.
 
 ```{r}
 # Merge with index of deprivation 
-
 
 deprivation <- deprivation %>%
   filter(`Indices of Deprivation` == "a. Index of Multiple Deprivation (IMD)") %>%
@@ -526,6 +580,9 @@ deprivation <- deprivation %>%
 ```
 
 ## Overall ASR
+
+From our calculated ASDRs for lsoas above we derive England ASDRs by IMD
+and IMD and sex to check data follows an expected gradient.
 
 ```{r}
 
@@ -553,7 +610,9 @@ mortality_socio_gender <- england_deaths_socio %>%
     asr = mean(stdrate),
     .groups = "drop"
   )  %>%
-  ungroup()
+  ungroup() %>%
+  arrange(gender)
+  
 ```
 
 ## Area-specific age-standardized mortality rate
@@ -562,7 +621,7 @@ We assume that the excess mortality risk associated with living in a
 particular area does not depend on age. We then estimate the
 area-specific mortality rate for people of a particular age by
 multiplying the mortality rate for England from life tables by the
-area-specific relative risk.
+area-specific relative risk by sex.
 
 ```{r}
 # Join with mortality data
@@ -600,6 +659,14 @@ manchester_lifetable_lsoa <- england_lifetable_lsoa %>%
 
 write.csv(manchester_lifetable_lsoa, here("manchester/health/processed/manchester_mortality_lsoa.csv"))
 
+
+```
+
+## Graphs for checking results
+
+### Deaths rates for England by IMD
+
+```{r}
 # Graph death rates england
 
 ### Graph for England
@@ -631,8 +698,11 @@ p_england <- ggplot(data_plot,
 
 # Print the plot
 print(p_england)
+```
 
+### Deaths rates for Greater Manchester by IMD
 
+```{r}
 # Graph death rates Manchester
 
 data_plot <- manchester_lifetable_lsoa %>%
@@ -697,16 +767,29 @@ rr_plot <- ggplot(manchester_deaths_socio, aes(x = imd_decile, y = RR, color = a
 
 rr_plot
 
+```
 
-### Comparison of age standardised rates with ONS data by LAD and our calculations but using weight from the European standard population. We use European standard population to compare because ASDR per LAD from ONS use this weights in their calculations.  
+### Comparison with publicly available estimates by LADs and sex
+
+Comparison of age standardised rates with ONS data by LAD and our
+calculations but using weight from the European standard population. We
+use European standard population to compare because ASDR per LAD from
+ONS use this weights in their calculations.
+
+stdr_rate ons is publised, stdr_rate_eng is calculated by us using
+England population weights and stdr_rate_eu is our estimates using
+European standard population weights. Our estimates using European
+standard rates compare with published ONS rates.
+
+```{r}
 
 ### European Standard Population 2013
 
-european_pop <- european_pop %>%
+european_pop_2 <- european_pop %>%
   mutate(Sex = ifelse(Sex == "Male", "Males", "Females")) %>%
   rename(
     "age" = "AgeGroup",
-    "gender" = "Sex",
+   "gender" = "Sex",
     "population" = "EuropeanStandardPopulation"
   ) %>%
   mutate(age = case_when(
@@ -721,12 +804,14 @@ european_pop <- european_pop %>%
 
 
 # Calculate age-specific population and join with gender totals
-population_weights_europe <- european_pop %>%
+population_weights_europe <- european_pop_2 %>%
   select(gender, age, population) %>%
   group_by(gender, age) %>%
   summarise(age_population = sum(population)) %>%  # Total population by gender and age
   ungroup() %>%
   mutate(weight=age_population/100000)
+
+## Calculate all ASDRs by areas with European population
 
 # lsoa
 deaths_lsoa_eng_eu  <- deaths_lsoa_eng %>%
@@ -776,6 +861,13 @@ comparison_table <- nomis_lad %>%
   left_join(deaths_lad_eu_asdr_manchester %>% 
               select(lad_name, gender, stdrate_eu = stdrate), by = c("gender", "lad_name"))
 
+print(comparison_table)
+
+```
+
+## Additional comparisons
+
+```{r}
 # Additional 
 
 england_lsoa_deaths_eu <- deaths_lsoa_eng_eu |>
@@ -837,6 +929,8 @@ deaths_lad_man_eu <- deaths_lad_eng_eu %>%
       str_starts(lad_name, "Trafford") |
       str_starts(lad_name, "Wigan"))
 
+print(deaths_lad_man_eu)
+
 deaths_lad_man_eng <- deaths_lad_eng_asdr %>%
   filter(
     str_starts(lad_name, "Bolton") |
@@ -850,6 +944,7 @@ deaths_lad_man_eng <- deaths_lad_eng_asdr %>%
       str_starts(lad_name, "Trafford") |
       str_starts(lad_name, "Wigan"))
 
+print(deaths_lad_man_eng)
 ```
 
 # Disease Incidence
