@@ -40,14 +40,15 @@ NO2_dose_response <- function(cause, dose) {
   # read in dose response functions for disease cause
   # contains relative risk with upper and lower limits for a variety of doses
   lookup_table <- get(cause)
+  names(lookup_table) <- base::tolower(names(lookup_table))
   lookup_df <- setDT(lookup_table)
   
   # interpolate the values in the lookup table to get RR values for all NO2 exposure doses
   # in the baseline population
   suppressWarnings(
     rr <- approx(
-      x = lookup_df$dose, y = lookup_df$RR,
-      xout = dose, yleft = 1, yright = min(lookup_df$RR)
+      x = lookup_df$dose, y = lookup_df$rr,
+      xout = dose, yleft = 1, yright = min(lookup_df$rr)
     )$y
   )
   return(data.frame(rr = rr))
