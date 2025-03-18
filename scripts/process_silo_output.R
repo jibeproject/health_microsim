@@ -269,7 +269,7 @@ synth_pop_wprob <- combine_rr %>%
 # Function to allocate disease statuses based on probability
 allocate_disease <- function(df) {
   df %>%
-    mutate(across(copd:stroke, ~ ifelse(runif(1) < ., 1, 0), .names = "{.col}_diseased"))
+    mutate(across(copd:stroke, ~ ifelse(runif(dplyr::n()) < ., 1, 0), .names = "{.col}_diseased"))
 }
 
 # 1 make use of 
