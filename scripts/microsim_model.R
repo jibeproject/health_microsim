@@ -9,8 +9,7 @@ library(drpa)
 # For fast reading/processing
 library(arrow)
 
-library(glue)
-
+# Start multisession
 plan(multisession)
 
 # For reproducibility set seed
@@ -20,7 +19,7 @@ options(future.globals.maxSize = +Inf)
 
 set_sep = ";"
 
-sample_size <- 1000
+sample_size <- 100
 
 # Data ----
 
@@ -29,9 +28,7 @@ sample_size <- 1000
 synth_pop <- read_csv(here("jibe health/base_pp_exposure_RR_2021.csv"))
 
 ## Health transitions
-
 hd <- read_csv(here("jibe health/health_transitions_manchester.csv")) 
-
 
 if (sample_size > 0)
   synth_pop <- sample_n(synth_pop, sample_size)
@@ -51,7 +48,7 @@ v.M_1 <- rep("healthy", n.i)
 
 # Function to return 
 
-get_state <- function(rd, cycle = 1, cause = "allc", cm, ind_spec_rate) {
+get_state <- function(rd, cycle = 1, cause = "allc", cm, ind_spec_rate, cause_risk = 1) {
   
   # browser()
   # Get unique index for the agent
@@ -64,13 +61,18 @@ get_state <- function(rd, cycle = 1, cause = "allc", cm, ind_spec_rate) {
   # Create cause specific state name
   # curr_cause <- paste0('S_', toupper(cause))
   curr_cause <- cause
-  # Get age, sex and disease specific prob
+  
+  # Get age, sex and disease specific rate
   dis_rate <- rd[cause] |> as.numeric()
   
   if (length(ind_spec_rate) == 0)
     ind_spec_rate <- 0
   
-  dis_rate <- dis_rate * ind_spec_rate
+  # if (cause_risk != 1){
+  #   browser()
+  # }
+  
+  dis_rate <- dis_rate * ind_spec_rate * cause_risk
   
   dis_prob <- 1 - exp(-dis_rate)
   
@@ -170,6 +172,10 @@ m <- matrix(nrow = n.i, ncol = n.c + 1,
 # Read prevalence dataset
 prev <- read_csv("jibe health/prevalence_id.csv")
 
+
+# Read risk factor
+disease_risks <<- read_csv("jibe health/mod_disease_risks.csv")
+
 td <- synth_pop_wprob |> 
   left_join(prev) |> 
   dplyr::select(id, diseases) |> 
@@ -192,7 +198,10 @@ stop <- F
 
 for (incyc in 1:n.c){
   for (dis in diseases){
-    cstate <- future_apply(synth_pop_wprob, 1, function(row) {
+    cstate <- apply(synth_pop_wprob, 1, function(row) {
+      # Set filtered_risk as 1
+      risk_factor <- 1
+      
       if (dis == "all_cause_mortality"){
         filtered_rate <- hd[hd$age == row["age"] |> as.numeric() + incyc - 1 &
                             hd$sex == row["sex"] |> as.numeric() &
@@ -200,6 +209,51 @@ for (incyc in 1:n.c){
                             hd$location_code == row["lsoa21cd"] |> as.character() &
                             hd$measure == "deaths", ] |>
           dplyr::select(rate) |> pull()
+        
+        # See if age is between 40 and 70
+        if (row["age"] |> as.numeric() + incyc - 1 >= 40 &
+            row["age"] |> as.numeric() + incyc - 1 <= 70){
+          
+          # browser()
+          disease_list <- m[row["rowname"] |> as.numeric(),
+                            paste0("c", incyc - 1)] |> 
+            unlist(strsplit(input, " "))
+            
+          #Standardize cancer-related diseases to "cancer"
+          disease_list <- gsub(".*cancer.*|myeloid_leukemia|myeloma", "cancer", disease_list)
+          
+          # Filter the data frame based on the given conditions
+          filtered_df <- disease_risks[sapply(disease_risks$risk_factor, function(risk) {
+            any(sapply(disease_list, function(disease) grepl(disease, risk)))
+          }),]
+          
+          
+          # filtered_df <- df[df$risk_factor %in% disease_list &
+          #                     df$outcome == outcome &
+          #                     grepl(age, df$age_range) &
+          #                     grepl(sex, df$sex), ]
+          
+          # if (current_risk != "healthy")
+          #   browser()
+          # filtered_df <- disease_risks[disease_risks$risk_factor %in% current_risk &
+          #                                disease_risks$outcome == "all_cause_mortality",]
+          
+          # Calculate the product of relative_risk
+          relative_risk_product <- prod(filtered_df$relative_risk, na.rm = TRUE)
+          
+          # filtered_risk <- disease_risks |> filter(outcome == "all_cause_mortality" &
+          #                           str_detect(risk_factor, current_risk[1])) |> 
+          #   dplyr::select(relative_risk) |> 
+          #   pull()
+          
+          if (length(relative_risk_product) != 0)
+            risk_factor <- relative_risk_product
+          
+          # Get unique risks for all_cause_mortality
+          
+          #
+          #filtered_risk <- disease_risks |> filter(outcome == "all_cause_mortality") |> distinct(risk_factor)
+        }
         }else{
           filtered_rate <- hd[hd$age == row["age"] |> as.numeric() + incyc - 1 &
                               hd$sex == row["sex"] |> as.numeric() &
@@ -207,12 +261,36 @@ for (incyc in 1:n.c){
                               hd$location_code == row["ladcd"] |> as.character() &
                               hd$measure == "incidence", ] |>
             dplyr::select(rate) |> pull()
+          
+          # See if age is between 40 and 70
+          if (row["age"] |> as.numeric() + incyc - 1 >= 18 & 
+              dis %in% c("coronary_heart_disease", "stroke")){
+            
+            sex_string <- ifelse(row["sex"] |> as.numeric() == 1, "male", "female")
+            disease_list <- m[row["rowname"] |> as.numeric(),
+                              paste0("c", incyc - 1)] |> 
+              unlist(strsplit(input, " "))
+              
+              # Filter the data frame based on the given conditions
+              filtered_df <- disease_risks[sapply(disease_risks$risk_factor, function(risk) {
+                any(sapply(disease_list, function(disease) grepl(disease, risk)))
+              }) & grepl(sex_string, disease_risks$sex), ]
+              
+              # Calculate the product of relative_risk
+              relative_risk_product <- prod(filtered_df$relative_risk, na.rm = TRUE)
+              
+              if (length(relative_risk_product) != 0)
+                risk_factor <- relative_risk_product
+              
+          }
         }
+      
       get_state(row, cycle = incyc, cause = dis,
                 cm = m[row["rowname"] |> as.numeric(),
                        c(paste0("c", incyc - 1), paste0("c", incyc))],
-                ind_spec_rate = filtered_rate)
-    }, future.seed = TRUE)
+                ind_spec_rate = filtered_rate,
+                cause_risk = risk_factor)
+    })#, future.seed = TRUE)
     m[, incyc + 1] <- cstate
   }
 }
