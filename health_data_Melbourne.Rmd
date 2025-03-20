@@ -3128,6 +3128,6 @@ mort <- mort_years %>%
          rate = -log(1 - prob) * 1000) %>%
   
   # select required fields
-  dplyr::select(age, sex, sa2_code, sa2_name, educ, rate, prob)
+  dplyr::select(age, sex, year, sa2_code, sa2_name, educ, rate, prob)
 
 ```
