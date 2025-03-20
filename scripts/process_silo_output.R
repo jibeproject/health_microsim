@@ -77,36 +77,36 @@ no2_all_cause <- NO2_dose_response(cause = "all_cause_no2", dose = ppdf |>
                                      pull()) |> 
   rename(RR_no2_base_all_cause_mortality = rr)
 
-# Calculate all cause pm RRs
-all_cause_pm_RR <- pm2.5_dose_response(cause = "all_cause_pm", dose = ppdf |> 
+# Calculate all_cause_mortality RRs for pm2.5
+RR_pm_base_all_cause_mortality <- pm2.5_dose_response(cause = "all_cause_pm", dose = ppdf |> 
                                      arrange(id) |> 
                                      dplyr::select(exposure_normalised_pm25) |> 
                                      pull()) |> 
   rename(RR_pm_base_all_cause_mortality = rr)
 
-# Calculate NO2 RRs
-pm_copd_RR <- pm2.5_dose_response(cause = "copd_pm", dose = ppdf |> 
+# Calculate copd RRs for pm2.5
+RR_pm_base_copd <- pm2.5_dose_response(cause = "copd_pm", dose = ppdf |> 
                                      arrange(id) |> 
                                      dplyr::select(exposure_normalised_pm25) |> 
                                      pull()) |> 
   rename(RR_pm_base_copd = rr)
 
-# Calculate NO2 RRs
-pm_ihd_RR <- pm2.5_dose_response(cause = "ihd_pm", dose = ppdf |> 
+# Calculate ihd (or chd) RRs for pm2.5
+RR_pm_base_coronary_heart_disease <- pm2.5_dose_response(cause = "ihd_pm", dose = ppdf |> 
                                      arrange(id) |> 
                                      dplyr::select(exposure_normalised_pm25) |> 
                                      pull()) |> 
   rename(RR_pm_base_coronary_heart_disease = rr)
 
-# Calculate NO2 RRs
-pm_lc_RR <- pm2.5_dose_response(cause = "lc_pm", dose = ppdf |> 
+# Calculate lung cancer RRs for pm2.5
+RR_pm_base_lung_cancer <- pm2.5_dose_response(cause = "lc_pm", dose = ppdf |> 
                                      arrange(id) |> 
                                      dplyr::select(exposure_normalised_pm25) |> 
                                      pull()) |> 
   rename(RR_pm_base_lung_cancer = rr)
 
-# Calculate NO2 RRs
-pm_stroke_pm <- pm2.5_dose_response(cause = "lc_pm", dose = ppdf |> 
+# Calculate pm2.5 ERF for stroke
+RR_pm_base_stroke <- pm2.5_dose_response(cause = "lc_pm", dose = ppdf |> 
                                      arrange(id) |> 
                                      dplyr::select(exposure_normalised_pm25) |> 
                                      pull()) |> 
@@ -232,11 +232,8 @@ multiply_similar_columns <- function(df) {
   return(df)
 }
 
-# Combine AP and PA columns by individual IDs and sort them by their IDs
-rr <- left_join(ap |> 
-                  dplyr::select(id, contains("RR")), 
-                pa |> 
-                  dplyr::select(id, contains("RR")), by = "id") |> 
+# Assign PA columns with RR by individual IDs and sort them by their IDs
+rr <- pa |> dplyr::select(id, contains("RR")) |> 
   arrange(id)
 # Add no2_all_cause (already sorted by ID)
 rr <- cbind(rr, no2_all_cause)
