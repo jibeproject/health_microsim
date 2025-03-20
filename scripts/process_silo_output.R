@@ -5,8 +5,12 @@ require("drpa")
 
 # Define name of the scenario
 SCEN_SHORT_NAME <- 'base'
+
+
+# load pm2.5_dose_response
+source("scripts/pm2.5_dose_response.R")
 # Read all_cause_no2 DR
-all_cause_no2 <- read_csv("jibe health/health/all_cause_no.csv") |> 
+all_cause_no2 <- read_csv("jibe health/health1/all_cause_no.csv") |> 
   rename(RR = rr)
 # Load NO2_dose_response functiom
 source("scripts/NO2_dose_response.R")
@@ -18,8 +22,8 @@ source("scripts/ndvi_dose_response.R")
 source("scripts/noise_dose_response.R")
 
 list_of_files <- list.files(
-  path = "jibe health/health/",
-  recursive = TRUE, pattern = "(noise|ndvi)\\.csv$",
+  path = "jibe health/health1/",
+  recursive = TRUE, pattern = "(pm|noise|ndvi)\\.csv$",
   full.names = TRUE
 )
 
@@ -37,48 +41,33 @@ diabetes_noise <- diabates_noise
 rm(diabates_noise)
 
 # Read the default discease outcomes table from the ITHIM package
-DISEASE_INVENTORY <- read_csv("jibe health/health/disease_outcomes_lookup.csv") |> 
+DISEASE_INVENTORY <- read_csv("jibe health/health1/disease_outcomes_lookup.csv") |> 
   mutate(pa_acronym = acronym_inJava) |> mutate(pa_acronym = str_replace_all(pa_acronym, "_", "-"),
                                                 outcome = str_replace_all(outcome, "_", "-")) |> 
   mutate(pa_acronym = case_when(pa_acronym == "parkinson" ~ "parkinson's-disease",
                                 pa_acronym == "head-neck-cancer" ~ "head-and-neck-cancer",
-                           TRUE ~ pa_acronym)) |> 
-  rename("air_pollution" = "air_pollution_pm25") |> 
-  mutate(ap_acronym = acronym) |> 
-  mutate(ap_acronym = case_when(ap_acronym == "all_cause_mortality" ~ "all_cause_ap",
-                                ap_acronym == "coronary_heart_disease" ~ "cvd_ihd",
-                                ap_acronym == "COPD" ~ "resp_copd",
-                                ap_acronym == "lung_cancer" ~ "neo_lung",
-                                ap_acronym == "stroke" ~ "cvd_stroke",
-                                # neo_lung, resp_copd, cvd_stroke, t2_dm, cvd, respiratory
-                                TRUE ~ ap_acronym)) 
+                           TRUE ~ pa_acronym))
+
+
+
+
+# |> 
+#   rename("air_pollution" = "air_pollution_pm25") |> 
+#   mutate(ap_acronym = acronym) |> 
+#   mutate(ap_acronym = case_when(ap_acronym == "all_cause_mortality" ~ "all_cause_ap",
+#                                 ap_acronym == "coronary_heart_disease" ~ "cvd_ihd",
+#                                 ap_acronym == "COPD" ~ "resp_copd",
+#                                 ap_acronym == "lung_cancer" ~ "neo_lung",
+#                                 ap_acronym == "stroke" ~ "cvd_stroke",
+#                                 # neo_lung, resp_copd, cvd_stroke, t2_dm, cvd, respiratory
+#                                 TRUE ~ ap_acronym)) 
   
-
-
-# Read all the ERF for AP from ITHIM package
-list_of_files <- list.files(
-  path = "../ITHIM-R/inst/extdata/global/dose_response/drap/extdata/",
-  recursive = TRUE, pattern = "\\.csv$",
-  full.names = TRUE
-)
-
-# Make them available as global datasets
-for (i in 1:length(list_of_files)) {
-  assign(stringr::str_sub(basename(list_of_files[[i]]), end = -5),
-         read.csv(list_of_files[[i]]),
-         pos = 1
-  )
-}
-
 # Read per person exposure
 ppdf <- read_csv("jibe health/pp_exposure_2021.csv")
 # Recalculate base_mmet and rename pm_conc_base variable (although it is exposure but ITHIM pacakge expects this name)
 ppdf <- ppdf |> 
-  mutate(base_mmet = mmetHr_walk + mmetHr_cycle + mmetHr_otherSport) |> 
-  rename(pm_conc_base = exposure_normalised_pm25)
+  mutate(base_mmet = mmetHr_walk + mmetHr_cycle + mmetHr_otherSport)
 
-# Calculate AP RRs
-ap <- ithimr::gen_ap_rr(pm_conc_pp = ppdf)
 # Calculate PA RRs
 pa <- ithimr::gen_pa_rr(mmets_pp = ppdf, conf_int = F)
 # Calculate NO2 RRs
@@ -87,6 +76,41 @@ no2_all_cause <- NO2_dose_response(cause = "all_cause_no2", dose = ppdf |>
                                      dplyr::select(exposure_normalised_no2) |> 
                                      pull()) |> 
   rename(RR_no2_base_all_cause_mortality = rr)
+
+# Calculate all cause pm RRs
+all_cause_pm_RR <- pm2.5_dose_response(cause = "all_cause_pm", dose = ppdf |> 
+                                     arrange(id) |> 
+                                     dplyr::select(exposure_normalised_pm25) |> 
+                                     pull()) |> 
+  rename(RR_pm_base_all_cause_mortality = rr)
+
+# Calculate NO2 RRs
+pm_copd_RR <- pm2.5_dose_response(cause = "copd_pm", dose = ppdf |> 
+                                     arrange(id) |> 
+                                     dplyr::select(exposure_normalised_pm25) |> 
+                                     pull()) |> 
+  rename(RR_pm_base_copd = rr)
+
+# Calculate NO2 RRs
+pm_ihd_RR <- pm2.5_dose_response(cause = "ihd_pm", dose = ppdf |> 
+                                     arrange(id) |> 
+                                     dplyr::select(exposure_normalised_pm25) |> 
+                                     pull()) |> 
+  rename(RR_pm_base_coronary_heart_disease = rr)
+
+# Calculate NO2 RRs
+pm_lc_RR <- pm2.5_dose_response(cause = "lc_pm", dose = ppdf |> 
+                                     arrange(id) |> 
+                                     dplyr::select(exposure_normalised_pm25) |> 
+                                     pull()) |> 
+  rename(RR_pm_base_lung_cancer = rr)
+
+# Calculate NO2 RRs
+pm_stroke_pm <- pm2.5_dose_response(cause = "lc_pm", dose = ppdf |> 
+                                     arrange(id) |> 
+                                     dplyr::select(exposure_normalised_pm25) |> 
+                                     pull()) |> 
+  rename(RR_pm_base_stroke = rr)
 
 # # Calculate noise DR
 # for (noise_dis_outcome in c(
