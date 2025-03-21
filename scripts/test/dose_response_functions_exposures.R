@@ -125,6 +125,8 @@ write.csv(all_cause_no, "health/all_cause_no.csv")
 
 # Noise
 
+## Thesholds for cardiometabolic outomes and mortality is 45 lden
+
 ## IHD incidence for Lden from Engelmann et al 2024 for road traffic noise. 1.041 (1.023, 1.059) per 10 dB
 # Thresholds are: lower Lden=45 and upper Lden=80. Lowest level based on weighted average of lowest exposure in 
 # evaluated studies
@@ -135,10 +137,10 @@ rr_noise_ihd <- 1.041
 
 ihd_noise <- combined_dose %>% 
   select(dose) %>%  # Select the columns dose and rr_pm_mort
-  mutate(rr = as.numeric(exp(log(rr_noise_ihd) * ((dose - 40) / 10)))) %>%  # Adjust rr for the exposure range
+  mutate(rr = as.numeric(exp(log(rr_noise_ihd) * ((dose - 45) / 10)))) %>%  
   mutate(rr = case_when(
-    dose < 53 ~ 1,   # If dose is less than 7.1, set rr to 1
-    dose > 80 ~ exp(log(rr_noise_ihd) * ((80 - 40) / 10)),  # Cap rr at the value for dose = 44
+    dose < 53 ~ 1,   # If dose is less than 53, set rr to 1
+    dose > 80 ~ exp(log(rr_noise_ihd) * ((80 - 45) / 10)),  # Cap rr at the value for dose = 44
     TRUE ~ rr          # For all other cases, keep the calculated rr
   )) %>%
   mutate(outcome="ihd")
@@ -154,10 +156,10 @@ rr_stroke_noise <- 1.046
 
 stroke_noise <- combined_dose %>% 
   select(dose) %>%  # Select the columns dose and rr_pm_mort
-  mutate(rr = as.numeric(exp(log(rr_stroke_noise) * ((dose - 40) / 10)))) %>%  # Adjust rr for the exposure range
+  mutate(rr = as.numeric(exp(log(rr_stroke_noise) * ((dose - 45) / 10)))) %>%  # Adjust rr for the exposure range
   mutate(rr = case_when(
-    dose < 53 ~ 1,   # If dose is less than 7.1, set rr to 1
-    dose > 80 ~ exp(log(rr_stroke_noise) * ((80 - 40) / 10)),  # Cap rr at the value for dose = 44
+    dose < 53 ~ 1,   # If dose is less than 53, set rr to 1
+    dose > 80 ~ exp(log(rr_stroke_noise) * ((80 - 45) / 10)),  # Cap rr at the value for dose = 44
     TRUE ~ rr          # For all other cases, keep the calculated rr
   )) %>%
   mutate(outcome="stroke")
@@ -172,10 +174,10 @@ rr_diabates_noise <- 1.062
 
 diabates_noise <- combined_dose %>% 
   select(dose) %>%  # Select the columns dose and rr_pm_mort
-  mutate(rr = as.numeric(exp(log(rr_diabates_noise) * ((dose - 40) / 10)))) %>%  # Adjust rr for the exposure range
+  mutate(rr = as.numeric(exp(log(rr_diabates_noise) * ((dose - 45) / 10)))) %>%  # Adjust rr for the exposure range
   mutate(rr = case_when(
-    dose < 53 ~ 1,   # If dose is less than 7.1, set rr to 1
-    dose > 80 ~ exp(log(rr_diabates_noise) * ((80 - 40) / 10)),  # Cap rr at the value for dose = 44
+    dose < 53 ~ 1,   # If dose is less than 53, set rr to 1
+    dose > 80 ~ exp(log(rr_diabates_noise) * ((80 - 45) / 10)),  # Cap rr at the value for dose = 44
     TRUE ~ rr          # For all other cases, keep the calculated rr
   )) %>%
   mutate(outcome="diabetes")
@@ -190,15 +192,15 @@ rr_mortality_noise <- 1.055
 
 mortality_noise <- combined_dose %>% 
   select(dose) %>%  # Select the columns dose and rr_pm_mort
-  mutate(rr = as.numeric(exp(log(rr_mortality_noise) * ((dose - 40) / 10)))) %>%  # Adjust rr for the exposure range
+  mutate(rr = as.numeric(exp(log(rr_mortality_noise) * ((dose - 45) / 10)))) %>%  # Adjust rr for the exposure range
   mutate(rr = case_when(
     dose < 53 ~ 1,   # If dose is less than 7.1, set rr to 1
-    dose > 80 ~ exp(log(rr_mortality_noise) * ((80 - 40) / 10)),  # Cap rr at the value for dose = 44
+    dose > 80 ~ exp(log(rr_mortality_noise) * ((80 - 45) / 10)),  # Cap rr at the value for dose = 44
     TRUE ~ rr          # For all other cases, keep the calculated rr
   )) %>%
   mutate(outcome="mortality")
 
-write.csv(mortality_noise, "health/mortality_noise.csv")
+write.csv(mortality_noise, "health/all_cause_noise.csv")
 
 noise_outcomes <- bind_rows(ihd_noise, stroke_noise, diabates_noise, mortality_noise)
 
@@ -227,7 +229,7 @@ mortality_ndvi <- dose_ndvi %>%
   )) %>%
   mutate(outcome="mortality")
 
-write.csv(mortality_ndvi, "health/mortality_ndvi.csv")
+write.csv(mortality_ndvi, "health/all_cause_ndvi.csv")
 
 
 library(ggplot2)
@@ -278,23 +280,3 @@ library(ggplot2)
 
 ggplot(diabetes_ndvi, aes(x = dose, y = rr, color = outcome)) +
   geom_line()
-
-
-# # Depression rr=0.95 per ?
-# 
-# rr_depression_ndvi <- 0.95
-# 
-# diabetes_ndvi <- dose_ndvi %>%
-#   select(dose) %>%
-#   mutate(rr = as.numeric(exp(log(rr_diabetes_ndvi) * dose / 0.12))) %>%
-#   mutate(rr = case_when(dose == 0 ~ 1, TRUE ~ rr          # For all other cases, keep the calculated rr)) %>%
-#                         mutate(outcome = "diabetes")
-#                         
-#                         write.csv(depression_ndvi, "health/depression_ndvi.csv")
-#                         
-#                         
-#                         library(ggplot2)
-#                         
-#                         ggplot(depression_ndvi, aes(x = dose, y = rr, color = outcome)) +
-#                           geom_line()
-#                         

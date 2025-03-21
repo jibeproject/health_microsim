@@ -10,11 +10,11 @@ library(here)
 library(drpa)    
 library(readxl)    
 
-# source("functions/compute_pif.R") to be done
+source("functions/assing_rrs.R")
 
 ##### Read files
 
-# Scenario specific
+# Scenario specific data with rrs (input might be with exposures or with exposures and rrs)
 # Change per scenario
 
 # reference <- read_csv("manchester/simulationResults/ForPaper/1_reference/health/04_exposure_and_rr/pp_rr_2021.csv")
@@ -24,6 +24,7 @@ safestreet <- read_csv("manchester/simulationResults/ForPaper/2_safestreet/healt
 # Change per scenario
 synth_pop <- safestreet
 
+# Scenario specific without rrs (assign using function) 
 # General files: Household & dwelling data 
 
 zones <- read_csv(here("manchester/synPop/sp_2021/zoneSystem.csv")) %>%
@@ -31,32 +32,35 @@ zones <- read_csv(here("manchester/synPop/sp_2021/zoneSystem.csv")) %>%
 
 # Disease prevalence data
 prevalence <- read.csv("manchester/health/processed/health_transitions_manchester_prevalence.csv") %>%
-  mutate(prob = 1 - exp(-rate))  # Convert rates to probabilities
+  mutate(prob = 1 - exp(-rate)) %>% # Convert rates to probabilities
+  mutate(sex = case_when(
+    sex == 1 ~ "male",
+    sex == 2 ~ "female",
+    TRUE ~ as.character(sex)  # This line handles any other cases
+  ))
 
-# ## For older data we need to add zones to the synthetic population. Zones are in ForPaper results
-# hh <- read_csv("manchester/simulationResults/ForUrbanTransition/reference/sp_2021_2050/hh_2021.csv")
-# dd <- read_csv("manchester/simulationResults/ForUrbanTransition/reference/sp_2021_2050/dd_2021.csv")
-# 
-# synth_pop <- synth_pop %>%
-#   left_join(hh, by = c("hhid" = "id")) %>%
-#   left_join(dd, by = c("dwelling" = "id"))
+synth_pop <- safestreet
 
+### Assign relative risks if exposures input file
+
+## Exposure risks if working with exposures files
+
+synth_pop <- synth_pop_with_rr(synth_pop)
 
 ### Assign geographies
 
 synth_pop <- synth_pop %>%
   left_join(zones, by = c("zone" = "zone")) 
 
-## For missing exposures give exposure level for which rr are 1 (this is just to manage missing exposures)
 
-# synth_pop <- synth_pop %>% mutate(exposure_normalised_noise = 0,
-#                                    exposure_normalised_green = 0)
 
-###  STEP 3: Assign Disease Prevalence  ###
+### Assign Disease Prevalence
 
 # Assign prevalence to synthetic population
 synth_pop_wprob <- synth_pop %>% 
-  rename(sex = gender) %>%
+  rename(sex=gender) %>%
+  mutate(sex = case_when(sex == 1 ~ "male", 
+                         sex == 2 ~ "female")) %>%
   rownames_to_column() %>%
   left_join(
     prevalence %>%
@@ -79,92 +83,19 @@ synth_pop_prev <- allocate_disease(synth_pop_wprob) %>%
   mutate(sex = case_when(
     sex == 1 ~ "male",
     sex == 2 ~ "female",
-    TRUE ~ as.character(sex)))
+    TRUE ~ as.character(sex))) %>%
+      mutate(
+        `endometrial_cancer_status` = ifelse(sex == "male", 0, `endometrial_cancer_status`),
+        `breast_cancer_status` = ifelse(sex == "male", 0, `breast_cancer_status`)
+      )
+  
 
-# Sample 1000 individuals for calculations
+
+# Sample 1000 individuals for calculations (TO RUN FULL SAMPLE FROM HERE, DO NOT ALLOCATE RRS AGAIN)
 
 # sample <- sample_n(synth_pop_prev, 1000)
 
 sample <- synth_pop_prev
-#
-# Compute physical activity variable
-# sample <- sample %>% mutate(mmets = mmetHr_walk + mmetHr_cycle + mmetHr_otherSport)
-
-
-### Apply pif function from here
-
-# pifs_groups_reference <- compute_pif(sample)
-
-###  STEP 4: Assign Relative Risks  ###
-
-# DISEASE_SHORT_NAMES <- read_csv("health/disease_outcomes_lookup.csv")
-
-# pa_diseases <- DISEASE_SHORT_NAMES %>%
-#   filter(physical_activity == 1) %>%
-  # mutate(acronym = gsub("_", "-", acronym)) 
-
-# Assign PA RRs
-# for (i in seq_len(nrow(pa_diseases))) {
-#   disease_acronym <- pa_diseases$acronym[i]
-#   new_colname <- paste0("rr_physical_activity^", disease_acronym)
-#   
-#   # Apply conditions:
-#   # - Age must be greater than 20
-#   # - Males should not have 'breast_cancer' or 'endometrial_cancer'
-#   sample[[new_colname]] <- ifelse(
-#     sample$age > 20 & !(sample$sex == "male" & disease_acronym %in% c("breast-cancer", "endometrial-cancer")),
-#     drpa::dose_response(
-#       cause = disease_acronym,
-#       outcome_type = case_when(
-#         disease_acronym == "all-cause-mortality" ~ "fatal",
-#         disease_acronym == "diabetes" ~ "non-fatal",
-#         TRUE ~ "fatal-and-non-fatal"
-#       ),
-#       dose = sample$mmets,
-#       confidence_intervals = FALSE
-#     )$rr,
-#     1  # Assign 1 instead of NA when conditions are not met
-#   )
-# }
-
-
-
-## 🌫Exposures RRs (PM2.5, NO2, noise and greenspace) ##
-# Function to find the closest value in a vector
-# find_closest <- function(value, vector) {
-#   vector[which.min(abs(vector - value))]
-# }
-# 
-# # Optimized function to assign RRs only if age > 20
-# find_rr <- function(df_1, df_2, exposure_name, new_col_name) {
-# 
-#   df_1 %>%
-#     rowwise() %>%
-#     mutate(!!new_col_name := ifelse(
-#       age > 20,  # Apply RR only if age > 20
-#       {
-#         closest_dose <- find_closest({{exposure_name}}, df_2$dose)
-#         df_2$rr[df_2$dose == closest_dose]
-#       },
-#       1  # Assign neutral RR (1) if age <= 20
-#     )) %>%
-#     ungroup()
-# }
-# 
-# # Assign RRs for PM2.5 & NO2, greenspace, and noise
-# sample <- find_rr(sample, read_csv("health/all_cause_pm.csv"), exposure_normalised_pm25, "rr_pm25^all-cause-mortality")
-# sample <- find_rr(sample, read_csv("health/copd_pm.csv"), exposure_normalised_pm25, "rr_pm25^copd")
-# sample <- find_rr(sample, read_csv("health/ihd_pm.csv"), exposure_normalised_pm25, "rr_pm25^coronary-heart-disease")
-# sample <- find_rr(sample, read_csv("health/stroke_pm.csv"), exposure_normalised_pm25, "rr_pm25^stroke")
-# sample <- find_rr(sample, read_csv("health/lc_pm.csv"), exposure_normalised_pm25, "rr_pm25^lung-cancer")
-# sample <- find_rr(sample, read_csv("health/all_cause_no.csv"), exposure_normalised_no2, "rr_no2^all-cause-mortality")
-# sample <- find_rr(sample, read_csv("health/diabetes_ndvi.csv"), exposure_normalised_ndvi, "rr_ndvi^diabetes")
-# sample <- find_rr(sample, read_csv("health/stroke_ndvi.csv"), exposure_normalised_ndvi, "rr_ndvi^stroke")
-# sample <- find_rr(sample, read_csv("health/all_cause_ndvi.csv"), exposure_normalised_ndvi, "rr_ndvi^all-cause-mortality")
-# sample <- find_rr(sample, read_csv("health/all_cause_noise.csv"), exposure_normalised_noise, "rr_noise^all-cause-mortality")
-# sample <- find_rr(sample, read_csv("health/diabates_noise.csv"), exposure_normalised_noise, "rr_noise^diabetes")
-# sample <- find_rr(sample, read_csv("health/ihd_noise.csv"), exposure_normalised_noise, "rr_noise^coronary-heart-disease")
-# sample <- find_rr(sample, read_csv("health/stroke_noise.csv"), exposure_normalised_noise, "rr_noise^stroke")
 
 
 ## DISEASE RRs ##
@@ -189,9 +120,6 @@ sample_long <- sample %>%
     TRUE ~ as.character(sex)  # Keep other values unchanged
   )) %>%
   pivot_longer(cols = c(copd_status:stroke_status), names_to = "risk_factor", values_to = "has_risk_factor")
-
-  
-
 
 
 # Join sample_long with expanded disease risk data
@@ -232,29 +160,38 @@ sample_with_rr <- sample_long %>%
     values_from = relative_risk,
     values_fill = list(relative_risk = 1))
 
+# Modify column names to facilitate pif calculations
 
-# Merge with sample
-sample <- left_join(sample, sample_with_rr, by = c("id", "sex", "age")) %>%
-  select(id, age, sex, starts_with("rr"))
+sample <-  sample %>% select(!contains("status"))
 
-# Make long
+# Assuming 'sample' is your data frame
 
+# Clean column names (lowercase, replace hyphens with underscores)
 colnames(sample) <- gsub("-", "_", tolower(colnames(sample)))
 
 # Get the current column names
 col_names <- colnames(sample)
 
 # Define the keywords
-keywords <- c("no2", "pm25", "physical_activity", "noise", "ndvi")
+keywords <- c("air_pollution_no2", "air_pollution_pm25", "physical_activity", "noise", "ndvi")
 
-# Create a pattern that matches an underscore following any of the keywords
-pattern <- paste0("(", paste(keywords, collapse = "|"), ")_")
+# Create a more robust pattern
+pattern <- paste0("(", paste0(keywords, collapse = "|"), ")_(.*)")
 
 # Replace the matched pattern with the keyword followed by a caret
-new_col_names <- gsub(pattern, "\\1^", col_names)
+new_col_names <- gsub(pattern, "\\1\\^\\2", col_names)
 
 # Assign the modified column names back to the data frame
 colnames(sample) <- new_col_names
+
+# print(colnames(sample))  # Check the result
+
+# Assign the modified column names back to the data frame
+colnames(sample) <- new_col_names
+
+# Merge with sample
+sample <- left_join(sample, sample_with_rr, by = c("id", "sex", "age")) %>%
+  select(id, age, sex, starts_with("rr"))
 
 # Convert to data long
 
@@ -264,7 +201,7 @@ data_long_rr <- sample %>%
     names_to = c("risk_type", "outcome"),  
     names_pattern = "rr_([^\\^]+)\\^(.*)",  # Extract text before and after ^
     values_to = "relative_risk"
-  ) %>% select(where(~ !all(is.na(.))))  # This is to remove rows for which diseases have no risk outcomes. 
+  ) %>% drop_na() 
 
 
 
@@ -280,7 +217,7 @@ pif_ind <- data_long_rr %>%
   pivot_wider(
     names_from = risk_type,  # Create separate columns for each risk type
     values_from = relative_risk,  # Fill values with relative risk
-    values_fill = list(relative_risk = 1))  %>%# Fill missing values with 1 (neutral RR)
+    values_fill = list(relative_risk = 1))  %>% # Fill missing values with 1 (neutral RR)
     rename(pm25 = air_pollution_pm25, 
            no2 = air_pollution_no2)
     
@@ -386,7 +323,8 @@ dbDisconnect(con, shutdown = TRUE)
 write.csv(pif_group, "manchester/health/processed/pif_saferstreet_sex.csv")
 
 
-### Figures and tables (save csv files)
+
+##### Figures comparing PIFs #####
 
 pif_ref <- read_csv("manchester/health/processed/pif_reference_sex.csv") %>% mutate(scenario = "reference")
 
@@ -465,3 +403,423 @@ for (outcome in outcomes) {
 for (plot in plots) {
   print(plot)
 }
+
+
+
+### TO DO: 1) GRAPHS OTHER EXPOSURES; 2) COMPARE AGAINTS ORIGINAL DISTRIBUTIONS, 3) PROCESS TO SAVE LONG DATA TO THEN COMPARE BETWEEN SCANRIOS. 
+# 5) plot distribution variable
+
+##### Calculate burden of disease by area, sex and outcome type #####
+
+### Deaths total for Greater Manchester by sex
+
+# Import data from ONS
+deaths_males <- read_xlsx(
+  here("manchester/health/original/ons", "DeathsbyLSOAmidyear11to21.xlsx"),
+  sheet = "2",
+  skip = 2
+) %>% 
+  filter(`Mid-year` %in% c(2018)) %>%
+  filter(
+    str_starts(`Local Authority name`, "Bolton") |
+      str_starts(`Local Authority name`, "Bury") |
+      str_starts(`Local Authority name`, "Manchester") |
+      str_starts(`Local Authority name`, "Oldham") |
+      str_starts(`Local Authority name`, "Rochdale") |
+      str_starts(`Local Authority name`, "Salford") |
+      str_starts(`Local Authority name`, "Stockport") |
+      str_starts(`Local Authority name`, "Tameside") |
+      str_starts(`Local Authority name`, "Trafford") |
+      str_starts(`Local Authority name`, "Wigan"))
+
+deaths_GM_male <- deaths_males %>% 
+  mutate(total_deaths = rowSums(across(`Males under 1`:`Males over 85`), na.rm = TRUE)) %>%
+  summarise(total_val=sum(total_deaths)) %>%
+  mutate(cause="all_cause_mortality",
+         sex = "male")
+
+deaths_females <- read_xlsx(
+  here("manchester/health/original/ons", "DeathsbyLSOAmidyear11to21.xlsx"),
+  sheet = "3",
+  skip = 2
+) %>% 
+  filter(`Mid-year` %in% c(2018)) %>%
+  filter(
+    str_starts(`Local Authority name`, "Bolton") |
+      str_starts(`Local Authority name`, "Bury") |
+      str_starts(`Local Authority name`, "Manchester") |
+      str_starts(`Local Authority name`, "Oldham") |
+      str_starts(`Local Authority name`, "Rochdale") |
+      str_starts(`Local Authority name`, "Salford") |
+      str_starts(`Local Authority name`, "Stockport") |
+      str_starts(`Local Authority name`, "Tameside") |
+      str_starts(`Local Authority name`, "Trafford") |
+      str_starts(`Local Authority name`, "Wigan"))
+
+deaths_GM_female <- deaths_females %>% 
+  mutate(total_deaths = rowSums(across(`Females under 1`:`Females over 85`), na.rm = TRUE)) %>%
+  summarise(total_val=sum(total_deaths)) %>%
+  mutate(cause="all_cause_mortality",
+         sex = "female")
+
+## Disease incidence total for Greater Manchester by sex
+
+# Load and merge GBD datasets
+gbd_files <- list.files(path = "manchester/health/original/gbd/", pattern = "*.csv", full.names = TRUE)
+gbd <- bind_rows(lapply(gbd_files, read.csv))
+
+# Process GBD data
+gbdp <- gbd %>%
+  filter(metric == "Number", measure == "Incidence", year == 2018, age != "All ages") %>%
+  select(-c(upper, lower)) %>%
+  rename(AgeGroup = age) %>%
+  mutate(AgeGroup = case_when(
+    AgeGroup == "<5 years" ~ "0-4",
+    TRUE ~ AgeGroup
+  )) %>%
+  mutate(AgeGroup = str_remove(AgeGroup, " years")) %>%
+  mutate(sex=tolower(sex))%>%
+  filter(cause %in% c("Stroke", "Ischemic heart disease", "Breast cancer", 
+                      "Uterine cancer", "Tracheal, bronchus, and lung cancer", 
+                      "Colon and rectum cancer", "Esophageal cancer", 
+                      "Liver cancer", "Stomach cancer", "Chronic myeloid leukemia", 
+                      "Multiple myeloma", "Larynx cancer", "Lip and oral cavity cancer", 
+                      "Nasopharynx cancer", "Other pharynx cancer", "Bladder cancer",  
+                      "Depressive disorders", "Alzheimer's disease and other dementias", 
+                      "Diabetes mellitus type 2", "Chronic obstructive pulmonary disease", 
+                      "Parkinson's disease")) %>%
+  mutate(cause = recode(cause, 
+                        "Ischemic heart disease" = "coronary_heart_disease",
+                        "Uterine cancer" = "endometrial_cancer",
+                        "Stomach cancer" = "gastric_cardia_cancer",
+                        "Chronic myeloid leukemia" = "myeloid_leukemia",
+                        "Multiple myeloma" = "myeloma",
+                        "Depressive disorders" = "depression",
+                        "Alzheimer's disease and other dementias" = "all_cause_dementia",
+                        "Diabetes mellitus type 2" = "diabetes",
+                        "Stroke" = "stroke",
+                        "Tracheal, bronchus, and lung cancer" = "lung_cancer",
+                        "Breast cancer" = "breast_cancer",
+                        "Colon and rectum cancer" = "colon_cancer",
+                        "Bladder cancer" = "bladder_cancer",
+                        "Esophageal cancer" = "esophageal_cancer",
+                        "Liver cancer" = "liver_cancer",
+                        "Chronic obstructive pulmonary disease" = "copd",
+                        "Parkinson's disease" = "parkinson’s_disease"))
+
+# Sum rates for head and neck cancers
+hanc <- c("Larynx cancer", "Lip and oral cavity cancer", "Nasopharynx cancer", "Other pharynx cancer")
+gbdp_hanc <- gbdp %>%
+  filter(cause %in% hanc) %>%
+  group_by(measure, location, sex, AgeGroup, metric, year) %>%
+  summarise(val = sum(val), .groups = "drop") %>%
+  mutate(cause = "head_and_neck_cancer")
+
+gbdp <- gbdp %>%
+  filter(!cause %in% hanc) %>%
+  bind_rows(gbdp_hanc)
+
+
+incidence_males <- gbdp %>% 
+  filter(sex == "male") %>%
+  group_by(cause) %>% 
+  summarise(total_val = sum(val, na.rm = TRUE)) %>%
+  mutate(sex = "male")
+
+incidence_females <- gbdp %>% 
+  filter(sex == "female") %>%
+  group_by(cause) %>% 
+  summarise(total_val = sum(val, na.rm = TRUE)) %>%
+  mutate(sex = "female")
+
+
+burden_GM <- bind_rows(deaths_GM_female, deaths_GM_male, incidence_females, incidence_males)
+
+## Calculate burden
+
+pif_compare <- pif_compare %>% rename(cause=outcome)
+
+burden_pif <- left_join(burden_GM, pif_compare, by = c("sex", "cause")) %>%
+  select(!c(paf_combined_correct, `...1`)) %>%
+  mutate(burden_pa = total_val*pif_pa,
+         burden_ndvi=total_val*pif_ndvi,
+         burden_pm25=total_val*pif_pm25,
+         burden_noise=total_val*pif_noise,
+         burden_no2=total_val*pif_no2,
+         burden_disease=total_val*pif_disease,
+         burden_total=total_val*pif_combined)
+
+
+burden_diff <- burden_pif %>% 
+  select(cause, sex, scenario, burden_pa:burden_total) %>%
+  pivot_longer(
+    cols = burden_pa:burden_total,
+    names_to = "burden",
+    values_to = "scenario_value"
+  ) %>% 
+  pivot_wider(
+    names_from = "scenario",
+    values_from = "scenario_value"
+  ) %>% 
+  mutate(diff = ceiling(reference - safer)) %>%  # Calculate difference
+  filter(reference != 0) %>% 
+  select(cause, sex, burden, cases_prevented = diff) %>% 
+  arrange(cause, sex, burden) %>% 
+  pivot_wider(
+    names_from = "burden",
+    values_from = "cases_prevented"
+  ) %>% 
+  mutate(across(everything(), ~replace_na(., 0))) %>%  # Replace all NAs with 0
+  relocate(burden_pa, .after = burden_total)  # Swap burden_total and burden_pa columns
+
+write.csv(burden_diff, "manchester/health/processed/cra_age_sex.csv")
+
+
+##### Graphs: Compare exposures reference and scenario and overlay relative risks #####
+
+# Reattached exposures to study patterns
+
+# pop_exposures <- synth_pop %>% select(id, mmets, exposure_normalised_pm25, exposure_normalised_no2, 
+                                      # exposure_normalised_noise_Lden, exposure_normalised_ndvi)
+
+# sample <- sample %>% left_join(pop_exposures)
+
+# write_csv(sample, "manchester/health/processed/sample_with_rr.csv") # for additional checking in excel
+
+##### Plot rrs mmets and exposures against assign rrs #####
+
+reference_exp <- read_csv("manchester/simulationResults/ForPaper/1_reference/health/04_exposure_and_rr/pp_exposure_2021.csv") %>%
+  mutate(mmets=mmetHr_walk + mmetHr_cycle + mmetHr_otherSport) %>% 
+  mutate(scen = "reference")
+
+safestreet_exp <- read_csv("manchester/simulationResults/ForPaper/2_safestreet/health/04_exposure_and_rr/pp_exposure_2021.csv") %>%
+  mutate(mmets=mmetHr_walk + mmetHr_cycle + mmetHr_otherSport) %>%
+  mutate(scen="safestreets")
+
+## Compare distributions
+
+### mmets
+
+exp_mmets_compare <- bind_rows(reference_exp, safestreet_exp) %>% select(age, gender, mmets, scen) %>%
+  filter(age > 20)
+
+library(ggplot2)
+
+plot_mmets_compare <- ggplot(exp_mmets_compare, aes(x = mmets, fill = scen)) +
+  geom_density(alpha = 0.7) +
+  labs(x = "MMETs", y = "Density", title = "Distribution of MMETs by Scenario") +
+  theme_minimal() +
+  scale_fill_brewer(palette = "Set2")
+
+
+plot_mmets_compare
+
+
+### noise
+
+exp_noise_compare <- bind_rows(reference_exp, safestreet_exp) %>% 
+  select(age, gender, exposure_normalised_noise_Lden, scen) %>%
+  filter(age > 20)
+
+# Calculate stats
+stats <- exp_noise_compare %>%
+  group_by(scen) %>%
+  summarize(
+    mean = mean(exposure_normalised_noise_Lden, na.rm = TRUE),
+    median = median(exposure_normalised_noise_Lden, na.rm = TRUE),
+    min = min(exposure_normalised_noise_Lden, na.rm = TRUE),
+    max = max(exposure_normalised_noise_Lden, na.rm = TRUE)
+  )
+
+# Create the plot
+plot_noise_compare <- ggplot(exp_noise_compare, aes(x = exposure_normalised_noise_Lden, fill = scen)) +
+  geom_density(alpha = 0.7) +
+  geom_vline(data = stats, aes(xintercept = mean, color = scen), linetype = "dashed", linewidth = 1) +
+  labs(x = "Noise Lden", y = "Density", title = "Distribution of Noise Lden by Scenario") +
+  theme_minimal() +
+  scale_fill_brewer(palette = "Set2") +
+  scale_color_brewer(palette = "Set2")
+
+plot_noise_compare
+
+## pm25
+
+exp_pm25_compare <- bind_rows(reference_exp, safestreet_exp) %>% 
+  select(age, gender, exposure_normalised_pm25, scen) %>%
+  filter(age > 20)
+
+# Calculate stats
+stats <- exp_pm25_compare %>%
+  group_by(scen) %>%
+  summarize(
+    mean = mean(exposure_normalised_pm25, na.rm = TRUE),
+    median = median(exposure_normalised_pm25, na.rm = TRUE),
+    min = min(exposure_normalised_pm25, na.rm = TRUE),
+    max = max(exposure_normalised_pm25, na.rm = TRUE)
+  )
+
+# Create the plot
+plot_pm25_compare <- ggplot(exp_pm25_compare, aes(x = exposure_normalised_pm25, fill = scen)) +
+  geom_density(alpha = 0.7) +
+  geom_vline(data = stats, aes(xintercept = mean, color = scen), linetype = "dashed", linewidth = 1) +
+  labs(x = "PM25", y = "Density", title = "Distribution of pm25 by Scenario") +
+  theme_minimal() +
+  scale_fill_brewer(palette = "Set2") +
+  scale_color_brewer(palette = "Set2") +
+  coord_cartesian(xlim = c(7, 20)) # Adjust xlim as needed
+
+plot_pm25_compare
+
+##no2
+
+exp_no2_compare <- bind_rows(reference_exp, safestreet_exp) %>% 
+  select(age, gender, exposure_normalised_no2, scen) %>%
+  filter(age > 20)
+
+# Calculate stats
+stats <- exp_no2_compare %>%
+  group_by(scen) %>%
+  summarize(
+    mean = mean(exposure_normalised_no2, na.rm = TRUE),
+    median = median(exposure_normalised_no2, na.rm = TRUE),
+    min = min(exposure_normalised_no2, na.rm = TRUE),
+    max = max(exposure_normalised_no2, na.rm = TRUE)
+  ) 
+
+# Create the plot
+plot_no2_compare <- ggplot(exp_no2_compare, aes(x = exposure_normalised_no2, fill = scen)) +
+  geom_density(alpha = 0.7) +
+  geom_vline(data = stats, aes(xintercept = mean, color = scen), linetype = "dashed", linewidth = 1) +
+  labs(x = "No2", y = "Density", title = "Distribution of NO2 by Scenario") +
+  theme_minimal() +
+  scale_fill_brewer(palette = "Set2") +
+  scale_color_brewer(palette = "Set2") +
+  coord_cartesian(xlim = c(10, 70)) #
+
+plot_no2_compare
+
+##ndvi
+
+exp_ndvi_compare <-  bind_rows(reference_exp, safestreet_exp) %>% 
+  select(age, gender, exposure_normalised_ndvi, scen) %>%
+  filter(age > 20)
+
+# Calculate stats
+stats <- exp_ndvi_compare %>%
+  group_by(scen) %>%
+  summarize(
+    mean = mean(exposure_normalised_ndvi, na.rm = TRUE),
+    median = median(exposure_normalised_ndvi, na.rm = TRUE),
+    min = min(exposure_normalised_ndvi, na.rm = TRUE),
+    max = max(exposure_normalised_ndvi, na.rm = TRUE)
+  ) 
+
+# Create the plot
+plot_ndvi_compare <- ggplot(exp_ndvi_compare, aes(x = exposure_normalised_ndvi, fill = scen)) +
+  geom_density(alpha = 0.7) +
+  geom_vline(data = stats, aes(xintercept = mean, color = scen), linetype = "dashed", linewidth = 1) +
+  labs(x = "NDVI", y = "Density", title = "Distribution of NDVI by Scenario") +
+  theme_minimal() +
+  scale_fill_brewer(palette = "Set2") +
+  scale_color_brewer(palette = "Set2")
+
+plot_ndvi_compare
+
+
+library(tidyr)
+library(dplyr)
+library(ggplot2)
+library(plotly)
+
+# Reshape the data
+sample_plots_long_mmets <- sample %>%
+  pivot_longer(
+    cols = starts_with("rr_PHYSICAL_ACTIVITY"),
+    names_to = "variable",
+    values_to = "value"
+  ) %>%
+  # Filter out male observations for specific cancer types
+  filter(!(variable %in% c("rr_PHYSICAL_ACTIVITY_endometrial-cancer", 
+                           "rr_PHYSICAL_ACTIVITY_breast-cancer") & 
+             sex == "male"))
+
+# Create the ggplot
+p <- ggplot(sample_plots_long_mmets, aes(x = mmets, y = value, color = variable)) +
+  geom_line() +
+  labs(x = "mmets", y = "RR Physical Activity", color = "Outcome") +
+  theme_minimal() +
+  theme(legend.position = "bottom")
+
+# Convert to interactive plotly graph
+plot_mmets_interactive <- ggplotly(p, tooltip = c("x", "y", "color"))
+
+# Improve layout
+plot_mmets_interactive <- plot_mmets_interactive %>% 
+  layout(legend = list(orientation = "h", y = -0.2),
+         hovermode = "closest")
+
+# Display the interactive plot
+plot_mmets_interactive
+
+#### Plot exposures ####
+
+## Plot rrs mmets and exposures against assign rrs. 
+
+# Reshape the data
+sample_plots_long_exposures <- sample_plots %>%
+  pivot_longer(
+    cols = starts_with("rr_AIR_POLLUTION_PM25"),
+    names_to = "variable",
+    values_to = "value"
+  )
+
+
+
+# Create the ggplot
+p <- ggplot(sample_plots_long_exposures, aes(x = exposure_normalised_pm25, y = value, color = variable)) +
+  geom_line() +
+  labs(x = "Exposure normalised PM25", y = "RR PM25", color = "Outcome") +
+  theme_minimal() +
+  theme(legend.position = "bottom")
+
+# Convert to interactive plotly graph
+plot_exposures_interactive <- ggplotly(p, tooltip = c("x", "y", "color"))
+
+# Improve layout
+plot_mmets_interactive <- plot_exposures_interactive %>% 
+  layout(legend = list(orientation = "h", y = -0.2),
+         hovermode = "closest")
+
+# Display the interactive plot
+plot_exposures_interactive
+
+# Plot distribution and overlay with risk. I think of more interest for comparisons. Move to the end
+# Save files at the end to be able to do comparisons, overlay distributions reference and scenario. 
+
+library(ggplot2)
+
+# Create the base density plot
+plot_pm25 <- ggplot(sample_plots_long_exposures, aes(x = exposure_normalised_pm25)) +
+  geom_density(fill = "skyblue", alpha = 0.5, color = "black") +  # Add color for clarity
+  labs(
+    x = "Exposure Normalised PM2.5 (Dose)",
+    y = "Density",
+    title = "Distribution of Exposure Normalised PM2.5 with Risk Ratio Overlay"
+  ) +
+  theme_minimal()
+
+
+
+# Overlay the risk ratio line plot
+
+rr_data <- read_csv("health/all_cause_pm.csv")
+
+p_pm25_risk <- plot_pm25 +
+  geom_line(data = rr_data, aes(x = dose, y = rr * 0.1), color = "red", size = 1) +   # Scale to fit
+  scale_y_continuous(
+    name = "Density",
+    sec.axis = sec_axis(~./0.1, name="Risk Ratio") # The number after the dot is a scaling factor
+  )
+
+p_pm25_risk
+

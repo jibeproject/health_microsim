@@ -50,7 +50,8 @@ pa_diseases <- DISEASE_SHORT_NAMES %>%
          TRUE ~ "fatal-and-non-fatal"
        ),
        dose = synth_pop_mmets$mmets,
-       confidence_intervals = FALSE
+       confidence_intervals = FALSE, 
+       censor_method = "WHO-DRL"
      )$rr,
      1  # Assign 1 instead of NA when conditions are not met
    )
@@ -98,10 +99,7 @@ synth_pop_mmets <- find_rr(synth_pop_mmets, read_csv("health/stroke_noise.csv"),
 
 }
 
-# compare with rrs file
-## comapre average
-## compare with Ali's method
-## compare selet
+#### Compare with java assigned rrs #####
 
 
 synth_pop_rr <- read_csv("manchester/simulationResults/ForPaper/1_reference/health/04_exposure_and_rr/pp_rr_2021.csv") %>% 
