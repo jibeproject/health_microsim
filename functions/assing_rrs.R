@@ -60,41 +60,69 @@ pa_diseases <- DISEASE_SHORT_NAMES %>%
 
 # 3) Assign relative risks exposure
 
-# Function to find the closest value in a vector
- find_closest <- function(value, vector) {
-   vector[which.min(abs(vector - value))]
- }
- 
-# Function to assign RRs only if age > 20
-find_rr <- function(df_1, df_2, exposure_name, new_col_name) {
- 
-   df_1 %>%
-     rowwise() %>%
-     mutate(!!new_col_name := ifelse(
-       age > 20,  # Apply RR only if age > 20
-       {
-         closest_dose <- find_closest({{exposure_name}}, df_2$dose)
-         df_2$rr[df_2$dose == closest_dose]
-       },
-       1  # Assign neutral RR (1) if age <= 20
-     )) %>%
-     ungroup()
- }
- 
-# # Assign RRs for PM2.5 & NO2, greenspace, and noise
-synth_pop_mmets <- find_rr(synth_pop_mmets, read_csv("health/all_cause_pm.csv"), exposure_normalised_pm25, "rr_AIR_POLLUTION_PM25_all-cause-mortality")
-synth_pop_mmets <- find_rr(synth_pop_mmets, read_csv("health/copd_pm.csv"), exposure_normalised_pm25, "rr_AIR_POLLUTION_PM25_copd")
-synth_pop_mmets <- find_rr(synth_pop_mmets, read_csv("health/ihd_pm.csv"), exposure_normalised_pm25, "rr_AIR_POLLUTION_PM25_coronary-heart-disease")
-synth_pop_mmets <- find_rr(synth_pop_mmets, read_csv("health/stroke_pm.csv"), exposure_normalised_pm25, "rr_AIR_POLLUTION_PM25_stroke")
-synth_pop_mmets <- find_rr(synth_pop_mmets, read_csv("health/lc_pm.csv"), exposure_normalised_pm25, "rr_AIR_POLLUTION_PM25_lung-cancer")
-synth_pop_mmets <- find_rr(synth_pop_mmets, read_csv("health/all_cause_no.csv"), exposure_normalised_no2, "rr_AIR_POLLUTION_NO2_all-cause-mortality")
-synth_pop_mmets <- find_rr(synth_pop_mmets, read_csv("health/diabetes_ndvi.csv"), exposure_normalised_ndvi, "rr_NDVI_diabetes")
-synth_pop_mmets <- find_rr(synth_pop_mmets, read_csv("health/stroke_ndvi.csv"), exposure_normalised_ndvi, "rr_NDVI_stroke")
-synth_pop_mmets <- find_rr(synth_pop_mmets, read_csv("health/all_cause_ndvi.csv"), exposure_normalised_ndvi, "rr_NDVI_all-cause-mortality")
-synth_pop_mmets <- find_rr(synth_pop_mmets, read_csv("health/all_cause_noise.csv"), exposure_normalised_noise_Lden, "rr_NOISE_all-cause-mortality")
-synth_pop_mmets <- find_rr(synth_pop_mmets, read_csv("health/diabates_noise.csv"), exposure_normalised_noise_Lden, "rr_NOISE_diabetes")
-synth_pop_mmets <- find_rr(synth_pop_mmets, read_csv("health/ihd_noise.csv"), exposure_normalised_noise_Lden, "rr_NOISE_coronary-heart-disease")
-synth_pop_mmets <- find_rr(synth_pop_mmets, read_csv("health/stroke_noise.csv"), exposure_normalised_noise_Lden, "rr_NOISE_stroke")
+library(data.table)
+
+# 1. Preprocess all CSV files first
+rr_tables <- list(
+  pm25_allcause = read_csv("health/all_cause_pm.csv") %>% arrange(dose),
+  pm25_copd = read_csv("health/copd_pm.csv") %>% arrange(dose),
+  pm25_ihd = read_csv("health/ihd_pm.csv") %>% arrange(dose),
+  pm25_stroke = read_csv("health/stroke_pm.csv") %>% arrange(dose),
+  pm25_lc = read_csv("health/lc_pm.csv") %>% arrange(dose),
+  no2_allcause = read_csv("health/all_cause_no.csv") %>% arrange(dose),
+  ndvi_diabetes = read_csv("health/diabetes_ndvi.csv") %>% arrange(dose),
+  ndvi_stroke = read_csv("health/stroke_ndvi.csv") %>% arrange(dose),
+  ndvi_allcause = read_csv("health/all_cause_ndvi.csv") %>% arrange(dose),
+  noise_allcause = read_csv("health/all_cause_noise.csv") %>% arrange(dose),
+  noise_diabetes = read_csv("health/diabates_noise.csv") %>% arrange(dose),
+  noise_ihd = read_csv("health/ihd_noise.csv") %>% arrange(dose),
+  noise_stroke = read_csv("health/stroke_noise.csv") %>% arrange(dose)
+)
+
+# 2. Vectorized closest value finder using binary search
+find_closest_vectorized <- function(values, ref_doses) {
+  indices <- findInterval(values, ref_doses, all.inside = TRUE)
+  ref_doses[indices]
+}
+
+# 3. Optimized RR assignment function using data.table
+
+assign_rrs <- function(dt, rr_table, exposure_col, new_col_name) {
+  # Convert to data.table if not already
+  setDT(dt)
+  
+  # Create sorted reference vectors
+  ref_doses <- rr_table$dose
+  ref_rr <- rr_table$rr
+  
+  # Vectorized closest dose calculation
+  closest_doses <- find_closest_vectorized(dt[[exposure_col]], ref_doses)
+  
+  # Direct index mapping instead of searching again
+  dt[age > 20, (new_col_name) := ref_rr[match(closest_doses[.I], ref_doses)]]
+  dt[age <= 20, (new_col_name) := 1]
+  
+  return(dt)
+}
+
+# 4. Convert synth_pop_mmets to data.table once
+setDT(synth_pop_mmets)
+
+# 5. Apply all assignments in one pass using column operations
+synth_pop_mmets <- synth_pop_mmets %>%
+  assign_rrs(rr_tables$pm25_allcause, "exposure_normalised_pm25", "rr_AIR_POLLUTION_PM25_all-cause-mortality") %>%
+  assign_rrs(rr_tables$pm25_copd, "exposure_normalised_pm25", "rr_AIR_POLLUTION_PM25_copd") %>%
+  assign_rrs(rr_tables$pm25_ihd, "exposure_normalised_pm25", "rr_AIR_POLLUTION_PM25_coronary-heart-disease") %>%
+  assign_rrs(rr_tables$pm25_stroke, "exposure_normalised_pm25", "rr_AIR_POLLUTION_PM25_stroke") %>%
+  assign_rrs(rr_tables$pm25_lc, "exposure_normalised_pm25", "rr_AIR_POLLUTION_PM25_lung-cancer") %>%
+  assign_rrs(rr_tables$no2_allcause, "exposure_normalised_no2", "rr_AIR_POLLUTION_NO2_all-cause-mortality") %>%
+  assign_rrs(rr_tables$ndvi_diabetes, "exposure_normalised_ndvi", "rr_NDVI_diabetes") %>%
+  assign_rrs(rr_tables$ndvi_stroke, "exposure_normalised_ndvi", "rr_NDVI_stroke") %>%
+  assign_rrs(rr_tables$ndvi_allcause, "exposure_normalised_ndvi", "rr_NDVI_all-cause-mortality") %>%
+  assign_rrs(rr_tables$noise_allcause, "exposure_normalised_noise_Lden", "rr_NOISE_all-cause-mortality") %>%
+  assign_rrs(rr_tables$noise_diabetes, "exposure_normalised_noise_Lden", "rr_NOISE_diabetes") %>%
+  assign_rrs(rr_tables$noise_ihd, "exposure_normalised_noise_Lden", "rr_NOISE_coronary-heart-disease") %>%
+  assign_rrs(rr_tables$noise_stroke, "exposure_normalised_noise_Lden", "rr_NOISE_stroke")
 
 
 }
@@ -123,15 +151,21 @@ library(tidyr)
 
 data_long <- compare_rr %>%
   pivot_longer(
-    cols = -scen,           # Pivot all columns except 'scen'
+    cols = -c(scen, id, age),           # Pivot all columns except 'scen'
     names_to = "variable",    # Name of the new column containing original column names
     values_to = "value"       # Name of the new column containing values
-  ) %>%
-  pivot_wider(
-    names_from = scen,      # Create new columns based on 'scen' values
-    values_from = value       # Fill new columns with 'value'
   )
 
+
+
+summary_stats <- data_long %>%
+  group_by(scen, variable) %>%
+  summarise(
+    mean_value = mean(value, na.rm = TRUE),
+    median_value = median(value, na.rm = TRUE),
+    .groups = "keep"  # Preserves grouping structure
+  ) %>%
+  ungroup()  # Remove grouping for subsequent operations
 
 
 
