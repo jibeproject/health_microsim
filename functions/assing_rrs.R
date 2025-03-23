@@ -129,44 +129,44 @@ synth_pop_mmets <- synth_pop_mmets %>%
 
 #### Compare with java assigned rrs #####
 
-
-synth_pop_rr <- read_csv("manchester/simulationResults/ForPaper/1_reference/health/04_exposure_and_rr/pp_rr_2021.csv") %>% 
-  mutate(scen="rr") %>% 
-  select(id, age, scen, starts_with(("rr"))) %>% filter(age >20)
-
-synth_pop_exp <- synth_pop_mmets %>% 
-  mutate(scen="exp") %>%  
-  select(id, age, scen, starts_with("rr")) %>%
-  rename(rr_PHYSICAL_ACTIVITY_parkinson = `rr_PHYSICAL_ACTIVITY_parkinson's-disease`,
-        rr_PHYSICAL_ACTIVITY_head_neck_cancer = `rr_PHYSICAL_ACTIVITY_head-and-neck-cancer`) %>% 
-  filter(age >20)
-
-
-colnames(synth_pop_exp) <- gsub("-", "_", colnames(synth_pop_exp))
-
-compare_rr <- bind_rows(synth_pop_rr, synth_pop_exp)
-
-library(dplyr)
-library(tidyr)
-
-data_long <- compare_rr %>%
-  pivot_longer(
-    cols = -c(scen, id, age),           # Pivot all columns except 'scen'
-    names_to = "variable",    # Name of the new column containing original column names
-    values_to = "value"       # Name of the new column containing values
-  )
-
-
-
-summary_stats <- data_long %>%
-  group_by(scen, variable) %>%
-  summarise(
-    mean_value = mean(value, na.rm = TRUE),
-    median_value = median(value, na.rm = TRUE),
-    .groups = "keep"  # Preserves grouping structure
-  ) %>%
-  ungroup()  # Remove grouping for subsequent operations
-
-
+# 
+# synth_pop_rr <- read_csv("manchester/simulationResults/ForPaper/1_reference/health/04_exposure_and_rr/pp_rr_2021.csv") %>%
+#   mutate(scen="rr") %>%
+#   select(id, age, scen, starts_with(("rr"))) %>% filter(age >20)
+# 
+# synth_pop_exp <- synth_pop_mmets %>% 
+#   mutate(scen="exp") %>%  
+#   select(id, age, scen, starts_with("rr")) %>%
+#   rename(rr_PHYSICAL_ACTIVITY_parkinson = `rr_PHYSICAL_ACTIVITY_parkinson's-disease`,
+#         rr_PHYSICAL_ACTIVITY_head_neck_cancer = `rr_PHYSICAL_ACTIVITY_head-and-neck-cancer`) %>% 
+#   filter(age >20)
+# 
+# 
+# colnames(synth_pop_exp) <- gsub("-", "_", colnames(synth_pop_exp))
+# 
+# compare_rr <- bind_rows(synth_pop_rr, synth_pop_exp)
+# 
+# library(dplyr)
+# library(tidyr)
+# 
+# data_long <- compare_rr %>%
+#   pivot_longer(
+#     cols = -c(scen, id, age),           # Pivot all columns except 'scen'
+#     names_to = "variable",    # Name of the new column containing original column names
+#     values_to = "value"       # Name of the new column containing values
+#   )
+# 
+# 
+# 
+# summary_stats <- data_long %>%
+#   group_by(scen, variable) %>%
+#   summarise(
+#     mean_value = mean(value, na.rm = TRUE),
+#     median_value = median(value, na.rm = TRUE),
+#     .groups = "keep"  # Preserves grouping structure
+#   ) %>%
+#   ungroup()  # Remove grouping for subsequent operations
+# 
+# 
 
 

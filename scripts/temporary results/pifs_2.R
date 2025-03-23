@@ -17,9 +17,9 @@ source("functions/assing_rrs.R")
 # Scenario specific data with rrs (input might be with exposures or with exposures and rrs)
 # Change per scenario
 
-# reference <- read_csv("manchester/simulationResults/ForPaper/1_reference/health/04_exposure_and_rr/pp_rr_2021.csv")
+# reference <- read_csv("manchester/simulationResults/ForPaper/1_reference/health/04_exposure_and_rr/pp_exposure_2021.csv")
 
-safestreet <- read_csv("manchester/simulationResults/ForPaper/2_safestreet/health/04_exposure_and_rr/pp_rr_2021.csv")
+safestreet <- read_csv("manchester/simulationResults/ForPaper/2_safestreet/health/04_exposure_and_rr/pp_exposure_2021.csv")
 
 # Change per scenario
 synth_pop <- safestreet
@@ -39,7 +39,6 @@ prevalence <- read.csv("manchester/health/processed/health_transitions_mancheste
     TRUE ~ as.character(sex)  # This line handles any other cases
   ))
 
-synth_pop <- safestreet
 
 ### Assign relative risks if exposures input file
 
@@ -58,9 +57,9 @@ synth_pop <- synth_pop %>%
 
 # Assign prevalence to synthetic population
 synth_pop_wprob <- synth_pop %>% 
-  rename(sex=gender) %>%
-  mutate(sex = case_when(sex == 1 ~ "male", 
-                         sex == 2 ~ "female")) %>%
+#  rename(sex=gender) %>%
+  # mutate(sex = case_when(sex == 1 ~ "male", 
+                         # sex == 2 ~ "female")) %>%
   rownames_to_column() %>%
   left_join(
     prevalence %>%
@@ -80,10 +79,10 @@ allocate_disease <- function(df) {
 # Apply function to assign diseases
 synth_pop_prev <- allocate_disease(synth_pop_wprob) %>%
   select(id, age, sex, ladcd, ladnm, ends_with("_status"), income, ethnicity, starts_with("RR"))  %>%# Ensure we only keep relevant columns
-  mutate(sex = case_when(
-    sex == 1 ~ "male",
-    sex == 2 ~ "female",
-    TRUE ~ as.character(sex))) %>%
+  # mutate(sex = case_when(
+    # sex == 1 ~ "male",
+    # sex == 2 ~ "female",
+    # TRUE ~ as.character(sex))) %>%
       mutate(
         `endometrial_cancer_status` = ifelse(sex == "male", 0, `endometrial_cancer_status`),
         `breast_cancer_status` = ifelse(sex == "male", 0, `breast_cancer_status`)
@@ -114,11 +113,11 @@ sample_long <- sample %>%
   rename(
     "parkinsons_disease_status" = "parkinson’s_disease_status"
   ) %>%
-  mutate(sex = case_when(
-    sex == 1 ~ "male",
-    sex == 2 ~ "female",
-    TRUE ~ as.character(sex)  # Keep other values unchanged
-  )) %>%
+  # mutate(sex = case_when(
+  #   sex == 1 ~ "male",
+  #   sex == 2 ~ "female",
+  #   TRUE ~ as.character(sex)  # Keep other values unchanged
+  # )) %>%
   pivot_longer(cols = c(copd_status:stroke_status), names_to = "risk_factor", values_to = "has_risk_factor")
 
 
@@ -321,6 +320,7 @@ pif_group <- dbGetQuery(con, query)
 dbDisconnect(con, shutdown = TRUE)
 
 write.csv(pif_group, "manchester/health/processed/pif_saferstreet_sex.csv")
+
 
 
 
