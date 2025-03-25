@@ -301,8 +301,6 @@ for (ind in 1:n.c){
   l <- plyr::rbind.fill(l, tbl)
 }
 
-l[l$c == 0 & l$states == 'healthy',]$freq <- 100
-
 l$c <- as.factor(l$c)
 
 l <- l |> filter(!is.na(states))
