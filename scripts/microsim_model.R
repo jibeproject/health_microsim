@@ -11,11 +11,15 @@ library(arrow)
 
 # For reproducibility set seed
 set.seed(2)
-
 options(future.globals.maxSize = +Inf)
 
-sample_size <- 100
+# Set sample_size to be greater than zero
+sample_size <- 10000
 
+# Number of cycles/years the simulation works
+n.c <- 2
+
+# Define DISEASE RISK to incorporate disease interaction
 DISEASE_RISK <- FALSE
 
 # Data ----
@@ -42,11 +46,6 @@ names(synth_pop) <- gsub("(RR_|base_)", "", names(synth_pop))
 
 # Number of individuals
 n.i <- synth_pop |> nrow()
-
-# Number of cycles
-n.c <- 10
-
-# Function to return 
 
 # Function to multiply columns with a given suffix and remove original columns
 multiply_columns_with_suffix <- function(df, suffix) {
@@ -98,6 +97,25 @@ synth_pop_wprob <- synth_pop_wprob |>
 # 
 # Matrix to save current states
 # with dimensions: (rows: number of individuals, cols: number of classes (or years) + 1 (for the 0th year))
+
+m <- matrix(nrow = n.i, ncol = n.c + 1,
+            dimnames = list(paste0("id", 1:n.i, sep = ""),
+                            paste0("c", 0:n.c, sep = "")))
+
+
+td <- synth_pop_wprob |> 
+  left_join(prev) |> 
+  dplyr::select(id, diseases) |> 
+  mutate(diseases = case_when(is.na(diseases) ~ "healthy", 
+                              TRUE ~ diseases)) |> 
+  arrange(id)
+
+# The default state is healthy for everyone - before simulation starts
+m[,1] <- td$diseases
+
+# Create a list of diseases from teh burden data
+diseases <- unique(hd$cause)
+
 
 get_state <- function(rd, cycle = 1, cause = "allc", cm, ind_spec_rate, cause_risk = 1) {
   
@@ -159,25 +177,6 @@ get_state <- function(rd, cycle = 1, cause = "allc", cm, ind_spec_rate, cause_ri
     }
   }
 }
-
-
-m <- matrix(nrow = n.i, ncol = n.c + 1,
-            dimnames = list(paste0("id", 1:n.i, sep = ""),
-                            paste0("c", 0:n.c, sep = "")))
-
-
-td <- synth_pop_wprob |> 
-  left_join(prev) |> 
-  dplyr::select(id, diseases) |> 
-  mutate(diseases = case_when(is.na(diseases) ~ "healthy", 
-                              TRUE ~ diseases)) |> 
-  arrange(id)
-
-# The default state is healthy for everyone - before simulation starts
-m[,1] <- td$diseases
-
-# Create a list of diseases from teh burden data
-diseases <- unique(hd$cause)
 
 # Start multisession
 plan(multisession)
@@ -289,7 +288,7 @@ for (incyc in 1:n.c){
 toc()
 
 # Create individual states, while ignoring the all_cause_mortality state as dead state already captures it
-l <- data.frame(states = c('healthy', 'dead', diseases |> str_subset(pattern = "all_cause_mortality", negate = TRUE)), freq = 0, c = 0)
+l <- data.frame(states = c('dead', diseases |> str_subset(pattern = "all_cause_mortality", negate = TRUE)), freq = 0, c = 0)
 for (ind in 1:n.c){
   df <- unlist(strsplit(m[, ind], " ")) |> 
     as.data.frame()
