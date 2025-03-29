@@ -11,6 +11,7 @@ library(drpa)
 library(readxl)    
 
 source("functions/assing_rrs.R")
+source("functions/pif_calc.R")
 
 ##### Read files
 

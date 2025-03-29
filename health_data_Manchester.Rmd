@@ -54,7 +54,7 @@ library(htmlwidgets)# Save interactive plots
 knitr::opts_knit$set(root.dir = dirname(getwd()))
 
 # Functions
-source("functions/interpolation.R")
+source("functions/interpolation.R") 
 source("functions/gbd_process.R")
 
 
@@ -1056,7 +1056,7 @@ lower threshold below which the min cases per 100,000 does not apply.
 
 ```{r}
 
-## Read onset disease table
+## Read onset disease table (might not use)
 
 disease_onset <- read_csv(here("health/disease_onset.csv")) %>%
   select(cause, age_onset = age)
@@ -1066,8 +1066,7 @@ disease_onset <- read_csv(here("health/disease_onset.csv")) %>%
 gbd_lads_small <- gbdp %>%
   filter(!measure == "Deaths") %>%
   left_join(disease_onset, by = "cause") %>%  # Explicitly join by cause
-  mutate(small_lads = case_when(
-    from_age > age_onset & val <= 20 ~ "yes",    
+  mutate(small_lads = case_when(val <= 20 ~ "yes",    
     TRUE ~ "no"                             
   ))
 
@@ -1086,16 +1085,14 @@ gbd_GM_small <- gbdp %>%
             val1yr_GM = sum(val1yr)) %>%
   ungroup() %>%
   left_join(disease_onset, by = "cause") %>%  # Explicitly join by cause
-  mutate(small_gm = case_when(
-    from_age > age_onset & val_GM <= 20 ~ "yes",    
+  mutate(small_gm = case_when(val_GM <= 20 ~ "yes",    
     TRUE ~ "no"                             
   ), 
   rate_1_GM=val_GM/100000)
 
 gbd_nw_small <- gbdp_nw %>% 
   left_join(disease_onset, by = "cause") %>%  # Explicitly join by cause
-  mutate(small_nw = case_when(
-    from_age > age_onset & val <= 20 ~ "yes",    
+  mutate(small_nw = case_when(val <= 20 ~ "yes",    
     TRUE ~ "no"                             
   )) %>% rename(location_region = location, 
                 val_nw = val, 
@@ -1105,8 +1102,7 @@ gbd_nw_small <- gbdp_nw %>%
 
 gbd_eng_small <- gbdp_england %>% 
   left_join(disease_onset, by = "cause") %>%  # Explicitly join by cause
-  mutate(small_eng = case_when(
-    from_age > age_onset & val <= 20 ~ "yes",    
+  mutate(small_eng = case_when(val <= 20 ~ "yes",    
     TRUE ~ "no"                             
   )) %>% rename(location_country = location, 
                 val_eng = val, 
@@ -1144,7 +1140,7 @@ gbd_combined <- left_join(gbd_lads_small, gbd_GM_small) %>%
     )
   ) %>% select(measure, sex, agediff, agegroup, from_age, to_age, cause, year, val1yr,rate_1, location)
 
-gbdp <- gbd_combined
+gbdp_combined <- gbd_combined
 
   
 ```
@@ -1157,16 +1153,17 @@ gbdp <- gbd_combined
 index <- rep(1:nrow(gbdp), gbdp$agediff)
 gbdpyrd5 <- gbdp[index,] %>%
   mutate(ageyr = from_age + sequence(gbdp$agediff) - 1)
-gbdpyrd5 <- gbdpyrd5 %>% 
-  select(measure, ageyr, sex, agegroup, from_age, to_age, cause, year, val1yr,rate_1, location)
+gbdpyrd5 <- gbdpyrd5 %>%  
+  select(measure, ageyr, sex, agegroup, from_age, to_age, cause, year, val1yr,rate_1, location) 
 
 # Apply the disaggregation function
 
-# Group data for dissaggregation
+# Group data for dissaggregation 
 
 gbdp_grp <- gbdp %>%
   group_by(measure, year, sex, cause, location) %>%
-  arrange(measure, year, sex, cause, from_age)
+  arrange(measure, year, sex, cause, from_age) 
+
 
 # Apply function (select a function from 'functions/interpolation.R'). Smooth_spline does a good job.
 gbdpyr_interp <- group_modify(gbdp_grp, disagg_smooth_spline) %>%
@@ -1213,41 +1210,41 @@ gbdpyr_interp <- gbdpyr_interp %>%
 ## Four interpolation function could be use, the best fit should be used. For now, best fit to the data assessed visually.
 
 # # # Melt the data to long format for ggplot
-# plot_data <- gbdpyr_interp %>%
-#   select(measure, cause, sex, ageyr, rate_1, val_interpolated, location) %>%
-#   pivot_longer(cols = c(rate_1, val_interpolated), names_to = "type", values_to = "value")
-# 
-# # Define output directory
-# output_dir <- "images/manchester/inc_gbd_age_sex/"
-# if (!dir.exists(output_dir)) {
-#   dir.create(output_dir, recursive = TRUE)
-# }
-# 
-# # Get unique combinations of measure, cause, sex, and location
-# combinations <- plot_data %>%
-#   distinct(measure, cause, sex, location)
-# 
-# # Generate and save plots for each combination
-# for (i in 1:nrow(combinations)) {
-#   subset_df <- plot_data %>%
-#     filter(measure == combinations$measure[i],
-#            cause == combinations$cause[i],
-#            sex == combinations$sex[i],
-#            location == combinations$location[i])
-#   p <- ggplot(subset_df, aes(x = ageyr, y = value, color = type)) +
-#     geom_line() +
-#     labs(title = paste("Measure:", combinations$measure[i],
-#                        "Cause:", combinations$cause[i],
-#                        "Sex:", combinations$sex[i],
-#                        "Location:", combinations$location[i]),
-#          x = "Age (years)",
-#          y = "Value") +
-#     theme_minimal(base_family = "Arial") +
-#     theme(panel.background = element_rect(fill = "white", color = "white"),
-#           plot.background = element_rect(fill = "white", color = "white"))
-# # # Save the plot
-#   ggsave(filename = paste0(output_dir, "plot_", i, ".png"), plot = p, width = 8, height = 6)
-# }
+plot_data <- gbdpyr_interp %>%
+  select(measure, cause, sex, ageyr, rate_1, val_interpolated, location) %>%
+  pivot_longer(cols = c(rate_1, val_interpolated), names_to = "type", values_to = "value")
+
+# Define output directory
+output_dir <- "images/manchester/inc_gbd_age_sex/"
+if (!dir.exists(output_dir)) {
+  dir.create(output_dir, recursive = TRUE)
+}
+
+# Get unique combinations of measure, cause, sex, and location
+combinations <- plot_data %>%
+  distinct(measure, cause, sex, location)
+
+# Generate and save plots for each combination
+for (i in 1:nrow(combinations)) {
+  subset_df <- plot_data %>%
+    filter(measure == combinations$measure[i],
+           cause == combinations$cause[i],
+           sex == combinations$sex[i],
+           location == combinations$location[i])
+  p <- ggplot(subset_df, aes(x = ageyr, y = value, color = type)) +
+    geom_line() +
+    labs(title = paste("Measure:", combinations$measure[i],
+                       "Cause:", combinations$cause[i],
+                       "Sex:", combinations$sex[i],
+                       "Location:", combinations$location[i]),
+         x = "Age (years)",
+         y = "Value") +
+    theme_minimal(base_family = "Arial") +
+    theme(panel.background = element_rect(fill = "white", color = "white"),
+          plot.background = element_rect(fill = "white", color = "white"))
+# # Save the plot
+  ggsave(filename = paste0(output_dir, "plot_", i, ".png"), plot = p, width = 8, height = 6)
+}
 ```
 
 # Combining All-cause Mortality and Disease Incidence Data

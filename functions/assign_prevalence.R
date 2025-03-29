@@ -28,8 +28,8 @@ synth_pop_wprob <- synth_pop %>%
   rownames_to_column() %>%
   left_join(
     prevalence %>%
-      pivot_wider(id_cols = c(age, sex, location_code), names_from = cause, values_from = prob),
-    by = c("age", "sex", "ladcd" = "location_code")) %>%
+      pivot_wider(id_cols = c(age, sex, location), names_from = cause, values_from = prob),
+    by = c("age", "sex", "ladcd" = "location")) %>%
   select(!rowname)
 
 # Function to allocate disease statuses based on probability

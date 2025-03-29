@@ -7,6 +7,9 @@
 library(splines)
 
 disagg_spline <- function(dat, key) {
+  # 
+  # dat <- gbdp_grp %>% ungroup() %>% filter(measure %in% "Incidence") %>% filter(cause %in% "liver_cancer")%>%
+  #   filter(location =="Bolton") %>% filter(sex %in% "Female")
   epsilon <- 1e-6  # Small constant to avoid log(0)
   
   with(dat, {
@@ -19,14 +22,18 @@ disagg_spline <- function(dat, key) {
     
     # Generate new x points (high-frequency), constrained to be at most 99
     new_x <- seq(min(x), min(99, max(x)), length.out = min(100, max(x) - min(x) + 1))
-    
+
     # browser()
     
     # Perform spline interpolation on the log-transformed data
     log_interpolated <- spline(x, y, xout = new_x)$y
     
+    # browser()
+    
     # Transform back from log scale by exponentiating
     interpolated <- exp(log_interpolated) 
+    
+    # browser()
     
     # Ensure that negative values do not occur after transformation
     interpolated[interpolated < 0] <- 0
@@ -36,6 +43,8 @@ disagg_spline <- function(dat, key) {
       ageyr = new_x,
       val_interpolated = interpolated
     )
+    
+    # browser()
   })
 }
 
