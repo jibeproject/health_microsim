@@ -1,14 +1,29 @@
 ---
 title: "Health output visualisation"
 author: "Ali Abbas"
-format: html
+format: 
+  html:
+    embed-resources: true
 editor: source
+execute:
+  echo: false
+  warning: false
+
 ---
 
 ```{r}
-require(tidyverse)
-require(esquisse)
-require(here)
+
+suppressPackageStartupMessages({
+  require(tidyverse)
+  require(esquisse)
+  require(here)
+  require(bslib)
+})
+
+```
+
+# Read dataset
+```{r}
 
 synth_pop <- read_csv(here("jibe health/base_pp_exposure_RR_2021.csv"))
 
@@ -18,19 +33,19 @@ zones <- zones |> distinct(ladnm, ladcd)
 
 synth_pop <- synth_pop |> arrange(id)
 
-m <- arrow::open_dataset(sources = here("data/full_sim_with_disease_inter.parquet"))
+m <- arrow::open_dataset(sources = here("data/exp_dis_inter_trans-n.c-10-n.i-2827285-n.d-19.parquet"))
 
 m <- m |> collect() |> as.data.frame() |> tibble::rowid_to_column("rid")
 
-#m <- m |> as.data.frame() |> tibble::rowid_to_column("rid")
+# m <- m |> as.data.frame() |> tibble::rowid_to_column("rid")
 
 m <- m |> cbind(synth_pop |> select(id, age, gender, ladcd, lsoa21cd))
 
 dc <- m |> pivot_longer(cols = starts_with("c")) |> 
-    mutate(unpacked = str_split(value, " ")) |> 
-    unnest() |> 
-    mutate(value = str_trim(unpacked)) |> 
-    dplyr::select(-unpacked) |> 
+  mutate(unpacked = str_split(value, " ")) |> 
+  unnest() |> 
+  mutate(value = str_trim(unpacked)) |> 
+  dplyr::select(-unpacked) |> 
   # |> 
   group_by(ladcd, name, value) |> 
   summarise(count = dplyr::n()) |> 
@@ -38,13 +53,26 @@ dc <- m |> pivot_longer(cols = starts_with("c")) |>
   filter(value != "healthy") |> 
   left_join(zones)
 
+dc <- dc |> arrange(parse_number(name)) |> 
+  mutate(name = as.factor(name))
+
+```
+
+# Plot frequency of disease/cause for each year by local authority
+```{r}
+#| warn: false
+#| message: false
+
 plotly::ggplotly(ggplot(dc) +
-                   aes(x = freq, y = name, fill = value, group = value, colour = value) +
-                   geom_bar(stat = "summary", fun = "sum", position = "dodge2") + 
+                   aes(x = freq, y = fct_inorder(name), fill = value, group = value, colour = value) +
+                   geom_point() + 
                    geom_line() +
+                   #geom_bar(stat = "summary", fun = "sum", position = "dodge2") + 
+                   #geom_line() +
                    scale_fill_hue(direction = 1) +
                    coord_flip() +
                    theme_minimal() +
-                   facet_wrap(vars(ladnm))
-)
-
+                   facet_wrap(vars(ladnm, gender))
+) |> 
+  bslib::card(full_screen = TRUE)
+```
