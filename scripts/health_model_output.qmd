@@ -25,7 +25,9 @@ suppressPackageStartupMessages({
 # Read dataset
 ```{r}
 
-synth_pop <- read_csv(here("jibe health/base_pp_exposure_RR_2021.csv"))
+# synth_pop <- read_csv(here("jibe health/base_pp_exposure_RR_2021.csv"))
+
+synth_pop <- arrow::open_dataset(sources = here("data/base_pp_exposure_RR_2021.parquet")) |> collect()
 
 zones <- read_csv(here("jibe health/zoneSystem.csv"))
 
@@ -72,7 +74,7 @@ plotly::ggplotly(ggplot(dc) +
                    scale_fill_hue(direction = 1) +
                    coord_flip() +
                    theme_minimal() +
-                   facet_wrap(vars(ladnm, gender))
+                   facet_wrap(vars(ladnm))
 ) |> 
   bslib::card(full_screen = TRUE)
 ```
