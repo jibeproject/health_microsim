@@ -24,13 +24,14 @@ synth_pop <- synth_pop %>%
 
 # Assign prevalence to synthetic population
 synth_pop_wprob <- synth_pop %>% 
-  rename(sex = gender) %>%
+  rename(sex=gender) %>%
+  select(id, age, sex, ladcd, ladnm,  starts_with("rr")) %>%
   rownames_to_column() %>%
   left_join(
     prevalence %>%
       pivot_wider(id_cols = c(age, sex, location), names_from = cause, values_from = prob),
-    by = c("age", "sex", "ladcd" = "location")) %>%
-  select(!rowname)
+    by = c("age", "sex", "ladnm" = "location")
+  )
 
 # Function to allocate disease statuses based on probability
 
@@ -43,7 +44,7 @@ allocate_disease <- function(df) {
 
 # Apply function to assign diseases
 synth_pop_prev <- allocate_disease(synth_pop_wprob) %>%
-  select(id, age, sex, ladcd, ladnm, ends_with("_status"), income, ethnicity, starts_with("RR"))  %>%# Ensure we only keep relevant columns
+  select(id, age, sex, ladcd, ladnm, ends_with("_status"), starts_with("rr"))  %>%# Ensure we only keep relevant columns
   mutate(sex = case_when(
     sex == 1 ~ "male",
     sex == 2 ~ "female",

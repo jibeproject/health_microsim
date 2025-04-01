@@ -5,8 +5,6 @@ format: html
 editor: visual
 ---
 
-
-
 ```{r}
 require(tidyverse)
 require(arrow)

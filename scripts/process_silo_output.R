@@ -2,6 +2,9 @@
 require("tidyverse")
 require("data.table")
 require("drpa")
+require("ithimr")
+require("here")
+
 
 # Define name of the scenario
 SCEN_SHORT_NAME <- 'base'
@@ -10,23 +13,33 @@ SCEN_SHORT_NAME <- 'base'
 # load pm2.5_dose_response
 source("scripts/pm2.5_dose_response.R")
 # Read all_cause_no2 DR
-all_cause_no2 <- read_csv("jibe health/health1/all_cause_no.csv") |> 
+# all_cause_no2 <- read_csv("jibe health/health1/all_cause_no.csv") |> 
+  # rename(RR = rr)
+
+all_cause_no2 <- read_csv("health/all_cause_no.csv") |> 
   rename(RR = rr)
-# Load NO2_dose_response functiom
+
+
+# Load NO2_dose_response function
 source("scripts/NO2_dose_response.R")
 
-# Load NDVI_dose_response functiom
+# Load NDVI_dose_response function
 source("scripts/ndvi_dose_response.R")
 
 # Load noise_dose_response functiom
 source("scripts/noise_dose_response.R")
 
+# list_of_files <- list.files(
+#   path = "jibe health/health1/",
+#   recursive = TRUE, pattern = "(pm|noise|ndvi)\\.csv$",
+#   full.names = TRUE
+# )
+
 list_of_files <- list.files(
-  path = "jibe health/health1/",
+  path = "health/",
   recursive = TRUE, pattern = "(pm|noise|ndvi)\\.csv$",
   full.names = TRUE
 )
-
 
 # Make them available as global datasets
 for (i in 1:length(list_of_files)) {
@@ -41,8 +54,9 @@ diabetes_noise <- diabates_noise
 rm(diabates_noise)
 
 # Read the default discease outcomes table from the ITHIM package
-DISEASE_INVENTORY <- read_csv("jibe health/health1/disease_outcomes_lookup.csv") |> 
-  mutate(pa_acronym = acronym_inJava) |> mutate(pa_acronym = str_replace_all(pa_acronym, "_", "-"),
+# DISEASE_INVENTORY <- read_csv("jibe health/health1/disease_outcomes_lookup.csv") |> 
+DISEASE_INVENTORY <- read_csv("health/disease_outcomes_lookup.csv") |>  
+mutate(pa_acronym = acronym_inJava) |> mutate(pa_acronym = str_replace_all(pa_acronym, "_", "-"),
                                                 outcome = str_replace_all(outcome, "_", "-")) |> 
   mutate(pa_acronym = case_when(pa_acronym == "parkinson" ~ "parkinson's-disease",
                                 pa_acronym == "head-neck-cancer" ~ "head-and-neck-cancer",
@@ -63,7 +77,10 @@ DISEASE_INVENTORY <- read_csv("jibe health/health1/disease_outcomes_lookup.csv")
 #                                 TRUE ~ ap_acronym)) 
   
 # Read per person exposure
-ppdf <- read_csv("jibe health/pp_exposure_2021.csv")
+# ppdf <- read_csv("jibe health/pp_exposure_2021.csv")
+
+ppdf <- read_csv("manchester/simulationResults/ForPaper/1_reference/health/04_exposure_and_rr/pp_exposure_2021.csv")
+
 # Recalculate base_mmet and rename pm_conc_base variable (although it is exposure but ITHIM pacakge expects this name)
 ppdf <- ppdf |> 
   mutate(base_mmet = mmetHr_walk + mmetHr_cycle + mmetHr_otherSport)
@@ -249,16 +266,19 @@ rr <- cbind(rr, result)
 combine_rr <- rr#multiply_similar_columns(rr)
 
 # Hist of RR_all_cause
-#hist(combine_rr$RR_base_all_cause)
+# hist(combine_rr$RR_base_all_cause)
 
 # Read dwelling dataset
-dd <- read_csv("jibe health/dd_2021.csv")
+# dd <- read_csv("jibe health/dd_2021.csv")
 
-# Attach household IDs and zone to per person data frame
-ppdf <- left_join(ppdf, dd |> dplyr::select(hhID, zone) |> rename(hhid = hhID))
+# dd <- read_csv("manchester/simulationResults/ForUrbanTransition/reference/sp_2021_2050/dd_2021.csv")
+# 
+# # Attach household IDs and zone to per person data frame
+# ppdf <- left_join(ppdf, dd |> dplyr::select(hhID, zone) |> rename(hhid = hhID))
 
-# Read zones dataset with LSOA and LAD for each zones
-zones <- read_csv("jibe health/zoneSystem.csv")
+# Read zones dataset with LSOA and LAD for each zones (Belen: no need of dd file as now exposures files comes with zones)
+# zones <- read_csv("jibe health/zoneSystem.csv")
+zones <- read_csv(here("manchester/synPop/sp_2021/zoneSystem.csv"))
 
 # Join zones with oaID (for households) to bring LSOA and LAD codes
 ppdf <- left_join(ppdf, zones |> dplyr::select(oaID, lsoa21cd, ladcd) |> rename(zone = oaID))
@@ -267,11 +287,13 @@ ppdf <- left_join(ppdf, zones |> dplyr::select(oaID, lsoa21cd, ladcd) |> rename(
 combine_rr <- left_join(combine_rr, ppdf |> dplyr::select(id, age, gender, lsoa21cd, ladcd))
 
 # write combine_rr
-write_csv(combine_rr, "jibe health/base_pp_exposure_RR_2021.csv")
+# write_csv(combine_rr, "jibe health/base_pp_exposure_RR_2021.csv")
+write_csv(combine_rr, "manchester/health/processed/base_pp_exposure_RR_2021.csv")
 
 # Disease prevalence data
-prevalence <- read.csv("jibe health/health_transitions_manchester_prevalence.csv") %>%
-  mutate(prob = 1 - exp(-rate))  # Convert rates to probabilities
+# prevalence <- read.csv("jibe health/health_transitions_manchester_prevalence.csv") %>%
+prevalence <- read_csv("manchester/health/processed/health_transitions_manchester_prevalence.csv") %>%  
+mutate(prob = 1 - exp(-rate))  # Convert rates to probabilities
 
 ### Syntehtic population for scenario
 
@@ -311,12 +333,14 @@ synth_pop_prev |>
   summarize(diseases = paste(unique(name), collapse = " ")) %>%
   ungroup() |> 
   mutate(across(diseases, ~gsub("_diseased", "", .))) |> 
-  write_csv("jibe health/prevalence_id.csv")
+  # write_csv("jibe health/prevalence_id.csv")
+  write_csv("manchester/health/processed/prevalence_id.csv")
 
 
-## DISEASE RRs ##
+## DISEASE RRs ## (Ali, do we need this code below)
 
-disease_risk <- read.csv("jibe health/health/disease risks.csv")
+# disease_risk <- read.csv("jibe health/health/disease risks.csv")
+disease_risk <- read.csv("health/disease_risks.csv")
 
 # Convert sex in sample_long from numeric (1,2) to character ("male", "female")
 sample_long <- synth_pop_prev %>%
