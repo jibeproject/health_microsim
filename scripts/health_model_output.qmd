@@ -27,15 +27,23 @@ suppressPackageStartupMessages({
 
 # synth_pop <- read_csv(here("jibe health/base_pp_exposure_RR_2021.csv"))
 
-synth_pop <- arrow::open_dataset(sources = here("data/base_pp_exposure_RR_2021.parquet")) |> collect()
+# synth_pop <- arrow::open_dataset(sources = here("data/base_pp_exposure_RR_2021.parquet")) |> collect()
 
-zones <- read_csv(here("jibe health/zoneSystem.csv"))
+synth_pop <- arrow::open_dataset(sources = here("manchester/health/processed/preliminary_results/base_pp_exposure_RR_2021.parquet")) |> collect()
+
+
+# zones <- read_csv(here("jibe health/zoneSystem.csv"))
+
+zones <- read_csv(here("manchester/synPop/sp_2021/zoneSystem.csv")) %>%
+  rename(zone = oaID)
 
 zones <- zones |> distinct(ladnm, ladcd)
 
 synth_pop <- synth_pop |> arrange(id)
 
-m <- arrow::open_dataset(sources = here("data/exp_dis_inter_trans-n.c-10-n.i-2827285-n.d-19.parquet"))
+# m <- arrow::open_dataset(sources = here("data/exp_dis_inter_trans-n.c-10-n.i-2827285-n.d-19.parquet"))
+
+m <- arrow::open_dataset(source = (here("manchester/health/processed/preliminary_results/exp_dis_inter_trans-n.c-10-n.i-2827285-n.d-19.parquet")))
 
 m <- m |> collect() |> as.data.frame() |> tibble::rowid_to_column("rid")
 
@@ -48,7 +56,6 @@ dc <- m |> pivot_longer(cols = starts_with("c")) |>
   unnest() |> 
   mutate(value = str_trim(unpacked)) |> 
   dplyr::select(-unpacked) |> 
-  # |> 
   group_by(ladcd, name, value) |> 
   summarise(count = dplyr::n()) |> 
   mutate(freq = round(count / sum(count) * 100, 1)) |> 
