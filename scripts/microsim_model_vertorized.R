@@ -8,6 +8,7 @@ library(here)
 library(drpa)
 # For fast reading/processing
 library(arrow)
+library(tictoc)
 
 library(data.table)  # For faster data operations
 library(stringi)     # For faster string operations
@@ -17,10 +18,10 @@ set.seed(2)
 options(future.globals.maxSize = +Inf)
 
 # Set sample_size to be greater than zero
-sample_size <- 10000
+sample_size <- 100000
 
 # Number of cycles/years the simulation works
-n.c <- 5
+n.c <- 20
 
 # Define DISEASE RISK to incorporate disease interaction
 DISEASE_RISK <- TRUE
