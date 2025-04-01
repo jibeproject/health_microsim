@@ -26,7 +26,7 @@ This document explains and produces estimates for the inputs for the
 health model for JIBE Manchester. The model initially has four stages
 where individuals are in a healthy state, might become diseased of one
 or more diseases, and die from any causes (all cause mortality). All
-cause mortality is also dependent on diseases statues, meaning that if a
+cause mortality is also dependent on diseases status, meaning that if a
 person has a given disease (i.e. diabetes, dementia, parkinson, cancers,
 copd) their probability of dying is higher. Diabetes is a risk factor
 for cardiovascular diseases (ischemic heart disease and stroke) and
@@ -1026,7 +1026,7 @@ Information on the average age onset of diseases is also needed to set a
 lower threshold below which the min cases per 100,000 does not apply.
 
 | Disease                                          | Average onset age                                                                                             | Source                                                                                                                                                                       |
-|--------------------------------------------------|---------------------------------------------------------------------------------------------------------------|------------------------------------------------------------------------------------------------------------------------------------------------------------------------------|
+|----------------|----------------------|-----------------------------------|
 | **Major Depressive Disorder**                    | Often emerges during adolescence or early adulthood, typically between ages 18 and 25                         | [NHS & Mental Health Foundation UK](http%20s://www.me%20ntalhealth%20.org.uk/); [National Institute for Health and Care Excellence (NIC E)](https:%20//www.nice%20.org.uk/). |
 | **Prostate Cancer**                              | Commonly diagnosed in men aged 65 and older.​                                                                  | [Cancer Research UK](https%20://www.can%20cerresearc%20huk.org/).                                                                                                            |
 | **Colon and Rectum Cancer**                      | The majority of cases are diagnosed in individuals over 50.​                                                   | [NHS Bowel Cancer Screening Progra mme](https%20://www.nhs%20.uk/condit%20ions/bowel%20-cancer-sc%20reening/).                                                               |

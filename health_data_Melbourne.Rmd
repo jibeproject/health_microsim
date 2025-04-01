@@ -21,16 +21,21 @@ editor_options:
 
 # Introduction
 
-This document explains and produces estimates for the health model for
-JIBE Melbourne. The model initially has three stages where individuals
-are in a healthy state, might become diseased, and die from any causes
-(regardless health status). For this first iteration of the model we
-need estimates of incidence and all cause mortality. A second iteration
-will be to include prevalence of disease at baseline (as opposed to all
-individuals being healthy) and add a differential all cause mortality
-risk for individuals who have one or more diseases. Last, we need to
-include trends in mortality, incidence of diseases and prevalence of
-diseases.
+This document explains and produces estimates for the inputs for the
+health model for JIBE Melbourne The model initially has four stages
+where individuals are in a healthy state, might become diseased of one
+or more diseases, and die from any causes (all cause mortality). All
+cause mortality is also dependent on diseases status, meaning that if a
+person has a given disease (i.e. diabetes, dementia, parkinson, cancers,
+copd) their probability of dying is higher. Diabetes is a risk factor
+for cardiovascular diseases (ischemic heart disease and stroke) and
+included in the model. The model does not include trend of diseases but
+assumes that current rates by age, sex and area will be observed in the
+future.
+
+The purpose of this document is to produce health inputs for all-cause
+mortality and diseases' incidence and prevalence. Prevalence is used to
+assign initial state as diseased.
 
 ```{r setup, include=FALSE}
 
@@ -72,10 +77,10 @@ and diseases incidence. For prevalence we need rates for baseline (2018)
 and later years for validation. For disease incidence and prevalence,
 data is required for the list of diseases below in Table 1, which
 correspond to the included risk factors in the model (PM2.5, NO2, noise,
-physical activity). Disease names correspond to the names from data
-source. For example, we use data from the GBD for Alzheimer's disease
-and other dementias, the corresponding systematic review and meta
-analysis (SRMA) uses a different name (All cause dementia). Given
+ndvi, physical activity). Disease names correspond to the names from
+data source. For example, we use data from the GBD for Alzheimer's
+disease and other dementias, the corresponding systematic review and
+meta analysis (SRMA) uses a different name (All cause dementia). Given
 differences in names and categories of diseases used, we provide ICD-10
 codes and aim to match up as much as possible.
 
@@ -129,7 +134,7 @@ indicated by self-report of physician diagnosis, registry data, or
 diagnostic interviews using DSM criteria of International Statistical
 Classification of Diseases and Related Health Problems, tenth edition,
 codes F32 through F33; (2) elevated depressive symptoms established
-using validated cut-offs for a drepressive screening instrument.
+using validated cut-offs for a depressive screening instrument.
 
 Data for depressive disorders is from the GBD study includes codes
 F32-F33.9 (Major depressive disorders) and F34.1 (Disthymia). We then
@@ -137,11 +142,11 @@ include data for depressive disorders for incidence and prevalence by
 age and sex (from GBD). We did not find publicly available data for
 representing inequalities in health for depression.
 
-Evidence suggest that females and younger pepoles have higher rates of
+Evidence suggest that females and younger peoples have higher rates of
 depression than males, which we capture already with age and sex
 incidence and prevalence estimates. Household income was also a
-significant predictor of pression among females. The data for this study
-is old, 2007, and cross sectional survey (10.3390/app122412685)
+significant predictor of depression among females. The data for this
+study is old, 2007, and cross sectional survey (10.3390/app122412685)
 
 [**All-cause dementia**]{.underline}
 
@@ -162,10 +167,10 @@ In Jibe we aim to represent inequalities in health, thus, we include
 inequalities in our estimates of health to the extend of this being
 possible using publicly available data. We need data by age and sex at
 the minimum, and additional data representing inequalities will be used
-as much as possible. The initial data is then by age and sex with
-additional data sources used to further dissaggregate, for example, by
+as much as possible. The initial datais then by age and sex with
+additional data sources used to further disaggregate, for example, by
 area, level of socioeconomic deprivation and education. Data to
-dissaggregate is available in different formats, for example, a relative
+dissagregate is available in different formats, for example, a relative
 risk to indicate the increased/decrease risk for a given group in
 comparison to a reference group or rates comparing different population
 groups. If relative risks are supplied, we apply those to modify the
@@ -173,7 +178,7 @@ data, if not, we need to derive a RR, for the second, we use the below
 methods developed by Chris Jackson for mortality data for Melbourne and
 we applied them more broadly across diseases, when suitable.
 
-We use the following method to disaggregate an event rate (for example,
+We use the following method to disagregate an event rate (for example,
 incidence or mortality by age and sex) by a further risk factor (such as
 socio-economic status). Given
 
@@ -309,7 +314,7 @@ plot_data <- gbdpyr %>%
   pivot_longer(cols = c(rate_1, val_interpolated), names_to = "type", values_to = "value")
 
 # Generate and save all pages
-output_dir <- here("images/inc_gbd_age_sex/")
+output_dir <- here("images/Melbourne/inc_gbd_age_sex/")
 if (!dir.exists(output_dir)) {
   dir.create(output_dir, recursive = TRUE)
 }
@@ -473,7 +478,7 @@ plot_data <- incyr %>%
   pivot_longer(cols = c(rate_1, val_interpolated), names_to = "type", values_to = "value")
 
 # Generate and save all pages
-output_dir <- here("images/inc_aihw_age_sex/")
+output_dir <- here("images/Melbourne/inc_aihw_age_sex/")
 if (!dir.exists(output_dir)) {
   dir.create(output_dir, recursive = TRUE)
 }
@@ -496,7 +501,7 @@ representing inequalities. Data sources are outlined here:
 #### Socioeconomic data from Cancer Atlas
 
 We have data from the Cancer Atlas, by SA2 area and for males, females
-and persons. This is modelled data and methods are explained here
+and persons. This is modeled data and methods are explained here
 (https://atlas.cancer.org.au/developing-a-cancer-atlas/) and here
 (https://pubmed.ncbi.nlm.nih.gov/31570101/). Data is available for the
 below cancer types and by SA2 area defined by the Australian Statistical
@@ -955,7 +960,7 @@ rates_compare_long <- compare_socio %>%
 
 
 # Create folder if it doesn't exist
-folder_path <- file.path(here("images", "inc_cancer_compare"))
+folder_path <- file.path(here("images/Melbourne/", "inc_cancer_compare"))
 if (!file.exists(folder_path)) {
   dir.create(folder_path, recursive = TRUE)
 }
@@ -1073,7 +1078,7 @@ rates_compare_long <- compare_age_sex %>%
 
 
 # Create folder if it doesn't exist
-folder_path <- file.path(here("images", "inc_cancer_compare_ave"))
+folder_path <- file.path(here("images/Melbourne/", "inc_cancer_compare_ave"))
 if (!file.exists(folder_path)) {
   dir.create(folder_path, recursive = TRUE)
 }
@@ -1168,7 +1173,7 @@ rates_compare_long <- compare_socio %>%
 )
 
 # Create folder if it doesn't exist
-folder_path <- file.path(here("images", "inc_cancer_compare_atlas_aihw_soc"))
+folder_path <- file.path(here("images/Melbourne/", "inc_cancer_compare_atlas_aihw_soc"))
 if (!file.exists(folder_path)) {
   dir.create(folder_path, recursive = TRUE)
 }
@@ -1223,21 +1228,6 @@ Notes on comparison of data sources
 In general, rates calculated with AIHW data and rates derived from ATLAS
 data are very similar, with small discrepancies for cancer with small
 incidence rates.
-
-**BELEN, please can you consider the comments below, which are copied
-from an earlier version of cancer_indicence.Rmd. They may no longer be
-the points we want to call out. Please could you also look at malignant
-melanoma, where the rates don't match well (eg Female malignant melanoma
-for most disadvantaged, Atlas rates are above average while AIHW rates
-are below average).**
-
-**STEVE, thank you, I left the relevant notes below. the pattern in the
-original ses cancer incidence data (cancer_socioeconomic) follow the
-same pattern as Chris' data and it should as it uses such data to
-produce the estimates. I have doubts on the estimates produced by ATLAS
-for this disease. Also, to note, there is a new release of cancer atlas
-data, which I will request, hopefully in the same format, so we can
-replace and compare whether it is a data issue.**
 
 -   *Esophageal cancer rates for males are higher and lower respectively
     for disadvantaged and most disadvantage and most advantaged when
@@ -1297,7 +1287,7 @@ rates_compare_long <- age_standardised_rate_soc %>%
   )
 
 # Create folder if it doesn't exist
-folder_path <- file.path(here("images", "inc_cancer_compare_ASR"))
+folder_path <- file.path(here("images/Melbourne/", "inc_cancer_compare_ASR"))
 if (!file.exists(folder_path)) {
   dir.create(folder_path, recursive = TRUE)
 }
@@ -1329,16 +1319,6 @@ for (site_val in unique(rates_compare_long$site)) {
 
 ```
 
-**SP: BELEN, please can you check the comments for this comparison.
-Following is the original comment:**
-
--   *The patterns of values is in the same direction, but aggregated
-    values from ATLAS generated data, aggregated by diseases are higher
-    that those in cancer_socioecononmic. ATLAS data aggregates,
-    depending on cancers, for the years range 2012-2016.*
-
-**I note the following**
-
 -   For most cancers (all cancers, bladder, endometrial, head and neck,
     kidney, liver, lung, malignant melanoma) the pattern of values is
     generally in the same direction in both datasets, but values from
@@ -1356,9 +1336,6 @@ Following is the original comment:**
 -   For esophageal, gastric cardia, myeloid leukemia and myeloma
     cancers, the charts are not useful because they are comparing Atlas
     values for the specific cancer against AIHW values for all cancers.
-
-**BZD: There is an update of the atlas and I requested the latest data
-in the same format so we can just replace.**
 
 #### Clean and save data
 
@@ -1669,7 +1646,7 @@ p <- ggplot(cvd_dem_dia_copd_inc,
 
 # save plot
 # Generate and save all pages
-output_dir <- file.path(here("images/inc_cvd_dem_dia_copd/"))
+output_dir <- file.path(here("images/Melbourne/inc_cvd_dem_dia_copd/"))
 if (!dir.exists(output_dir)) {
   dir.create(output_dir, recursive = TRUE)
 }
@@ -1703,7 +1680,8 @@ calibrate the model and validate, so more than one data source would be
 great.
 
 **STEVE, the below data processing provides baselines year data. Can you
-please get prevalent data for later years?**
+please get prevalent data for later years and save it in a different
+file?**
 
 ## Prevalence data by age and sex
 
@@ -1732,7 +1710,7 @@ plot_data <- gbdpyr %>%
 # output_dir <- "docs/images/prev_gbd_age_sex_spline/"
 # output_dir <- "docs/images/prev_gbd_age_sex_loess/"
 # output_dir <- "docs/images/prev_gbd_age_sex_polynomial/"
-output_dir <- file.path(here("images/prev_gbd_age_sex_smooth/"))
+output_dir <- file.path(here("images/Melbourne/prev_gbd_age_sex_smooth/"))
 if (!dir.exists(output_dir)) {
   dir.create(output_dir, recursive = TRUE)
 }
@@ -2002,7 +1980,7 @@ cancer_prev_socio <- cancer_prevalence_area %>%
 
 
 # Create folder if it doesn't exist
-folder_path <- file.path(here("images", "prev_cancer_compare"))
+folder_path <- file.path(here("images/Melbourne/", "prev_cancer_compare"))
 if (!file.exists(folder_path)) {
   dir.create(folder_path, recursive = TRUE)
 }
@@ -2228,7 +2206,7 @@ p <- ggplot(cvd_dem_dia_copd_prev,
 
 # save plot
 # Generate and save all pages
-output_dir <- file.path(here("images/prev_cvd_dem_dia_copd/"))
+output_dir <- file.path(here("images/Melbourne/prev_cvd_dem_dia_copd/"))
 if (!dir.exists(output_dir)) {
   dir.create(output_dir, recursive = TRUE)
 }
