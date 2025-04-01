@@ -8,6 +8,19 @@
 #
 
 library(shiny)
+library(bslib)
+
+ui <- page_sidebar(
+    theme = bs_theme(bootswatch = "yeti"),
+    title = paste0("Health outcomes"),
+    sidebar = sidebar(),
+    navset_card_underline(
+        id = "main_tab",
+        full_screen = TRUE,
+        nav_panel("Health Outcomes", 
+                  plotOutput("disPlot"))
+    )
+)
 
 
 # Define server logic required to draw a histogram
