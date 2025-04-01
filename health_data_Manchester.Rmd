@@ -1026,7 +1026,7 @@ Information on the average age onset of diseases is also needed to set a
 lower threshold below which the min cases per 100,000 does not apply.
 
 | Disease                                          | Average onset age                                                                                             | Source                                                                                                                                                                       |
-|------------------|---------------------|---------------------------------|
+|--------------------------------------------------|---------------------------------------------------------------------------------------------------------------|------------------------------------------------------------------------------------------------------------------------------------------------------------------------------|
 | **Major Depressive Disorder**                    | Often emerges during adolescence or early adulthood, typically between ages 18 and 25                         | [NHS & Mental Health Foundation UK](http%20s://www.me%20ntalhealth%20.org.uk/); [National Institute for Health and Care Excellence (NIC E)](https:%20//www.nice%20.org.uk/). |
 | **Prostate Cancer**                              | Commonly diagnosed in men aged 65 and older.​                                                                  | [Cancer Research UK](https%20://www.can%20cerresearc%20huk.org/).                                                                                                            |
 | **Colon and Rectum Cancer**                      | The majority of cases are diagnosed in individuals over 50.​                                                   | [NHS Bowel Cancer Screening Progra mme](https%20://www.nhs%20.uk/condit%20ions/bowel%20-cancer-sc%20reening/).                                                               |
@@ -1182,21 +1182,21 @@ gbdpyr_interp <- bind_rows(gbdpyr_interp, new_rows)
 
 rm(new_rows, age_95_data)
 
-# #Repeat LAD values for LSOA (we are not doing this, we adjust the health code to use lads for diseases data)
-# 
-# gbdpyr_interp_lsoa <- msoa %>%
-#   select(location = LAD11NM, LSOA11CD, LSOA11NM) %>% 
-#   filter(str_starts(location, "Bolton") |
-#       str_starts(location, "Bury") |
-#       str_starts(location, "Manchester") |
-#       str_starts(location, "Oldham") |
-#       str_starts(location, "Rochdale") |
-#       str_starts(location, "Salford") |
-#       str_starts(location, "Stockport") |
-#       str_starts(location, "Tameside") |
-#       str_starts(location, "Trafford") |
-#       str_starts(location, "Wigan")) %>% 
-#   left_join(gbdpyr_interp, by = "location")
+# Merge with lad zones data
+ gbdpyr_interp <- msoa %>%
+   select(ladcd = LAD11CD, location = LAD11NM) %>% 
+   distinct() %>%
+   filter(str_starts(location, "Bolton") |
+       str_starts(location, "Bury") |
+       str_starts(location, "Manchester") |
+       str_starts(location, "Oldham") |
+       str_starts(location, "Rochdale") |
+       str_starts(location, "Salford") |
+       str_starts(location, "Stockport") |
+       str_starts(location, "Tameside") |
+       str_starts(location, "Trafford") |
+       str_starts(location, "Wigan")) %>% 
+   left_join(gbdpyr_interp, by = "location")
 
 #Note: this is a very big file, so changed to RDS
 write_rds(gbdpyr_interp, here("manchester/health/processed/manchester_diseases_lad.RDS"))
@@ -1251,6 +1251,8 @@ for (i in 1:nrow(combinations)) {
 
 ```{r}
 
+### NAMES NEED TO MATCH CODE FOR HEALTH MODEL
+
 diseases <- readRDS(here("manchester/health/processed/manchester_diseases_lad.RDS"))
 allcause <- read.csv(here("manchester/health/processed/manchester_mortality_lsoa_070325.csv"))
 lsoa_11to21 <- read.csv(here("manchester/health/original/ons/lsoa_2011_to_lsoa_2021.csv"))
@@ -1259,12 +1261,12 @@ lsoa_11to21 <- read.csv(here("manchester/health/original/ons/lsoa_2011_to_lsoa_2
 
 allcause<- allcause %>%
   mutate(cause = "all_cause_mortality",
-         measure = "deaths") %>%  
-  rename(LSOA11CD = lsoa_code) %>%
-  mutate(sex=as.numeric(case_when(sex == "Males" ~ 1,
-                                  sex=="Females" ~ 2))) %>%
-  mutate(location = LSOA11CD) %>%
-  select(age, sex, location, LSOA11CD, cause, rate, measure) %>%
+         measure = "deaths") %>%
+  mutate(sex=case_when(sex == "Males" ~ "male",
+                                  sex=="Females" ~ "female"),
+         location_code = lsoa_code, 
+         age=as.numeric(age)) %>% 
+  dplyr::select(age, sex, location_code, cause, rate, measure) %>%
   mutate(location_type = "lsoa")
 
 diseases <- diseases %>% 
@@ -1273,20 +1275,17 @@ diseases <- diseases %>%
          socio = NA) %>% 
   rename(age = ageyr,
          rate = val_interpolated) %>%
-  mutate(sex=as.numeric(case_when(sex == "Male" ~ 1,
-                                  sex=="Female" ~ 2))) %>%
-  select(age, sex,location, cause, rate, measure) %>%
+  mutate(sex=case_when(sex == "Male" ~ "male",
+                                  sex=="Female" ~ "female")) %>%
+  dplyr::select(age, sex, location_code = ladcd,cause, rate, measure) %>%
   mutate(location_type = "lad")
 
-incidence <- diseases %>% filter(measure == "incidence")
+incidence <- diseases %>% filter(measure == "incidence") 
+prevalence <- diseases %>% filter(measure == "prevalence") %>%
+  mutate(sex=case_when(sex == "male" ~ 1, 
+                       sex == "female" ~ 2))
 
-prevalence <- diseases %>% filter(measure == "prevalence")
-
-health_transitions_manchester <- bind_rows(allcause, incidence) %>% 
-  left_join(lsoa_11to21 %>% 
-              select(LSOA11CD, lsoa21cd = LSOA21CD, change11to21 = CHGIND),
-            by = "LSOA11CD") %>% 
-  select(lsoa21cd, LSOA11CD, age, sex, cause, rate, change11to21, location, location_type)
+health_transitions_manchester <- bind_rows(allcause, incidence)
 
 # Save prevalence and incidence (includes deaths from all causes) separetly
 
