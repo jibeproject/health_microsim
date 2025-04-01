@@ -2679,7 +2679,7 @@ data_melbourne <- mort_disagg %>% bind_rows(cancer_incidence_area,cancer_prevale
                          measure=tolower(measure)) %>%
                   select(age, sex, sa2_code, sa2_name, educ, prob, cause, measure, socio)
 
-saveRDS(data_melbourne, file=here("melbourne/health/processed/health_transitions_melbourne.rds"))
+write_csv(data_melbourne, file=here("melbourne/health/processed/health_transitions_melbourne.csv"))
 ```
 
 # Trends
