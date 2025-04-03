@@ -17,11 +17,11 @@ library(stringi)     # For faster string operations
 set.seed(2)
 options(future.globals.maxSize = +Inf)
 
-# Set sample_size to be greater than zero
-sample_size <- 100000
+# Set sample_pro to be greater than zero
+sample_prop <- 0.001
 
 # Number of cycles/years the simulation works
-n.c <- 20
+n.c <- 50
 
 # Define DISEASE RISK to incorporate disease interaction
 DISEASE_RISK <- TRUE
@@ -30,33 +30,39 @@ DISEASE_RISK <- TRUE
 
 ## Synthetic population file with exposures and physical activity
 ## Belen (19/02/2025): for the paper we might want to start from the synth pop with PA and exposures and assign RRs.
-# synth_pop <- read_csv(here("jibe health/base_pp_exposure_RR_2021.csv"))
+synth_pop <- read_csv(here("jibe health/safestreet_pp_exposure_RR_2021.csv"))
 
-synth_pop <- read_csv("manchester/health/processed/base_pp_exposure_RR_2021.csv")
+# synth_pop <- read_csv("manchester/health/processed/base_pp_exposure_RR_2021.csv")
 
 ## Health transitions
-# hd <- read_csv(here("jibe health/health_transitions_manchester.csv")) # |> filter(cause != "head_neck_cancer")
+hd <- read_csv(here("jibe health/health_transitions_manchester.csv")) # |> filter(cause != "head_neck_cancer")
 
-hd <- read_csv("manchester/health/processed/health_transitions_manchester.csv")
+# hd <- read_csv("manchester/health/processed/health_transitions_manchester.csv")
 
 hd[hd$cause == "head_neck_cancer",]$cause <- "head_and_neck_cancer"
 
 # Read prevalence dataset
-# prev <- read_csv("jibe health/prevalence_id.csv")
+prev <- read_csv("jibe health/prevalence_id.csv")
 
-prev <- read_csv("manchester/health/processed/prevalence_id.csv")
+# prev <- read_csv("manchester/health/processed/prevalence_id.csv")
+
+# Read zones dataset
+zones <- read_csv(here("jibe health/zoneSystem.csv"))
 
 # Read risk factor
-# disease_risks <<- read_csv("jibe health/mod_disease_risks.csv")
+disease_risks <<- read_csv("jibe health/mod_disease_risks.csv")
 
-disease_risks <<- read_csv("health/mod_disease_risks.csv")
+# disease_risks <<- read_csv("health/mod_disease_risks.csv")
 
-if (sample_size > 0)
-  synth_pop <- sample_n(synth_pop, sample_size)
+if (sample_prop > 0){
+  synth_pop <- synth_pop  |> 
+    group_by(age, gender, ladcd) |> 
+    sample_frac(sample_prop)
+}
 
 synth_pop <- synth_pop |> rename(sex = gender)
 
-names(synth_pop) <- gsub("(RR_|base_)", "", names(synth_pop))
+names(synth_pop) <- gsub("(RR_|base_|safestreet_)", "", names(synth_pop))
 
 # Number of individuals
 n.i <- synth_pop |> nrow()
