@@ -1,12 +1,15 @@
 # Load libraries
 library(tidyverse) # For parallel processing
 library(future.apply) # For directory/file structure
-library(here) # For DR PA 
+library(here) 
+install.packages("remotes")
+remotes::install_github("meta-analyses/drpa")# For DR PA 
 library(drpa)
 library(arrow) # For fast reading/processing
 library(tictoc)
 library(data.table)  # For faster data operations
 library(stringi)     # For faster string operations
+
 
 #### Outside function
 
@@ -18,7 +21,7 @@ options(future.globals.maxSize = +Inf)
 sample_prop <- 0.1
 
 # Number of cycles/years the simulation works
-n.c <- 50
+n.c <- 30
 
 # Define DISEASE RISK to incorporate disease interaction (MAKE IT PART OF FUNCTION)
 DISEASE_RISK <- TRUE
@@ -36,7 +39,8 @@ base_path <- possible_paths[file.exists(possible_paths)][1]
 
 if (is.na(base_path)) stop("Base directory not found!")
 
-synth_pop <- read_csv(file.path(base_path, "ref_pp_exposure_RR_2021.csv"))
+synth_pop <- read_csv(file.path(base_path, "ref_pp_exposure_RR_2021.csv")) |> 
+  
 hd <- read_csv(file.path(base_path, "health_transitions_manchester.csv")) |> 
 hd[hd$cause == "head_neck_cancer",]$cause <- "head_and_neck_cancer"
 prev <- read_csv(file.path(base_path, "prevalence_id.csv"))
@@ -44,6 +48,8 @@ zones <- read_csv(file.path(base_path, "zoneSystem.csv"))
 disease_risks <- read_csv(file.path(base_path, "mod_disease_risks.csv"))
 
 # Take sample representative of age, gender, lad
+
+
 
 if (sample_prop > 0){
   synth_pop <- synth_pop  |> 
