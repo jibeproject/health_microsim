@@ -4,37 +4,33 @@ library(bslib)
 library(shinyWidgets)
 library(here)
 library(arrow)
+library(plotly)
+library(tidyverse)
 
 
-# Load datasets
-synth_pop <- arrow::open_dataset(sources = here("data/base_pp_exposure_RR_2021.parquet")) |> collect() |> 
-    mutate(age_group = case_when(
-        age >= 0 & age <= 4 ~ "0-4 years",
-        age >= 5 & age <= 9 ~ "5-9 years",
-        age >= 10 & age <= 14 ~ "10-14 years",
-        age >= 15 & age <= 19 ~ "15-19 years",
-        age >= 20 & age <= 24 ~ "20-24 years",
-        age >= 25 & age <= 29 ~ "25-29 years",
-        age >= 30 & age <= 34 ~ "30-34 years",
-        age >= 35 & age <= 39 ~ "35-39 years",
-        age >= 40 & age <= 44 ~ "40-44 years",
-        age >= 45 & age <= 49 ~ "45-49 years",
-        age >= 50 & age <= 54 ~ "50-54 years",
-        age >= 55 & age <= 59 ~ "55-59 years",
-        age >= 60 & age <= 64 ~ "60-64 years",
-        age >= 65 & age <= 69 ~ "65-69 years",
-        age >= 70 & age <= 74 ~ "70-74 years",
-        age >= 75 & age <= 79 ~ "75-79 years",
-        age >= 80 & age <= 84 ~ "80-84 years",
-        age >= 85 & age <= 89 ~ "85-89 years",
-        age >= 90 ~ "90plus years",
-        TRUE ~ "Unknown"))
+
+# m <- arrow::open_dataset(sources = here("data/exp_dis_inter_trans-n.c-10-n.i-2827285-n.d-19.parquet"))
+# 
+# m <- m |> to_duckdb() |> as.data.frame() |> tibble::rowid_to_column("rid")
+# 
+# # m <- m |> as.data.frame() |> tibble::rowid_to_column("rid")
+# 
+# m <- m |> cbind(synth_pop |> select(id, age, gender, ladcd, lsoa21cd))
+
+m <- arrow::open_dataset(sources = here("data/temp"))
 
 zones <- read_csv(here("jibe health/zoneSystem.csv"))
-m <- arrow::open_dataset(sources = here("data/exp_dis_inter_trans-n.c-10-n.i-2827285-n.d-19.parquet"))
-m <- m |> collect() |> as.data.frame() |> tibble::rowid_to_column("rid")
-m <- m |> cbind(synth_pop |> select(id, age, gender, ladcd, lsoa21cd))
-lad <- zones |> distinct(ladnm) |> select(ladnm) |> pull()
+    
+lad <- zones |> distinct(ladcd) |> dplyr::select(ladcd) |> pull()
+
+# m |> filter(ladcd %in% filtered_lads) |> 
+#     group_by(ladcd, name, value) |> 
+#     summarise(count = dplyr::n(), .groups = "drop") |> 
+#     mutate(freq = round(count / sum(count) * 100, 1)) |> 
+#     dplyr::filter(value != "healthy") |> 
+#     collect() |> 
+#     arrange(parse_number(name)) |> 
+#     mutate(name = as.factor(name))
 
 # mutate(AgeGroup = factor(AgeGroup, levels = c("0-4", "5-9", "10-14", "15-19", "20-24", "25-29", 
 #                                               "30-34", "35-39", "40-44", "45-49", "50-54", "55-59", 
@@ -67,7 +63,7 @@ ui <- page_sidebar(
         id = "main_tab",
         full_screen = TRUE,
         nav_panel("Health Outcomes", 
-                  plotOutput("disPlot"))
+                  plotlyOutput("out_health_plot"))
     )
 )
 
@@ -77,40 +73,107 @@ server <- function(input, output) {
     
     get_health_data <- reactive({
         
-        filtered_scens <- input$in_scens
-        filtered_cities <- cities |> filter(city %in% input$in_cities) |> dplyr::select(city) |> pull()
-    })
-
-    output$distPlot <- renderPlot({
-        # generate bins based on input$bins from ui.R
-        x    <- faithful[, 2]
-        bins <- seq(min(x), max(x), length.out = input$bins + 1)
-
-        # draw the histogram with the specified number of bins
-        hist(x, breaks = bins, col = 'darkgray', border = 'white',
-             xlab = 'Waiting time to next eruption (in mins)',
-             main = 'Histogram of waiting times')
-    })
-    
-    
-    
-    
-    # m <- m |> as.data.frame() |> tibble::rowid_to_column("rid")
-    
-    dc <- m |> pivot_longer(cols = starts_with("c")) |> 
-        mutate(unpacked = str_split(value, " ")) |> 
-        unnest() |> 
-        mutate(value = str_trim(unpacked)) |> 
-        dplyr::select(-unpacked) |> 
+        filtered_lads <- input$in_lads
+        strata <- input$in_strata
+        # c("None", "Sex", "Age Group"
+        return(
+        m |> 
+            filter(ladcd %in% filtered_lads) %>%
+            { 
+                if (strata == "None") {
+                    group_by(., ladcd, name, value)
+                } else if (strata == "Sex") {
+                    group_by(., ladcd, name, gender, value)
+                } else {
+                    group_by(., ladcd, name, age_group, value)
+                }
+            } %>% 
+            summarise(count = dplyr::n(), .groups = "drop") |> 
+            mutate(freq = round(count / sum(count) * 100, 1)) |> 
+            dplyr::filter(value != "healthy") |> 
+            collect() |> 
+            arrange(parse_number(name)) |> 
+            mutate(name = as.factor(name))
+        )
+        
+        
+        # return(m |> filter(ladcd %in% filtered_lads) |> {
+        #     if (strata == "None") {
+        #         group_by(., ladcd, name, value)
+        #     } else if (strata == "Sex"){
+        #         group_by(., ladcd, name, gender, value) 
+        #     } else{
+        #         group_by(., ladcd, name, age_group, value) 
+        #         
+        #     } 
+        # }
         # |> 
-        group_by(ladcd, name, value) |> 
-        summarise(count = dplyr::n()) |> 
-        mutate(freq = round(count / sum(count) * 100, 1)) |> 
-        filter(value != "healthy") |> 
-        left_join(zones)
+        #     summarise(count = dplyr::n(), .groups = "drop") |> 
+        #     mutate(freq = round(count / sum(count) * 100, 1)) |> 
+        #     dplyr::filter(value != "healthy") |> 
+        #     collect() |> 
+        #     arrange(parse_number(name)) |> 
+        #     mutate(name = as.factor(name)))
+        
+    })
     
-    dc <- dc |> arrange(parse_number(name)) |> 
-        mutate(name = as.factor(name))
+    
+    output$out_health_plot <- renderPlotly({
+        
+        req(input$in_lads)
+        req(input$in_strata)
+        
+        filtered_lads <- input$in_lads
+        strata <- input$in_strata
+        
+        local_df <- get_health_data()
+        
+        # write_csv(local_df, "local_df.csv")
+        
+        text_colour <- "black"
+        
+        # fname <- do.call(paste, c(as.list(filtered_scens),
+        #                           as.list(filtered_modes),
+        #                           as.list(input$in_risk_type),
+        #                           sep = "-"))
+        
+        if(nrow(local_df) < 1)
+            plotly::ggplotly(ggplot(data.frame()))
+        else{
+            
+            gg <- ggplot(local_df) +
+                aes(x = freq, y = fct_inorder(name), fill = value, group = value, colour = value) +
+                geom_point() + 
+                geom_line() +
+                scale_fill_hue(direction = 1) +
+                coord_flip() +
+                theme_minimal() +
+                facet_wrap(vars(ladcd))
+                #bslib::card(full_screen = TRUE)
+            # browser()
+            # if (SAVE_FIGURES)
+            #     ggsave(paste0("figures/", fname, ifelse(SVG, ".svg", ".png")), plot = gg, width=10, height=8)
+            
+            
+            plotly::ggplotly(gg)
+            
+            
+            # |>       plotly::config(
+            #     toImageButtonOptions = list(
+            #         format = "svg",
+            #         filename = "abc",
+            #         width = NULL,
+            #         height = NULL
+            #     )) |> layout(
+            #         margin = list(b = 50, l = 50) # to fully display the x and y axis labels
+            #     )
+            
+        }
+        
+        # browser()
+    })
+    
+    
     
 }
 
