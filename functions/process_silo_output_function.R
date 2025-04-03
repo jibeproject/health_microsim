@@ -133,7 +133,7 @@ RR_pm_base_lung_cancer <- pm2.5_dose_response(cause = "lc_pm", dose = ppdf |>
   rename(RR_pm_base_lung_cancer = rr)
 
 # Calculate pm2.5 ERF for stroke
-RR_pm_base_stroke <- pm2.5_dose_response(cause = "lc_pm", dose = ppdf |> 
+RR_pm_base_stroke <- pm2.5_dose_response(cause = "stroke_pm", dose = ppdf |> 
                                            arrange(id) |> 
                                            dplyr::select(exposure_normalised_pm25) |> 
                                            pull()) |> 
