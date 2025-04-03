@@ -1346,7 +1346,7 @@ Cancer Atlas) is saved as `cancer_incidence_final.rds`.
 cancer_incidence_area <- cancer_incidence_area %>%
   rename(cause = site) %>%
   mutate(measure = "incidence") %>%
-  select("sa2_code", "sa2_name", "socio", "cause", "measure", "age", "sex", "prob") %>%
+  select(sa2_code, sa2_name, socio, cause, measure, age, sex, prob, rate = rate_area) %>%
   mutate(socio = as.numeric(case_when(
     socio == "Most disadvantaged" ~ 1,
     socio == "Disadvantaged" ~ 2,
@@ -1663,8 +1663,10 @@ The final incidence data for non-cancers is saved as
 
 ```{r}
 
-cvd_dem_dia_copd_inc <- cvd_dem_dia_copd_inc %>% select("socio", "cause", "age", "sex", "prob") %>% mutate(measure="incidence")  %>%
-           mutate(socio=as.numeric(socio)) %>% 
+cvd_dem_dia_copd_inc <- cvd_dem_dia_copd_inc %>% 
+  select(socio, cause, age, sex, prob, rate = rate_soc) %>% 
+  mutate(measure="incidence")  %>%
+  mutate(socio=as.numeric(socio)) %>% 
   mutate(sex=as.character(sex))
 
 
@@ -2044,7 +2046,7 @@ cancer_prevalence_area <-  cancer_prevalence_area %>%
   ))) %>%
   filter(!is.na(socio)) %>% 
   rename(cause = site) %>% # Now filtering for non-classified values
-  select("sa2_code", "sa2_name", "socio", "cause", "measure", "age", "sex", "prob") 
+  select(sa2_code, sa2_name, socio, cause, measure, age, sex, prob, rate = rate_area) 
 
 
 ```
@@ -2228,7 +2230,7 @@ cvd_dem_dia_copd_prev <-  cvd_dem_dia_copd_prev %>%
     TRUE ~ NA_real_ ))) %>% # Assign NA for non-classified 
   mutate(sex=as.character(sex)) %>% 
   filter(!is.na(socio)) %>% # Now filtering for non-classified values
-  select("socio", "cause", "measure", "age", "sex", "prob") %>%
+  select(socio, cause, measure, age, sex, prob, rate = rate_soc) %>%
   mutate(socio=as.numeric(socio))
 
 
@@ -2669,17 +2671,83 @@ mort_disagg <- mort_disagg %>%
 # Combine incidence, prevalence and mortality
 
 Combine all data sources for incidence, prevalence and mortality in one
-file.
+file, then save required output files.
 
 ```{r}
 
 
-data_melbourne <- mort_disagg %>% bind_rows(cancer_incidence_area,cancer_prevalence_area,cvd_dem_dia_copd_inc,cvd_dem_dia_copd_prev, depression_incidence, depression_prevalence) %>%
-                  mutate(cause=tolower(cause), 
-                         measure=tolower(measure)) %>%
-                  select(age, sex, sa2_code, sa2_name, educ, prob, cause, measure, socio)
+data_melbourne <- mort_disagg %>% 
+  bind_rows(cancer_incidence_area, cancer_prevalence_area, 
+            cvd_dem_dia_copd_inc, cvd_dem_dia_copd_prev, 
+            depression_incidence %>% mutate(rate = val_interpolated), 
+            depression_prevalence %>% mutate(rate = val_interpolated)) %>%
+  mutate(cause=tolower(cause), 
+         measure=tolower(measure)) %>%
+  select(age, sex, sa2_code, sa2_name, educ, rate, prob, cause, measure, socio)
 
-write_csv(data_melbourne, file=here("melbourne/health/processed/health_transitions_melbourne.csv"))
+write_csv(data_melbourne, file=here("melbourne/health/processed/data_melbourne.csv"))
+
+
+# combined output file for mortality and incidence
+mort_inc_melbourne <- data_melbourne %>%
+  filter(measure %in% c("deaths", "incidence")) %>%
+  filter(!is.na(rate)) %>%  # several non-modelled cancers do not have rates for incidence
+  mutate(location_code = case_when(
+    !is.na(sa2_code) & !is.na(educ) & !is.na(socio) ~ 
+      paste(as.character(sa2_code), educ, as.character(socio), sep = "_"),
+    !is.na(sa2_code) & !is.na(educ)  ~ paste(as.character(sa2_code), educ, sep = "_"),
+    !is.na(sa2_code) & !is.na(socio) ~ paste(as.character(sa2_code), as.character(socio), sep = "_"),
+    !is.na(educ) & !is.na(socio)     ~ paste(educ, socio, sep = "_"),
+    !is.na(sa2_code)                 ~ as.character(sa2_code),
+    !is.na(socio)                    ~ as.character(socio),
+    !is.na(educ)                     ~ educ,
+    TRUE                             ~ NA
+  ),
+  location_type = case_when(
+    !is.na(sa2_code) & !is.na(educ) & !is.na(socio) ~ "SA2_educ_socio",
+    !is.na(sa2_code) & !is.na(educ)  ~ "SA2_educ",
+    !is.na(sa2_code) & !is.na(socio) ~ "SA2_socio",
+    !is.na(educ) & !is.na(socio)     ~ "educ_socio",
+    !is.na(sa2_code)                 ~ "SA2",
+    !is.na(socio)                    ~ "socio",
+    !is.na(educ)                     ~ "educ",
+    TRUE                             ~ NA
+  )) %>%
+  # mutate(cause = gsub(" ", "_", cause)) %>%
+  dplyr::select(age, sex, location_code, cause, rate, measure, location_type)
+
+write_csv(mort_inc_melbourne, 
+          file = here("melbourne/health/processed/health_transitions_melbourne_raw.csv"))
+
+# output file for prevalence
+prev_melbourne <- data_melbourne %>%
+  filter(measure == "prevalence") %>%  mutate(location_code = case_when(
+    !is.na(sa2_code) & !is.na(educ) & !is.na(socio) ~ 
+      paste(as.character(sa2_code), educ, as.character(socio), sep = "_"),
+    !is.na(sa2_code) & !is.na(educ)  ~ paste(as.character(sa2_code), educ, sep = "_"),
+    !is.na(sa2_code) & !is.na(socio) ~ paste(as.character(sa2_code), as.character(socio), sep = "_"),
+    !is.na(educ) & !is.na(socio)     ~ paste(educ, socio, sep = "_"),
+    !is.na(sa2_code)                 ~ as.character(sa2_code),
+    !is.na(socio)                    ~ as.character(socio),
+    !is.na(educ)                     ~ educ,
+    TRUE                             ~ NA
+  ),
+  location_type = case_when(
+    !is.na(sa2_code) & !is.na(educ) & !is.na(socio) ~ "SA2_educ_socio",
+    !is.na(sa2_code) & !is.na(educ)  ~ "SA2_educ",
+    !is.na(sa2_code) & !is.na(socio) ~ "SA2_socio",
+    !is.na(educ) & !is.na(socio)     ~ "educ_socio",
+    !is.na(sa2_code)                 ~ "SA2",
+    !is.na(socio)                    ~ "socio",
+    !is.na(educ)                     ~ "educ",
+    TRUE                             ~ NA
+  )) %>%
+  # mutate(cause = gsub(" ", "_", cause)) %>%
+  dplyr::select(age, sex, location_code, cause, rate, measure, location_type)
+
+write_csv(prev_melbourne, 
+          file = here("melbourne/health/processed/health_transitions_melbourne_prevalence.csv"))
+
 ```
 
 # Trends
@@ -2892,6 +2960,7 @@ mort_years <- mort_base %>%
 
 # save the output
 saveRDS(mort_years, here("melbourne/health/processed/mort_years.rds"))
+write.csv(mort_years, here("melbourne/health/processed/mort_years.csv"), row.names = F)
 
 # plot the outputs
 mort_years_long <- mort_years %>%
@@ -3064,6 +3133,7 @@ copd_prev <- copd_prev_interp %>%
 # combine and save
 prev_trends <- bind_rows(gbd_prev, dem_prev, dia_prev, copd_prev)
 saveRDS(prev_trends, file=here("melbourne/health/processed/health_prev_trends.rds"))
+write.csv(prev_trends, here("melbourne/health/processed/health_prev_trends.csv"), row.names = F)
 
 ```
 
