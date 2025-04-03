@@ -12,13 +12,13 @@ require("here")
 ##### Input data
 
 # DISEASE_INVENTORY <- read_csv("health/disease_outcomes_lookup.csv")
-# # DISEASE_INVENTORY <- read_csv("jibe health/health1/disease_outcomes_lookup.csv") 
+# DISEASE_INVENTORY <- read_csv("jibe health/health1/disease_outcomes_lookup.csv") 
 # exposures <- read_csv("manchester/simulationResults/ForPaper/1_reference/health/04_exposure_and_rr/pp_exposure_2021.csv")
-# # ppdf <- read_csv("jibe health/pp_exposure_2021.csv")
+# ppdf <- read_csv("jibe health/pp_exposure_2021.csv")
 # prevalence <- read_csv("manchester/health/processed/health_transitions_manchester_prevalence.csv")
-# # prevalence <- read.csv("jibe health/health_transitions_manchester_prevalence.csv")
+# prevalence <- read.csv("jibe health/health_transitions_manchester_prevalence.csv")
 # zones <- read_csv(here("manchester/synPop/sp_2021/zoneSystem.csv"))
-# # zones <- read_csv("jibe health/zoneSystem.csv")
+# zones <- read_csv("jibe health/zoneSystem.csv")
 # 
 # # Global variables
 # 
@@ -45,7 +45,7 @@ require("here")
 # # # Read all_cause_no2 DR
 # # all_cause_no2 <- read_csv("jibe health/health1/all_cause_no.csv") |>
 # # rename(RR = rr)
-# # 
+# #
 # all_cause_no2 <- read_csv("health/all_cause_no.csv") |>
 #   rename(RR = rr)
 # 
@@ -56,9 +56,9 @@ require("here")
 
 process_output_silo <- function(disease_inventory, population_exposures, prevalence_baseline, zone_baseline) {
 
-  
+
 # disease_inventory <- DISEASE_INVENTORY
-# population_exposures <- ppdf
+# population_exposures <- exposures
 # prevalence_baseline <- prevalence
 # zone_baseline <- zones
 
@@ -282,7 +282,7 @@ synth_pop_prev <- allocate_disease(synth_pop_wprob) %>%
     TRUE ~ as.character(sex)))
 
 
-synth_pop_prev |> 
+synth_pop_prev <- synth_pop_prev |> 
   dplyr::select(id, age, sex, contains("disease") & !contains("RR")) |> 
   pivot_longer(cols = -c(id, age, sex)) |> 
   filter(value == 1)  |> 

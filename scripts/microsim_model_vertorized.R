@@ -9,7 +9,6 @@ library(drpa)
 # For fast reading/processing
 library(arrow)
 library(tictoc)
-
 library(data.table)  # For faster data operations
 library(stringi)     # For faster string operations
 
@@ -42,17 +41,18 @@ hd <- read_csv("manchester/health/processed/health_transitions_manchester.csv")
 hd[hd$cause == "head_neck_cancer",]$cause <- "head_and_neck_cancer"
 
 # Read prevalence dataset
-prev <- read_csv("jibe health/prevalence_id.csv")
+# prev <- read_csv("jibe health/prevalence_id.csv")
 
-# prev <- read_csv("manchester/health/processed/prevalence_id.csv")
+prev <- read_csv("manchester/health/processed/prevalence_id.csv")
 
 # Read zones dataset
-zones <- read_csv(here("jibe health/zoneSystem.csv"))
+# zones <- read_csv(here("jibe health/zoneSystem.csv"))
+zones <- read_csv(here("manchester/synPop/sp_2021/zoneSystem.csv"))
 
 # Read risk factor
-disease_risks <<- read_csv("jibe health/mod_disease_risks.csv")
+# disease_risks <<- read_csv("jibe health/mod_disease_risks.csv")
 
-# disease_risks <<- read_csv("health/mod_disease_risks.csv")
+disease_risks <<- read_csv("health/mod_disease_risks.csv")
 
 if (sample_prop > 0){
   synth_pop <- synth_pop  |> 
@@ -62,7 +62,7 @@ if (sample_prop > 0){
 
 synth_pop <- synth_pop |> rename(sex = gender)
 
-names(synth_pop) <- gsub("(RR_|base_|safestreet_)", "", names(synth_pop))
+names(synth_pop) <- gsub("(RR_|base_|base_)", "", names(synth_pop))
 
 # Number of individuals
 n.i <- synth_pop |> nrow()
