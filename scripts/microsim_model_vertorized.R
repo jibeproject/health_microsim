@@ -18,7 +18,7 @@ set.seed(2)
 options(future.globals.maxSize = +Inf)
 
 # Set sample_pro to be greater than zero
-sample_prop <- 0.2
+sample_prop <- 0.001
 
 # Number of cycles/years the simulation works
 n.c <- 50
@@ -57,12 +57,12 @@ disease_risks <<- read_csv("jibe health/mod_disease_risks.csv")
 if (sample_prop > 0){
   synth_pop <- synth_pop  |> 
     group_by(age, gender, ladcd) |> 
-    sample_frac(0.2)
+    sample_frac(sample_prop)
 }
 
 synth_pop <- synth_pop |> rename(sex = gender)
 
-names(synth_pop) <- gsub("(RR_|base_)", "", names(synth_pop))
+names(synth_pop) <- gsub("(RR_|base_|safestreet_)", "", names(synth_pop))
 
 # Number of individuals
 n.i <- synth_pop |> nrow()
