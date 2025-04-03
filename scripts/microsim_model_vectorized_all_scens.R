@@ -31,10 +31,7 @@ for (scen in c("base", "safestreet", "green", "both"))
   # Define name of the scenario
   SCEN_SHORT_NAME <- scen
   
-  # SCEN_SHORT_NAME <<- "safestreet"
-  
   # Data ----
-  
   ## Synthetic population file with exposures and physical activity
   synth_pop <- read_csv(here(paste0("jibe health/", SCEN_SHORT_NAME, "_pp_exposure_RR_2021.csv")))
   
@@ -144,7 +141,10 @@ for (scen in c("base", "safestreet", "green", "both"))
                                 TRUE ~ diseases)) |> 
     arrange(id)
   
-  # The default state is healthy for everyone - before simulation starts
+  rownames(m) <- td$id
+  
+  # The default state is healthy for everyone - before simulation starts. If they have an existing disease
+  # from prevalence, it is then assigned
   m[,1] <- td$diseases
   
   # Create a list of diseases from teh burden data
