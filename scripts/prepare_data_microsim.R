@@ -54,9 +54,15 @@ SCEN_SHORT_NAME <<- 'base' # check if need changing for scenarios
 
 
 data_ref <- process_output_silo(DISEASE_INVENTORY, exposures_ref, prevalence, zones)
+write_csv(data_ref[[1]], "manchester/health/processed/prevalence_id.csv")
+write_csv(data_ref[[2]], "manchester/health/processed/ref_pp_exposure_RR_2021.csv")
 
 data_safer <- process_output_silo(DISEASE_INVENTORY, exposures_safer, prevalence, zones)
+write_csv(data_safer[[2]], "manchester/health/processed/safer_pp_exposure_RR_2021.csv")
   
 data_green <- process_output_silo(DISEASE_INVENTORY, exposures_green, prevalence, zones)
+write_csv(data_green[[2]], "manchester/health/processed/green_pp_exposure_RR_2021.csv")
   
 data_both <- process_output_silo(DISEASE_INVENTORY, exposures_both, prevalence, zones)
+write_csv(data_both[[2]], "manchester/health/processed/both_pp_exposure_RR_2021.csv")
+

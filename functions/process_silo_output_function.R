@@ -304,7 +304,7 @@ output <- list(synth_pop_prev, combine_rr)
 
 
 
-output_reference <- process_output_silo(DISEASE_INVENTORY, exposures, prevalence, zones)
+# output_reference <- process_output_silo(DISEASE_INVENTORY, exposures, prevalence, zones)
 ##### Output
 ###### Synthetic population with exposures for each scenario
 # write_csv(combine_rr, "jibe health/base_pp_exposure_RR_2021.csv")
