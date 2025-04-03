@@ -309,7 +309,7 @@ output_reference <- process_output_silo(DISEASE_INVENTORY, exposures, prevalence
 ###### Synthetic population with exposures for each scenario
 # write_csv(combine_rr, "jibe health/base_pp_exposure_RR_2021.csv")
 
-##### Prevalence save once only with basline
-write_csv(output[combine_rr], "manchester/health/processed/ref_pp_exposure_RR_2021.csv")
-# write_csv("jibe health/prevalence_id.csv")
-write_csv(output[synth_pop_prev],"manchester/health/processed/prevalence_id.csv")
+# ##### Prevalence save once only with basline
+# write_csv(output[combine_rr], "manchester/health/processed/ref_pp_exposure_RR_2021.csv")
+# # write_csv("jibe health/prevalence_id.csv")
+# write_csv(output[synth_pop_prev],"manchester/health/processed/prevalence_id.csv")
