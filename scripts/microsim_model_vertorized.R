@@ -29,15 +29,15 @@ DISEASE_RISK <- TRUE
 # Data ----
 
 ## Synthetic population file with exposures and physical activity
-## Belen (19/02/2025): for the paper we might want to start from the synth pop with PA and exposures and assign RRs.
-synth_pop <- read_csv(here("jibe health/safestreet_pp_exposure_RR_2021.csv"))
 
-# synth_pop <- read_csv("manchester/health/processed/base_pp_exposure_RR_2021.csv")
+# synth_pop <- read_csv(here("jibe health/ref_pp_exposure_RR_2021.csv"))
+
+synth_pop <- read_csv("manchester/health/processed/ref_pp_exposure_RR_2021.csv")
 
 ## Health transitions
-hd <- read_csv(here("jibe health/health_transitions_manchester.csv")) # |> filter(cause != "head_neck_cancer")
+# hd <- read_csv(here("jibe health/health_transitions_manchester.csv")) # |> filter(cause != "head_neck_cancer")
 
-# hd <- read_csv("manchester/health/processed/health_transitions_manchester.csv")
+hd <- read_csv("manchester/health/processed/health_transitions_manchester.csv")
 
 hd[hd$cause == "head_neck_cancer",]$cause <- "head_and_neck_cancer"
 
