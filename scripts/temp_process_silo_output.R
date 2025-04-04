@@ -6,7 +6,7 @@ require("ithimr")
 require("here")
 
 # Boolean variable for dir/file paths
-FILE_PATH_BELEN <- FALSE
+FILE_PATH_BELEN <- TRUE
 
 for (scen in c("green", "both", "base", "safestreet"))
   {

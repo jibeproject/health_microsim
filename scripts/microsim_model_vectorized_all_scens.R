@@ -13,6 +13,9 @@ library(tictoc)
 library(data.table)  # For faster data operations
 library(stringi)     # For faster string operations
 
+# Boolean variable for dir/file paths
+FILE_PATH_BELEN <- TRUE
+
 # For reproducibility set seed
 set.seed(2)
 options(future.globals.maxSize = +Inf)
@@ -29,11 +32,17 @@ DISEASE_RISK <- TRUE
 # for (scen in c("base", "safestreet", "green", "both"))
 {
   # Define name of the scenario
-  SCEN_SHORT_NAME <- "both"
+  SCEN_SHORT_NAME <- "base"
   
   # Data ----
   ## Synthetic population file with exposures and physical activity
-  synth_pop <- read_csv(here(paste0("jibe health/", SCEN_SHORT_NAME, "_pp_exposure_RR_2021.csv")))
+  
+  if (!FILE_PATH_BELEN){
+    synth_pop <- read_csv(here(paste0("jibe health/", SCEN_SHORT_NAME, "_pp_exposure_RR_2021.csv")))
+  }else{
+    synth_pop <- read_csv(here(paste0("manchester/health/processed/", SCEN_SHORT_NAME, "_pp_exposure_RR_2021.csv")))
+  }
+
   
   # Introduce agegroup
   synth_pop <- synth_pop |> 
@@ -46,24 +55,35 @@ DISEASE_RISK <- TRUE
   # synth_pop <- read_csv("manchester/health/processed/base_pp_exposure_RR_2021.csv")
   
   ## Health transitions
-  hd <- read_csv(here("jibe health/health_transitions_manchester.csv")) # |> filter(cause != "head_neck_cancer")
-  
-  # hd <- read_csv("manchester/health/processed/health_transitions_manchester.csv")
+  if (!FILE_PATH_BELEN){
+    hd <- read_csv(here("jibe health/health_transitions_manchester.csv"))
+  }else{
+    hd <- read_csv(here("manchester/health/processed/health_transitions_manchester.csv"))
+  }
   
   hd[hd$cause == "head_neck_cancer",]$cause <- "head_and_neck_cancer"
   
   # Read prevalence dataset
-  prev <- read_csv(paste0("jibe health/", SCEN_SHORT_NAME, "_prevalence_id.csv"))
-  
-  # prev <- read_csv("manchester/health/processed/prevalence_id.csv")
+  if (!FILE_PATH_BELEN){
+    prev <- read_csv(here(paste0("jibe health/", SCEN_SHORT_NAME, "_prevalence_id.csv")))
+  }else{
+    prev <- read_csv(here(paste0("manchester/health/processed/", SCEN_SHORT_NAME, "_prevalence_id.csv")))
+  }
   
   # Read zones dataset
-  zones <- read_csv(here("jibe health/zoneSystem.csv"))
-  
+  if (!FILE_PATH_BELEN){
+    zones <- read_csv(here("jibe health/zoneSystem.csv"))
+  }else{
+    zones <- read_csv(here("manchester/health/processed/zoneSystem.csv"))
+  }
+
   # Read risk factor
-  disease_risks <<- read_csv("jibe health/mod_disease_risks.csv")
-  
-  # disease_risks <<- read_csv("health/mod_disease_risks.csv")
+  if (!FILE_PATH_BELEN){
+    disease_risks <<- read_csv("jibe health/mod_disease_risks.csv")
+  }else{
+    disease_risks <<- read_csv("health/mod_disease_risks.csv")
+  }
+
   
   if (sample_prop > 0){
     synth_pop <- synth_pop  |> 
@@ -440,8 +460,15 @@ DISEASE_RISK <- TRUE
   df <- as.data.frame(m)
   df$id <- rownames(m)
   
-  # # # Also save state transitions as a CSV
-  arrow::write_dataset(df, paste0("data/", SCEN_SHORT_NAME, "_dis_inter_state_trans-n.c-",n.c, "-n.i-", n.i, "-n.d-", length(diseases), ".parquet"))
+  ### Also save state transitions as a CSV
+  if (!FILE_PATH_BELEN){
+    arrow::write_dataset(df, paste0("data/", SCEN_SHORT_NAME, "_dis_inter_state_trans-n.c-",n.c, "-n.i-", n.i, "-n.d-", length(diseases), ".parquet"))
+  }else{
+    arrow::write_dataset(df, paste0("manchester/health/processed/", SCEN_SHORT_NAME, "_dis_inter_state_trans-n.c-",n.c, "-n.i-", n.i, "-n.d-", length(diseases), ".parquet"))
+  }
+  
+  
+  # arrow::write_dataset(df, paste0("data/", SCEN_SHORT_NAME, "_dis_inter_state_trans-n.c-",n.c, "-n.i-", n.i, "-n.d-", length(diseases), ".parquet"))
   
   # rm(list = ls())
   
