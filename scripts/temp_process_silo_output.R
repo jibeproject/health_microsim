@@ -5,24 +5,31 @@ require("drpa")
 require("ithimr")
 require("here")
 
-# set seed - as current year
-set.seed(2025)
+# Boolean variable for dir/file paths
+FILE_PATH_BELEN <- FALSE
 
 for (scen in c("green", "both", "base", "safestreet"))
   {
+  # Set random seed variable
+  RANDOM_SEED <- 2025
+  
+  # set seed - as current year
+  set.seed(RANDOM_SEED)
+  
   # Define name of the scenario
   SCEN_SHORT_NAME <<- scen
   
-  #SCEN_SHORT_NAME <<- 'safestreet'
-  
   # load pm2.5_dose_response
   source(here("scripts/pm2.5_dose_response.R"))
+  
+  if (!FILE_PATH_BELEN){
   # Read all_cause_no2 DR
   all_cause_no2 <- read_csv(here("jibe health/health1/all_cause_no.csv")) |> 
     rename(RR = rr)
-  
-  # all_cause_no2 <- read_csv("health/all_cause_no.csv") |> 
-  #   rename(RR = rr)
+  }else{
+  all_cause_no2 <- read_csv("health/all_cause_no.csv") |>
+    rename(RR = rr)
+  }
   
   # Load NO2_dose_response function
   source(here("scripts/NO2_dose_response.R"))
@@ -33,17 +40,19 @@ for (scen in c("green", "both", "base", "safestreet"))
   # Load noise_dose_response functiom
   source(here("scripts/noise_dose_response.R"))
   
-  list_of_files <- list.files(
-    path = "jibe health/health1/",
-    recursive = TRUE, pattern = "(pm|noise|ndvi)\\.csv$",
-    full.names = TRUE
-  )
-  
-  # list_of_files <- list.files(
-  #   path = "health/",
-  #   recursive = TRUE, pattern = "(pm|noise|ndvi)\\.csv$",
-  #   full.names = TRUE
-  # )
+  if (!FILE_PATH_BELEN){
+    list_of_files <- list.files(
+      path = "jibe health/health1/",
+      recursive = TRUE, pattern = "(pm|noise|ndvi)\\.csv$",
+      full.names = TRUE
+    )
+  }else{
+    list_of_files <- list.files(
+      path = "health/",
+      recursive = TRUE, pattern = "(pm|noise|ndvi)\\.csv$",
+      full.names = TRUE
+    )
+  }
   
   # Make them available as global datasets
   for (i in 1:length(list_of_files)) {
@@ -57,8 +66,14 @@ for (scen in c("green", "both", "base", "safestreet"))
   diabetes_noise <- diabates_noise
   rm(diabates_noise)
   
+  if (!FILE_PATH_BELEN){
+    dis_inv_path <- "jibe health/health1/disease_outcomes_lookup.csv"
+  }else{
+    dis_inv_path <- "health/disease_outcomes_lookup.csv"
+  }
+  
   # Read the default discease outcomes table from the ITHIM package
-  DISEASE_INVENTORY <<- read_csv("jibe health/health1/disease_outcomes_lookup.csv") |> 
+  DISEASE_INVENTORY <<- read_csv(dis_inv_path) |> 
     #DISEASE_INVENTORY <- read_csv("health/disease_outcomes_lookup.csv") |>  
     mutate(pa_acronym = acronym_inJava) |> mutate(pa_acronym = str_replace_all(pa_acronym, "_", "-"),
                                                   outcome = str_replace_all(outcome, "_", "-")) |> 
@@ -66,15 +81,21 @@ for (scen in c("green", "both", "base", "safestreet"))
                                   pa_acronym == "head-neck-cancer" ~ "head-and-neck-cancer",
                                   TRUE ~ pa_acronym))
   
+  if (!FILE_PATH_BELEN){
+    ppdf_dir_path <- "jibe health"
+  }else{
+    ppdf_dir_path <- "manchester/simulationResults/ForPaper"
+  }
+  
   # Read per person exposure
   if (SCEN_SHORT_NAME == "base"){
-    ppdf <- read_csv(here("jibe health/1_reference/health/04_exposure_and_rr/pp_exposure_2021.csv"))
+    ppdf <- read_csv(here(ppdf_dir_path, "1_reference/health/04_exposure_and_rr/pp_exposure_2021.csv"))
   }else if (SCEN_SHORT_NAME == "safestreet"){
-    ppdf <- read_csv(here("jibe health/2_safestreet/health/04_exposure_and_rr/pp_exposure_2021.csv"))
+    ppdf <- read_csv(here(ppdf_dir_path, "2_safestreet/health/04_exposure_and_rr/pp_exposure_2021.csv"))
   }else if (SCEN_SHORT_NAME == "green"){
-    ppdf <- read_csv(here("jibe health/3_green/health/04_exposure_and_rr/pp_exposure_2021.csv"))
+    ppdf <- read_csv(here(ppdf_dir_path, "/3_green/health/04_exposure_and_rr/pp_exposure_2021.csv"))
   }else if (SCEN_SHORT_NAME == "both"){
-    ppdf <- read_csv(here("jibe health/4_both/health/04_exposure_and_rr/pp_exposure_2021.csv"))
+    ppdf <- read_csv(here(ppdf_dir_path, "/4_both/health/04_exposure_and_rr/pp_exposure_2021.csv"))
   }
   
   # ppdf <- read_csv("manchester/simulationResults/ForPaper/1_reference/health/04_exposure_and_rr/pp_exposure_2021.csv")
@@ -202,8 +223,13 @@ for (scen in c("green", "both", "base", "safestreet"))
   # Combine all columns that have the same ending by multiplying them together
   combine_rr <- rr
   
+  if (!FILE_PATH_BELEN){
+    zones_path <- "jibe health"
+  }else{
+    zones_path <- "manchester/synPop/sp_2021"
+  }
   # Read zones dataset with LSOA and LAD for each zones (Belen: no need of dd file as now exposures files comes with zones)
-  zones <- read_csv("jibe health/zoneSystem.csv")
+  zones <- read_csv(here(zones_path, "zoneSystem.csv"))
   # zones <- read_csv(here("manchester/synPop/sp_2021/zoneSystem.csv"))
   
   # Join zones with oaID (for households) to bring LSOA and LAD codes
@@ -212,13 +238,20 @@ for (scen in c("green", "both", "base", "safestreet"))
   # Add age, gender, lsoa and lad columns to RRs dataset
   combine_rr <- left_join(combine_rr, ppdf |> dplyr::select(id, age, gender, lsoa21cd, ladcd))
   
+  if (!FILE_PATH_BELEN){
+    exp_path <- "jibe health"
+  }else{
+    exp_path <- "manchester/health/processed"
+  }
+  
+  
   # write combine_rr
   if (ncol(combine_rr) == 36)
-    write_csv(combine_rr, paste0("jibe health/", SCEN_SHORT_NAME, "_pp_exposure_RR_2021.csv"))
+    write_csv(combine_rr, here(exp_path, paste0(SCEN_SHORT_NAME, "_pp_exposure_RR_2021.csv")))
   # write_csv(combine_rr, "manchester/health/processed/base_pp_exposure_RR_2021.csv")
   
   # Disease prevalence data
-  prevalence <- read_csv(here("jibe health/health_transitions_manchester_prevalence.csv")) |> 
+  prevalence <- read_csv(here(exp_path, "health_transitions_manchester_prevalence.csv")) |> 
     #prevalence <- read_csv("manchester/health/processed/health_transitions_manchester_prevalence.csv") %>%  
     mutate(prob = 1 - exp(-rate))  # Convert rates to probabilities
   
@@ -226,25 +259,25 @@ for (scen in c("green", "both", "base", "safestreet"))
   
   # 1 make use of 
   # Assign prevalence to synthetic population
-  synth_pop_wprob <- combine_rr %>% 
-    rename(sex = gender) %>%
-    rownames_to_column() %>%
+  synth_pop_wprob <- combine_rr |>  
+    rename(sex = gender) |> 
+    rownames_to_column() |> 
     left_join(
-      prevalence %>%
+      prevalence |> 
         pivot_wider(id_cols = c(age, sex, location_code), names_from = cause, values_from = prob),
-      by = c("age", "sex", "ladcd" = "location_code")) %>%
+      by = c("age", "sex", "ladcd" = "location_code")) |> 
     dplyr::select(!rowname)
   
   # 1 make use of 
   # Function to allocate disease statuses based on probability
   allocate_disease <- function(df) {
-    df %>%
+    df |> 
       mutate(across(copd:stroke, ~ ifelse(runif(dplyr::n()) < ., 1, 0), .names = "{.col}_diseased"))
   }
   
   # 1 make use of 
   # Apply function to assign diseases
-  synth_pop_prev <- allocate_disease(synth_pop_wprob) %>%
+  synth_pop_prev <- allocate_disease(synth_pop_wprob) |> 
     dplyr::select(id, age, sex, ladcd, ends_with("_diseased"), starts_with("RR"))  %>%# Ensure we only keep relevant columns
     mutate(sex = case_when(
       sex == 1 ~ "male",
@@ -257,11 +290,15 @@ for (scen in c("green", "both", "base", "safestreet"))
     pivot_longer(cols = -c(id, age, sex)) |> 
     filter(value == 1)  |> 
     group_by(id) |> 
-    summarize(diseases = paste(unique(name), collapse = " ")) %>%
+    summarize(diseases = paste(unique(name), collapse = " ")) |> 
     ungroup() |> 
     mutate(across(diseases, ~gsub("_diseased", "", .))) |> 
-    write_csv(paste0("jibe health/", SCEN_SHORT_NAME, "_prevalence_id.csv"))
+    write_csv(here(exp_path, paste0(SCEN_SHORT_NAME, "_prevalence_id.csv")))
   
-  rm(list = ls())
+  rm(list=setdiff(ls(), c("scen", "FILE_PATH_BELEN")))
+  
+  # set seed - as current year
+  set.seed(2025)
+  
   #write_csv("manchester/health/processed/prevalence_id.csv")
 }
