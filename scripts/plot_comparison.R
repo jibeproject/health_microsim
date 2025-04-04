@@ -53,6 +53,9 @@ get_summary <- function(SCEN_NAME, group_vars = NULL){
   
 }
 
+
+
+############################################## Figures by LAD ######################################################
 ##### Over time by lad
 
 dc_base <- get_summary("base", group_vars = c("ladcd", "cycle", "value")) |> mutate(scen = "reference")
@@ -140,6 +143,8 @@ if (!FILE_PATH_BELEN){
 
 zones <- zones |> distinct(ladcd, ladnm)
 
+###### Change in number of healthy people
+
 reference_df <- dc %>% filter(value == "healthy", scen == "reference")
 
 df_change <- dc |> 
@@ -165,5 +170,114 @@ g <- ggplot(df_filtered, aes(x = scen, y = count_change, fill = scen)) +
 
 plotly::ggplotly(g)
 
+###### Change in number of people alive
+
+reference_df <- dc %>% filter(value != "dead", scen == "reference") |> group_by(ladcd, scen) |> summarise(count = sum(count)) # futher grouping here as there are people in diff health states
+# Join the reference data with the original data to calculate the change in count
+df_change <- dc |>
+  filter(value != "dead") |>
+  group_by(ladcd, scen) |> summarise(count = sum(count)) |>
+  ungroup() |>
+  left_join(reference_df, by = c("ladcd"), suffix = c("", "_ref")) |>
+  mutate(count_change = count - count_ref) |>
+  dplyr::select(ladcd, scen, count_change) |>
+  left_join(zones)
+
+# Create a line plot showing the difference for the "alive" value, faceted by ladcd
+
+df_filtered <- df_change %>% filter(scen != "reference")
+
+
+g <- ggplot(df_filtered, aes(x = scen, y = count_change, fill = scen)) +
+  geom_bar(stat = "identity") +
+  facet_wrap(~ ladnm, scales = "free") +
+  labs(title = "Change in number of life years by scenario and local district",
+       x = "Scenario",
+       y = "Count Change") +
+  theme_minimal()
+
+
+plotly::ggplotly(g)
+
+
+##### Change incidence
+
+### filter largest diseases as per pifs
+
+reference_df <- dc %>% filter(!value %in% c("dead", "healthy"), scen == "reference")
+
+# Join the reference data with the original data to calculate the change in count
+df_change <- dc |>
+  filter(!value %in% c("dead", "healthy")) |>
+  left_join(reference_df, by = c("ladcd", "value"), suffix = c("", "_ref")) |>
+  mutate(count_change = count - count_ref) |>
+  dplyr::select(ladcd, scen, count_change, count, count_ref, value) |>
+  left_join(zones)
+
+# Create a line plot showing the difference for the "alive" value, faceted by ladcd
+
+df_filtered <- df_change %>% filter(scen != "reference") %>% 
+                filter(value %in% c("all_cause_dementia" , "coronary_heart_disease",
+                                    "stroke", "diabetes", "depression"))
+
+
+g <- ggplot(df_filtered, aes(x = scen, y = count_change, fill = value)) +
+  geom_bar(stat = "identity", position = position_dodge(width = 0.8)) +
+  facet_wrap(~ ladnm, scales = "free") +
+  labs(
+    title = "Change in number of cases of diseases by scenario and local district",
+    x = "Scenario",
+    y = "Change in Number of Cases",
+    fill = "Disease"
+  ) +
+  theme_minimal()
+
+
+
+plotly::ggplotly(g)
+
+
+
+####### Cumulative by sex
+
+dc_base <- get_summary("base", group_vars = c("sex", "value")) |> mutate(scen = "reference")
+dc_green <- get_summary("green", group_vars = c("sex", "value")) |> mutate(scen = "green")
+dc_safestreet <- get_summary("safestreet", group_vars = c("sex", "value")) |> mutate(scen = "safestreet")
+dc_both <- get_summary("both", group_vars = c("sex", "value")) |> mutate(scen = "both")
+
+dc <- plyr::rbind.fill(dc_base, dc_green, dc_safestreet, dc_both)
+
+if (!FILE_PATH_BELEN){
+  zones <- read_csv(here("jibe health/zoneSystem.csv"))
+}else{
+  zones <- read_csv(here("manchester/health/processed/zoneSystem.csv"))
+}
+
+zones <- zones |> distinct(ladcd, ladnm)
+
+reference_df <- dc %>% filter(value == "healthy", scen == "reference")
+
+df_change <- dc |> 
+  filter(value == "healthy") |>
+  left_join(reference_df, by = "ladcd", suffix = c("", "_ref")) |>
+  mutate(count_change = count - count_ref) |>
+  dplyr::select(ladcd, scen, count, count_ref, count_change) |> 
+  left_join(zones)
+
+
+# Filter out the 'reference' scenario
+df_filtered <- df_change %>% filter(scen != "reference")
+
+# Create the bar chart
+g <- ggplot(df_filtered, aes(x = scen, y = count_change, fill = scen)) +
+  geom_bar(stat = "identity") +
+  facet_wrap(~ ladnm, scales = "free") +
+  labs(title = "Change in number of healthy people by Scenario and local district",
+       x = "Scenario",
+       y = "Count Change") +
+  theme_minimal()
+
+
+plotly::ggplotly(g)
 
 
