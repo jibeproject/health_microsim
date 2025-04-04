@@ -8,35 +8,70 @@ library(plotly)
 library(tidyverse)
 
 
+# Boolean variable for dir/file paths
+FILE_PATH_BELEN <- FALSE
 
-# m <- arrow::open_dataset(sources = here("data/exp_dis_inter_trans-n.c-10-n.i-2827285-n.d-19.parquet"))
-# 
-# m <- m |> to_duckdb() |> as.data.frame() |> tibble::rowid_to_column("rid")
-# 
-# # m <- m |> as.data.frame() |> tibble::rowid_to_column("rid")
-# 
-# m <- m |> cbind(synth_pop |> select(id, age, gender, ladcd, lsoa21cd))
+get_summary <- function(SCEN_NAME){
+    
+    if (!FILE_PATH_BELEN){
+        m <- arrow::open_dataset(here(paste0("data/", SCEN_NAME, "_dis_inter_state_trans-n.c-10-n.i-28269-n.d-19.parquet")))
+    }else{
+        m <- arrow::open_dataset(here(paste0("manchester/health/processed/", SCEN_NAME, "_dis_inter_state_trans-n.c-10-n.i-28269-n.d-19.parquet")))
+    }
+    
+    
+    ## Synthetic population file with exposures and physical activity
+    if (!FILE_PATH_BELEN){
+        synth_pop <- read_csv(here(paste0("jibe health/", SCEN_NAME, "_pp_exposure_RR_2021.csv")))
+    }else{
+        synth_pop <- read_csv(here(paste0("manchester/health/processed/", SCEN_NAME, "_pp_exposure_RR_2021.csv")))
+    }
+    
+    # Introduce agegroup
+    synth_pop <- synth_pop |> 
+        mutate(agegroup = cut(age, c(0, 25, 45, 65, 85, Inf),
+                              right=FALSE, include.lowest = TRUE))
+    
+    m <- m |> collect() 
+    
+    m$id <- as.numeric(m$id)
+    
+    m <- m |> left_join(synth_pop |> select(id, age, agegroup, gender, ladcd, lsoa21cd))
+    
+    return(m |> pivot_longer(cols = starts_with("c")) |> 
+               mutate(unpacked = str_split(value, " ")) |> 
+               unnest() |> 
+               mutate(value = str_trim(unpacked)) |> 
+               dplyr::select(-unpacked) |> 
+               mutate(value = str_replace_all(value, fixed("parkinson’s_disease"), "parkinson")) |> 
+               group_by(ladcd, name, agegroup, gender, value) |> 
+               summarise(count = dplyr::n()) |> 
+               mutate(freq = round(count / sum(count) * 100, 1)) |> 
+               arrange(parse_number(name)) |> 
+               mutate(name = as.factor(name))
+    )
+    
+    
+    
+}
 
-m <- arrow::open_dataset(sources = here("data/temp"))
+dc_base <- get_summary("base") |> mutate(scen = "reference")
+dc_green <- get_summary("green") |> mutate(scen = "green")
+dc_safestreet <- get_summary("safestreet") |> mutate(scen = "safestreet")
+dc_both <- get_summary("both") |> mutate(scen = "both")
+
+dc <- plyr::rbind.fill(dc_base, dc_green, dc_safestreet, dc_both)
+
+# Filter the data for the "healthy" value and reference scenario
+reference_df <- dc |> filter(value == "healthy", scen == "reference")
 
 zones <- read_csv(here("jibe health/zoneSystem.csv"))
-    
-lad <- zones |> distinct(ladcd) |> dplyr::select(ladcd) |> pull()
 
-# m |> filter(ladcd %in% filtered_lads) |> 
-#     group_by(ladcd, name, value) |> 
-#     summarise(count = dplyr::n(), .groups = "drop") |> 
-#     mutate(freq = round(count / sum(count) * 100, 1)) |> 
-#     dplyr::filter(value != "healthy") |> 
-#     collect() |> 
-#     arrange(parse_number(name)) |> 
-#     mutate(name = as.factor(name))
+zones <- zones |> distinct(ladcd, ladnm)
 
-# mutate(AgeGroup = factor(AgeGroup, levels = c("0-4", "5-9", "10-14", "15-19", "20-24", "25-29", 
-#                                               "30-34", "35-39", "40-44", "45-49", "50-54", "55-59", 
-#                                               "60-64", "65-69", "70-74", "75-79", "80-84", "85-89", 
-#                                               "90-94", "95+"), ordered = TRUE),
-# 
+# Convert the data frame into a named vector for pickerInput
+zones_in <- setNames(zones$ladcd, zones$ladnm)
+
 # zones_var <- c("Sex" = "imd10",
 #            "Age " = "CAR_SC",
 #            "Bus" = "BUS_SC",
@@ -48,8 +83,8 @@ ui <- page_sidebar(
     sidebar = sidebar(
         pickerInput(inputId = "in_lads", 
                     label = "Local Authority",
-                    choices = lad,
-                    selected = lad,
+                    choices = zones_in,
+                    selected = zones_in,
                     options = list(`actions-box` = TRUE), 
                     multiple = TRUE),
         
@@ -75,45 +110,35 @@ server <- function(input, output) {
         
         filtered_lads <- input$in_lads
         strata <- input$in_strata
+        
+        # browser()
+        
         # c("None", "Sex", "Age Group"
         return(
-        m |> 
-            filter(ladcd %in% filtered_lads) %>%
-            { 
-                if (strata == "None") {
-                    group_by(., ladcd, name, value)
-                } else if (strata == "Sex") {
-                    group_by(., ladcd, name, gender, value)
-                } else {
-                    group_by(., ladcd, name, age_group, value)
-                }
-            } %>% 
-            summarise(count = dplyr::n(), .groups = "drop") |> 
-            mutate(freq = round(count / sum(count) * 100, 1)) |> 
-            dplyr::filter(value != "healthy") |> 
-            collect() |> 
-            arrange(parse_number(name)) |> 
-            mutate(name = as.factor(name))
-        )
-        
-        
-        # return(m |> filter(ladcd %in% filtered_lads) |> {
-        #     if (strata == "None") {
-        #         group_by(., ladcd, name, value)
-        #     } else if (strata == "Sex"){
-        #         group_by(., ladcd, name, gender, value) 
-        #     } else{
-        #         group_by(., ladcd, name, age_group, value) 
-        #         
-        #     } 
-        # }
-        # |> 
-        #     summarise(count = dplyr::n(), .groups = "drop") |> 
-        #     mutate(freq = round(count / sum(count) * 100, 1)) |> 
-        #     dplyr::filter(value != "healthy") |> 
-        #     collect() |> 
-        #     arrange(parse_number(name)) |> 
-        #     mutate(name = as.factor(name)))
+            # Join the reference data with the original data to calculate the change in count
+            dc |> 
+                filter(value == "healthy" & ladcd %in% filtered_lads) %>%
+                {
+                    if (strata == "None") {
+                        left_join(., reference_df, by = c("ladcd", "name"), suffix = c("", "_ref")) 
+                    } else if (strata == "Sex") {
+                        left_join(., reference_df, by = c("ladcd", "name", "gender"), suffix = c("", "_ref")) 
+                    } else {
+                        left_join(., reference_df, by = c("ladcd", "name", "agegroup"), suffix = c("", "_ref")) 
+                    }
+                } %>%
+                mutate(count_change = count - count_ref) %>% {
+                    if (strata == "None") {
+                        group_by(., ladcd, name, scen) 
+                    } else if (strata == "Sex") {
+                        group_by(., ladcd, name, gender, scen)
+                    } else {
+                        group_by(., ladcd, name, agegroup, scen)
+                    }
+                } %>%
+                summarise(count_change = sum(count_change), .groups = "keep") |> 
+                left_join(zones)
+            )
         
     })
     
@@ -128,9 +153,13 @@ server <- function(input, output) {
         
         local_df <- get_health_data()
         
+        
         # write_csv(local_df, "local_df.csv")
         
         text_colour <- "black"
+        
+        if (strata == "Sex")
+            browser()
         
         # fname <- do.call(paste, c(as.list(filtered_scens),
         #                           as.list(filtered_modes),
@@ -140,15 +169,24 @@ server <- function(input, output) {
         if(nrow(local_df) < 1)
             plotly::ggplotly(ggplot(data.frame()))
         else{
-            
-            gg <- ggplot(local_df) +
-                aes(x = freq, y = fct_inorder(name), fill = value, group = value, colour = value) +
-                geom_point() + 
+            gg <- ggplot(local_df, aes(x = factor(name, levels = paste0("c", 0:10)), y = count_change, color = scen, group = scen)) +
                 geom_line() +
-                scale_fill_hue(direction = 1) +
-                coord_flip() +
-                theme_minimal() +
-                facet_wrap(vars(ladcd))
+                geom_point() +
+                {
+                    if (strata == "None") {
+                        facet_wrap(~ ladnm)
+                    } else if (strata == "Sex") {
+                        facet_wrap(~ladnm + gender)
+                    } else {
+                        facet_wrap(~ladnm + agegroup)
+                    }
+                } +
+                labs(title = "Change in Count for Healthy Value Compared to Reference",
+                     x = "Year",
+                     y = "Change in Count") +
+                theme_minimal()
+            
+                
                 #bslib::card(full_screen = TRUE)
             # browser()
             # if (SAVE_FIGURES)
