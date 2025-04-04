@@ -2,12 +2,27 @@ require(tidyverse)
 require(here)
 require(arrow)
 
+# Boolean variable for dir/file paths
+FILE_PATH_BELEN <- TRUE
+
+
 get_summary <- function(SCEN_NAME){
   
-  m <- arrow::open_dataset(paste0("data/", SCEN_NAME, "_dis_inter_state_trans-n.c-10-n.i-28269-n.d-19.parquet/"))
+  SCEN_NAME <- "base"
+  
+  if (!FILE_PATH_BELEN){
+    m <- arrow::open_dataset(paste0("data/", SCEN_NAME, "_dis_inter_state_trans-n.c-10-n.i-28269-n.d-19.parquet/"))
+  }else{
+    m <- arrow::open_dataset(paste0("manchester/health/processed/", SCEN_NAME, "_dis_inter_state_trans-n.c-10-n.i-28269-n.d-19.parquet/"))
+  }
+  
   
   ## Synthetic population file with exposures and physical activity
-  synth_pop <- read_csv(here(paste0("jibe health/", SCEN_NAME, "_pp_exposure_RR_2021.csv")))
+  if (!FILE_PATH_BELEN){
+    synth_pop <- read_csv(here(paste0("jibe health/", SCEN_NAME, "_pp_exposure_RR_2021.csv")))
+  }else{
+    synth_pop <- read_csv(here(paste0("manchester/health/processed/", SCEN_NAME, "_pp_exposure_RR_2021.csv")))
+  }
   
   # Introduce agegroup
   synth_pop <- synth_pop |> 
@@ -70,3 +85,37 @@ g <- ggplot(df_change, aes(x = factor(name, levels = paste0("c", 0:10)), y = cou
   theme_minimal()
 
 plotly::ggplotly(g)
+
+# Filter the data for the "dead" value and reference scenario
+reference_df <- dc %>% filter(value != "dead", scen == "reference") |> group_by(name, ladcd, scen) |> summarise(count = sum(count))
+# Join the reference data with the original data to calculate the change in count
+df_change <- dc |>
+  filter(value != "dead") |>
+  group_by(name, ladcd, scen) |> summarise(count = sum(count)) |>
+  ungroup() |>
+  left_join(reference_df, by = c("ladcd", "name"), suffix = c("", "_ref")) |>
+  mutate(count_change = count - count_ref) |>
+  select(ladcd, name, scen, count_change) |>
+  left_join(zones)
+# Create a line plot showing the difference for the "alive" value, faceted by ladcd
+g <- ggplot(df_change, aes(x = factor(name, levels = paste0("c", 0:10)), y = count_change, color = scen, group = scen)) +
+  geom_line() +
+  geom_point() +
+  facet_wrap(~ ladnm) +
+  labs(title = "Change in Count for Alive Individuals Compared to Reference",
+       x = "Year",
+       y = "Change in Count") +
+  theme_minimal()
+plotly::ggplotly(g)
+
+
+
+
+
+
+
+
+
+
+
+
