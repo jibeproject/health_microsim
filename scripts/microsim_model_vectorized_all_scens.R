@@ -26,10 +26,10 @@ n.c <- 10
 # Define DISEASE RISK to incorporate disease interaction
 DISEASE_RISK <- TRUE
 
-for (scen in c("base", "safestreet", "green", "both"))
-  {
+# for (scen in c("base", "safestreet", "green", "both"))
+{
   # Define name of the scenario
-  SCEN_SHORT_NAME <- scen
+  SCEN_SHORT_NAME <- "both"
   
   # Data ----
   ## Synthetic population file with exposures and physical activity
@@ -37,8 +37,8 @@ for (scen in c("base", "safestreet", "green", "both"))
   
   # Introduce agegroup
   synth_pop <- synth_pop |> 
-  mutate(agegroup = cut(age, c(0, 25, 45, 65, 85, Inf),
-                        right=FALSE, include.lowest = TRUE))
+    mutate(agegroup = cut(age, c(0, 25, 45, 65, 85, Inf),
+                          right=FALSE, include.lowest = TRUE))
   
   # Rename parkinson's disease to parkinson
   colnames(synth_pop) <- gsub("parkinson's_disease", "parkinson", colnames(synth_pop))
@@ -435,8 +435,13 @@ for (scen in c("base", "safestreet", "green", "both"))
   # # # Save the diagram
   # ggsave(paste0("diagrams/state_trans-n.c-",n.c, "-n.i-", n.i, "-n.d-", length(diseases), ".png"), height = 5, width = 10, units = "in", dpi = 600, scale = 1)
   # # 
+  
+  
+  df <- as.data.frame(m)
+  df$id <- rownames(m)
+  
   # # # Also save state transitions as a CSV
-  arrow::write_dataset(m |> as.data.frame(), paste0("data/", SCEN_SHORT_NAME, "_dis_inter_state_trans-n.c-",n.c, "-n.i-", n.i, "-n.d-", length(diseases), ".parquet"))
+  arrow::write_dataset(df, paste0("data/", SCEN_SHORT_NAME, "_dis_inter_state_trans-n.c-",n.c, "-n.i-", n.i, "-n.d-", length(diseases), ".parquet"))
   
   # rm(list = ls())
   
