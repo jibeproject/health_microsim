@@ -14,17 +14,17 @@ library(data.table)  # For faster data operations
 library(stringi)     # For faster string operations
 
 # Boolean variable for dir/file paths
-FILE_PATH_BELEN <- TRUE
+FILE_PATH_BELEN <- FALSE
 
 # For reproducibility set seed
 set.seed(2)
 options(future.globals.maxSize = +Inf)
 
 # Set sample_pro to be greater than zero
-sample_prop <- 0.01
+sample_prop <- 0
 
 # Number of cycles/years the simulation works
-n.c <- 10
+n.c <- 30
 
 # Define DISEASE RISK to incorporate disease interaction
 DISEASE_RISK <- TRUE
@@ -32,7 +32,7 @@ DISEASE_RISK <- TRUE
 # for (scen in c("base", "safestreet", "green", "both"))
 {
   # Define name of the scenario
-  SCEN_SHORT_NAME <- "base"
+  SCEN_SHORT_NAME <- "safestreet"
   
   # Data ----
   ## Synthetic population file with exposures and physical activity
@@ -166,6 +166,8 @@ DISEASE_RISK <- TRUE
   # The default state is healthy for everyone - before simulation starts. If they have an existing disease
   # from prevalence, it is then assigned
   m[,1] <- td$diseases
+  
+  rm(td)
   
   # Create a list of diseases from teh burden data
   diseases <- unique(hd$cause)
@@ -398,9 +400,9 @@ DISEASE_RISK <- TRUE
     group_by(name, value)|> 
     summarise(nv = dplyr::n(), 
               freq = round(100 * nv / nrow(m), 1)) |>  
-    filter(freq > 0) |> 
+    filter(nv > 0) |> 
     pivot_wider(id_cols = value, 
-                names_from = name, values_from = freq) |> print()
+                names_from = name, values_from = nv) |> print()
   
   prep_trans_df <- function(m, measure = "freq"){
     
