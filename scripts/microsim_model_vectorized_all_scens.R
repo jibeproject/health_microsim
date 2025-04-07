@@ -91,7 +91,7 @@ DISEASE_RISK <- TRUE
       sample_frac(sample_prop)
   }
   
-  synth_pop <- synth_pop |> rename(sex = gender)
+  synth_pop <- synth_pop |> rename(sex = gender) |> arrange(id)
   
   names(synth_pop) <- gsub("(RR_|base_|safestreet_|green_|both_)", "", names(synth_pop))
   
