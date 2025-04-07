@@ -158,9 +158,6 @@ server <- function(input, output) {
         
         text_colour <- "black"
         
-        if (strata == "Sex")
-            browser()
-        
         # fname <- do.call(paste, c(as.list(filtered_scens),
         #                           as.list(filtered_modes),
         #                           as.list(input$in_risk_type),
