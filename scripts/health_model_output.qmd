@@ -29,7 +29,9 @@ suppressPackageStartupMessages({
 
 # synth_pop <- arrow::open_dataset(sources = here("data/base_pp_exposure_RR_2021.parquet")) |> collect()
 
-synth_pop <- arrow::open_dataset(sources = here("manchester/health/processed/preliminary_results/base_pp_exposure_RR_2021.parquet")) |> collect()
+synth_pop <- read_csv(here("manchester/health/processed/ref_pp_exposure_RR_2021.csv"))
+  
+  # arrow::open_dataset(sources = here("manchester/health/processed/preliminary_results/base_pp_exposure_RR_2021.parquet")) |> collect()
 
 
 # zones <- read_csv(here("jibe health/zoneSystem.csv"))
@@ -43,13 +45,19 @@ synth_pop <- synth_pop |> arrange(id)
 
 # m <- arrow::open_dataset(sources = here("data/exp_dis_inter_trans-n.c-10-n.i-2827285-n.d-19.parquet"))
 
-m <- arrow::open_dataset(source = (here("manchester/health/processed/preliminary_results/exp_dis_inter_trans-n.c-10-n.i-2827285-n.d-19.parquet")))
+m <- arrow::open_dataset(source = (here("manchester/health/processed/ref_exp_dis_inter_off_state_trans-n.c-30-n.i-282726-n.d-19.parquet")))
+
 
 m <- m |> collect() |> as.data.frame() |> tibble::rowid_to_column("rid")
 
 # m <- m |> as.data.frame() |> tibble::rowid_to_column("rid")
 
-m <- m |> cbind(synth_pop |> select(id, age, gender, ladcd, lsoa21cd))
+m <- m |> 
+  left_join(
+    synth_pop |> select(id, age, gender, ladcd, lsoa21cd),
+    by = c("rid" = "id") # not person id, but fixed with Ali's code
+  )
+
 
 dc <- m |> pivot_longer(cols = starts_with("c")) |> 
   mutate(unpacked = str_split(value, " ")) |> 
