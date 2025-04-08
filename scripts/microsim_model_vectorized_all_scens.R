@@ -29,31 +29,43 @@ n.c <- 2
 # Define DISEASE RISK to incorporate disease interaction
 DISEASE_RISK <- TRUE
 
-for (scen in c("base", "safestreet", "green", "both"))
+#for (scen in c("base", "safestreet", "green", "both"))
 {
+  scen <- "base"
   # Define name of the scenario
   SCEN_SHORT_NAME <- scen
+  
+  dir_path <- scen
+  if (scen == "base")
+    dir_path <- 'reference'
+  
   
   # Data ----
   ## Synthetic population file with exposures and physical activity
   
   if (!FILE_PATH_BELEN){
     #synth_pop <- arrow::open_dataset(here(paste0("jibe health/resultsUrbanTransitions/reference/03_exposure_and_rr/pp_rr_all_years.parquet")))
-    synth_pop <- read_csv(here(paste0("jibe health/", SCEN_SHORT_NAME, "_pp_exposure_RR_2021.csv")))
+    synth_pop <- arrow::open_dataset(here(paste0("jibe health/resultsUrbanTransitions/", dir_path, "/03_exposure_and_rr/pp_rr_all_years_reduced.parquet"))) |> to_duckdb()
+    #synth_pop <- read_csv(here(paste0("jibe health/", SCEN_SHORT_NAME, "_pp_exposure_RR_2021.csv")))
   }else{
     synth_pop <- read_csv(here(paste0("manchester/health/processed/", SCEN_SHORT_NAME, "_pp_exposure_RR_2021.csv")))
   }
-
   
+  synth_pop <- synth_pop |> dplyr::select(id, gender_2021, age_2021, starts_with("rr_"), lsoa21cd, ladcd) |> 
+    rename(gender = gender_2021, age = age_2021)
+
   # Introduce agegroup
   synth_pop <- synth_pop |> 
     mutate(agegroup = cut(age, c(0, 25, 45, 65, 85, Inf),
                           right=FALSE, include.lowest = TRUE))
   
+  synth_pop <- synth_pop |> collect()
+  
   # Rename parkinson's disease to parkinson
   colnames(synth_pop) <- gsub("parkinson's_disease", "parkinson", colnames(synth_pop))
   
-  # synth_pop <- read_csv("manchester/health/processed/base_pp_exposure_RR_2021.csv")
+  # Rename head_neck_cancer to head_and_neck_cancer
+  colnames(synth_pop) <- gsub("head_neck_cancer", "head_and_neck_cancer", colnames(synth_pop))
   
   ## Health transitions
   if (!FILE_PATH_BELEN){
@@ -94,12 +106,288 @@ for (scen in c("base", "safestreet", "green", "both"))
   
   synth_pop <- synth_pop |> rename(sex = gender) |> arrange(id)
   
-  names(synth_pop) <- gsub("(RR_|base_|safestreet_|green_|both_)", "", names(synth_pop))
+  names(synth_pop) <- gsub("(RR_|rr_|base_|safestreet_|green_|both_)", "", names(synth_pop))
   
   # Number of individuals
   n.i <- synth_pop |> nrow()
   
-  # Function to multiply columns with a given suffix and remove original columns
+  # # Function to multiply columns with a given suffix and remove original columns
+  # multiply_columns_with_suffix <- function(df, suffix) {
+  #   # Find columns that end with the given suffix
+  #   columns_to_multiply <- names(df)[str_detect(names(df), paste0("_", suffix, "$"))]
+  #   
+  #   # If there are columns to multiply
+  #   if (length(columns_to_multiply) > 0) {
+  #     # Create a new column name
+  #     new_column_name <- paste0("all_path_", suffix)
+  #     
+  #     # Multiply the columns
+  #     df[[new_column_name]] <- apply(df[columns_to_multiply], 1, prod)
+  #     
+  #     # Remove original columns
+  #     df <- df %>% dplyr::select(-all_of(columns_to_multiply))
+  #   }
+  #   
+  #   return(df)
+  # }
+  # 
+  # # Function to process all suffixes and remove original columns after multiplication
+  # process_all_suffixes <- function(df, cause_df) {
+  #   # Extract unique suffixes from the 'cause' column of the cause data frame
+  #   suffixes <- unique(cause_df$cause)
+  #   
+  #   # Apply multiplication for each suffix and remove original columns
+  #   for (suffix in suffixes) {
+  #     df <- multiply_columns_with_suffix(df, suffix)
+  #   }
+  #   
+  #   return(df)
+  # }
+  
+  # # Function to multiply columns with a given suffix and remove original columns
+  # multiply_columns_with_suffix <- function(df, suffix) {
+  #   df <- synth_pop
+  #   suffix <- "all_cause_mortality"
+  #   # Find columns that end with the given suffix
+  #   columns_to_multiply <- names(df)[str_detect(names(df), paste0("_", suffix, "$"))]
+  #   
+  #   # If there are columns to multiply
+  #   if (length(columns_to_multiply) > 0) {
+  #     # Create a new column name
+  #     new_column_name <- paste0("all_path_", suffix)
+  #     
+  #     # Check if any column contains lists
+  #     if (any(sapply(df[columns_to_multiply], function(col) is.list(col)))) {
+  #       # Handle case where columns contain lists of values
+  #       df[[new_column_name]] <- apply(df[columns_to_multiply], 1, function(row) {
+  #         # Multiply corresponding elements in lists
+  #         Reduce(function(x, y) mapply(`*`, x, y), row)
+  #       })
+  #     } else {
+  #       # Handle case where columns contain single values
+  #       df[[new_column_name]] <- apply(df[columns_to_multiply], 1, prod)
+  #     }
+  #     
+  #     # Remove original columns
+  #     df <- df %>% dplyr::select(-all_of(columns_to_multiply))
+  #   }
+  #   
+  #   return(df)
+  # }
+  # 
+  # # Function to process all suffixes and remove original columns after multiplication
+  # process_all_suffixes <- function(df, cause_df) {
+  #   # Extract unique suffixes from the 'cause' column of the cause data frame
+  #   suffixes <- unique(cause_df$cause)
+  #   
+  #   # Apply multiplication for each suffix and remove original columns
+  #   for (suffix in suffixes) {
+  #     print(suffix)
+  #     df <- multiply_columns_with_suffix(df, suffix)
+  #   }
+  #   
+  #   return(df)
+  # }
+  # 
+  
+  
+  # # Function to multiply columns with a given suffix and remove original columns
+  # multiply_columns_with_suffix <- function(df, suffix) {
+  #   # Find columns that end with the given suffix
+  #   columns_to_multiply <- names(df)[str_detect(names(df), paste0("_", suffix, "$"))]
+  #   
+  #   # If there are columns to multiply
+  #   if (length(columns_to_multiply) > 0) {
+  #     # Create a new column name
+  #     new_column_name <- paste0("all_path_", suffix)
+  #     
+  #     # Check if any column contains lists
+  #     if (any(sapply(df[columns_to_multiply], is.list))) {
+  #       # Handle case where columns contain lists of values
+  #       df[[new_column_name]] <- lapply(seq_len(nrow(df)), function(row_index) {
+  #         rows <- df[row_index, columns_to_multiply]
+  #         Reduce(function(x, y) mapply(`*`, x, y), rows)
+  #       })
+  #     } else {
+  #       # Handle case where columns contain single values
+  #       df[[new_column_name]] <- apply(df[columns_to_multiply], 1, prod)
+  #     }
+  #     
+  #     # Ensure the new column has the correct structure (flatten lists if needed)
+  #     if (is.list(df[[new_column_name]])) {
+  #       df[[new_column_name]] <- sapply(df[[new_column_name]], function(x) if (is.numeric(x)) x else NA)
+  #     }
+  #     
+  #     # Remove original columns
+  #     df <- df %>% dplyr::select(-all_of(columns_to_multiply))
+  #   }
+  #   
+  #   return(df)
+  # }
+  # 
+  # # Function to process all suffixes and remove original columns after multiplication
+  # process_all_suffixes <- function(df, cause_df) {
+  #   # Extract unique suffixes from the 'cause' column of the cause data frame
+  #   suffixes <- unique(cause_df$cause)
+  #   
+  #   # Apply multiplication for each suffix and remove original columns
+  #   for (suffix in suffixes) {
+  #     df <- multiply_columns_with_suffix(df, suffix)
+  #   }
+  #   
+  #   return(df)
+  # }
+  
+  # # Function to multiply columns with a given suffix and remove original columns
+  # multiply_columns_with_suffix <- function(df, suffix) {
+  #   df <- synth_pop_wprob
+  #   suffix <- "all_cause_mortality"
+  #   # Find columns that end with the given suffix
+  #   columns_to_multiply <- names(df)[str_detect(names(df), paste0("_", suffix, "$"))]
+  #   
+  #   # If there are columns to multiply
+  #   if (length(columns_to_multiply) > 0) {
+  #     # Create a new column name
+  #     new_column_name <- paste0("all_path_", suffix)
+  #     
+  #     # Initialize the new column with NA values
+  #     df[[new_column_name]] <- vector("list", nrow(df))
+  #     
+  #     # Loop through each row of the data frame
+  #     for (i in seq_len(nrow(df))) {
+  #       # print(i)
+  #       # i <- 1
+  #       # Extract the current row
+  #       row <- df[i, columns_to_multiply]
+  #       
+  #       # Replace NA values with "0"
+  #       #row[is.na(row)] <- "0"
+  #       
+  #       # Split each cell by commas and convert to numeric
+  #       numeric_lists <- lapply(row, function(cell) as.numeric(unlist(str_split(cell, ",\\s*"))))
+  #       
+  #       # Multiply the numeric vectors element-wise across all columns
+  #       df[[new_column_name]][[i]] <- Reduce(function(x, y) mapply(`*`, x, y), numeric_lists)
+  #     }
+  #     
+  #     # df[[new_column_name]] <- apply(df[columns_to_multiply], 1, function(row) {
+  #     #   # Replace NA values with "0"
+  #     #   row[is.na(row)] <- "0"
+  #     #   
+  #     #   # Split each cell by commas and convert to numeric
+  #     #   numeric_lists <- lapply(row, function(cell) as.numeric(unlist(str_split(cell, ",\\s*"))))
+  #     #   
+  #     #   # Multiply the numeric vectors element-wise across all columns
+  #     #   Reduce(function(x, y) mapply(`*`, x, y), numeric_lists)
+  #     # })
+  #     
+  #     # Flatten the resulting list column into a single numeric vector (if applicable)
+  #     if (is.list(df[[new_column_name]])) {
+  #       df[[new_column_name]] <- sapply(df[[new_column_name]], function(x) if (is.numeric(x)) prod(x) else NA)
+  #     }
+  #     
+  #     # Remove original columns
+  #     df <- df %>% select(-all_of(columns_to_multiply))
+  #   }
+  #   
+  #   return(df)
+  # }
+  # 
+  # # Function to process all suffixes and remove original columns after multiplication
+  # process_all_suffixes <- function(df, cause_df) {
+  #   # Extract unique suffixes from the 'cause' column of the cause data frame
+  #   suffixes <- unique(cause_df$cause)
+  #   
+  #   # Apply multiplication for each suffix and remove original columns
+  #   for (suffix in suffixes) {
+  #     df <- multiply_columns_with_suffix(df, suffix)
+  #   }
+  #   
+  #   return(df)
+  # }
+  
+  # # Function to multiply columns with a given suffix and remove original columns
+  # multiply_columns_with_suffix <- function(df, suffix) {
+  #   # Find columns that end with the given suffix
+  #   columns_to_multiply <- names(df)[str_detect(names(df), paste0("_", suffix, "$"))]
+  #   
+  #   # If there are columns to multiply
+  #   if (length(columns_to_multiply) > 0) {
+  #     # Create a new column name
+  #     new_column_name <- paste0("all_path_", suffix)
+  #     
+  #     # Initialize the new column as a list to store element-wise products
+  #     df[[new_column_name]] <- vector("list", nrow(df))
+  #     
+  #     # Loop through each row of the data frame
+  #     for (i in seq_len(nrow(df))) {
+  #       # Extract the current row for the relevant columns
+  #       row <- df[i, columns_to_multiply]
+  #       
+  #       # Replace NA values with "0"
+  #       row[is.na(row)] <- "0"
+  #       
+  #       # Split each cell by commas and convert to numeric vectors
+  #       numeric_lists <- lapply(row, function(cell) as.numeric(unlist(str_split(cell, ",\\s*"))))
+  #       
+  #       # Multiply the numeric vectors element-wise across all columns
+  #       df[[new_column_name]][[i]] <- Reduce(function(x, y) mapply(`*`, x, y), numeric_lists)
+  #     }
+  #     
+  #     # Ensure the new column is stored as a list of numeric vectors
+  #   }
+  #   
+  #   return(df)
+  # }
+  # 
+  # # Function to process all suffixes and remove original columns after multiplication
+  # process_all_suffixes <- function(df, cause_df) {
+  #   # Extract unique suffixes from the 'cause' column of the cause data frame
+  #   suffixes <- unique(cause_df$cause)
+  #   
+  #   # Apply multiplication for each suffix and remove original columns
+  #   for (suffix in suffixes) {
+  #     df <- multiply_columns_with_suffix(df, suffix)
+  #   }
+  #   
+  #   return(df)
+  # }
+  
+  # # Function to multiply columns with a given suffix and remove original columns
+  # multiply_columns_with_suffix <- function(df, suffix) {
+  #   # Find columns that end with the given suffix
+  #   columns_to_multiply <- names(df)[str_detect(names(df), paste0("_", suffix, "$"))]
+  #   
+  #   # If there are columns to multiply
+  #   if (length(columns_to_multiply) > 0) {
+  #     # Create a new column name
+  #     new_column_name <- paste0("all_path_", suffix)
+  #     
+  #     # Initialize the new column as a character vector
+  #     df[[new_column_name]] <- character(nrow(df))
+  #     
+  #     # Loop through each row of the data frame
+  #     for (i in seq_len(nrow(df))) {
+  #       # Extract the current row for the relevant columns
+  #       row <- df[i, columns_to_multiply]
+  #       
+  #       # Replace NA values with "0"
+  #       row[is.na(row)] <- "0"
+  #       
+  #       # Split each cell by commas and convert to numeric vectors
+  #       numeric_lists <- lapply(row, function(cell) as.numeric(unlist(str_split(cell, ",\\s*"))))
+  #       
+  #       # Multiply the numeric vectors element-wise across all columns
+  #       element_wise_product <- Reduce(function(x, y) mapply(`*`, x, y), numeric_lists)
+  #       
+  #       # Convert the numeric vector to a comma-separated string and assign to the new column
+  #       df[[new_column_name]][i] <- paste(element_wise_product, collapse = ",")
+  #     }
+  #   }
+  #   
+  #   return(df)
+  # }
+  
   multiply_columns_with_suffix <- function(df, suffix) {
     # Find columns that end with the given suffix
     columns_to_multiply <- names(df)[str_detect(names(df), paste0("_", suffix, "$"))]
@@ -109,10 +397,21 @@ for (scen in c("base", "safestreet", "green", "both"))
       # Create a new column name
       new_column_name <- paste0("all_path_", suffix)
       
-      # Multiply the columns
-      df[[new_column_name]] <- apply(df[columns_to_multiply], 1, prod)
+      # Use apply to process rows
+      df[[new_column_name]] <- apply(df[columns_to_multiply], 1, function(row) {
+        # Replace NA values with "0"
+        row[is.na(row)] <- "0"
+        
+        # Split each cell by commas and convert to numeric vectors
+        numeric_lists <- lapply(row, function(cell) as.numeric(unlist(str_split(cell, ",\\s*"))))
+        
+        # Multiply the numeric vectors element-wise across all columns
+        element_wise_product <- Reduce(function(x, y) mapply(`*`, x, y), numeric_lists)
+        
+        # Convert the numeric vector to a comma-separated string
+        paste(element_wise_product, collapse = ",")
+      })
       
-      # Remove original columns
       df <- df %>% dplyr::select(-all_of(columns_to_multiply))
     }
     
@@ -132,14 +431,16 @@ for (scen in c("base", "safestreet", "green", "both"))
     return(df)
   }
   
-  synth_pop_wprob <- synth_pop
+  td <- synth_pop
   
-  synth_pop_wprob <- process_all_suffixes(synth_pop_wprob, 
-                                          hd |> dplyr::select(cause) |> distinct()) 
+  synth_pop <- process_all_suffixes(synth_pop, 
+                                          hd |> 
+                                            dplyr::select(cause) |> 
+                                            distinct()) 
   
-  names(synth_pop_wprob) <- str_replace(names(synth_pop_wprob), "^all_path_|pm_|ap_|pa_", "")
+  names(synth_pop) <- str_replace(names(synth_pop), "^all_path_|pm_|ap_|pa_|PHYSICAL_ACTIVITY_|AIR_POLLUTION_", "")
   
-  synth_pop_wprob <- synth_pop_wprob |> tibble::rowid_to_column("rowname")
+  synth_pop <- synth_pop |> tibble::rowid_to_column("rowname")
   
   # synth_pop_wprob <- synth_pop_wprob |>
   #   rename(
@@ -155,7 +456,7 @@ for (scen in c("base", "safestreet", "green", "both"))
                               paste0("c", 0:n.c, sep = "")))
   
   
-  td <- synth_pop_wprob |> 
+  td <- synth_pop |> 
     left_join(prev) |> 
     dplyr::select(id, diseases) |> 
     mutate(diseases = case_when(is.na(diseases) ~ "healthy", 
@@ -178,13 +479,20 @@ for (scen in c("base", "safestreet", "green", "both"))
   # Vectorized version of get_state
   get_state_vectorized <- function(rd, cycle, cause, cm, ind_spec_rate, cause_risk = 1) {
     # print(cause)
-    # Convert inputs to vectors
-    vi <- as.numeric(rd[, "rowname"])
     prev_state <- as.character(cm[, 1])
     curr_state <- as.character(cm[, 2])
     
+    rr_index <- 1
+    
+    if (cycle == 1 || cycle %% 5 != 0){
+      rr_index <- 1
+    } else if (cycle %% 5 == 0){
+      rr_index <- cycle / 5
+    }
+    # browser()
     # Calculate disease probability
-    dis_rate <- as.numeric(rd[, cause]) * ind_spec_rate * cause_risk
+    dis_rate <- as.numeric(sapply(rd[, cause], function(x) strsplit(x, ",")[[1]][rr_index]) |> as.numeric() 
+                           * ind_spec_rate * cause_risk)
     dis_prob <- 1 - exp(-dis_rate)
     all_cause_prob <- as.numeric(rd[, "all_cause_mortality"])
     
@@ -354,9 +662,8 @@ for (scen in c("base", "safestreet", "green", "both"))
   }
   
   # Run the simulation
-  plan(multisession)
   tic()
-  m <- run_simulation(synth_pop_wprob, m, hd, disease_risks, n.c, diseases, DISEASE_RISK)
+  m <- run_simulation(synth_pop, m, hd, disease_risks, n.c, diseases, DISEASE_RISK)
   toc()
   
   
