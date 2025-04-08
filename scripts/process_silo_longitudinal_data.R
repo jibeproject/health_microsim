@@ -1,7 +1,7 @@
 # Using data.table package
-library(data.table)
-library(tidyverse)
-library(dtplyr)
+library(data.table, warn.conflicts = FALSE)
+library(tidyverse, warn.conflicts = FALSE)
+library(dtplyr, warn.conflicts = FALSE)
 library(arrow)
 library(here)
 
@@ -41,12 +41,6 @@ for (file in file_list) {
 arrow::write_dataset(final_df, "jibe health/resultsUrbanTransitions/reference/03_exposure_and_rr/pp_rr_all_years.parquet")
 
 dt <- final_df |> dplyr::select(id, contains("rr_AIR_POLLUTION_NO2_all_cause_mortality")) |> pivot_longer(cols = -id) |> as.data.table()
-
-# dt <- data.table::data.table(final_df) |> dplyr::select(id, contains("rr_PHYSICAL_ACTIVITY_all_cause_mortality")) |> pivot_longer(cols = -id)
-# 
-# dt <- dt |> 
-#   separate(name, into = c("variable", "year"), sep = "_(?=\\d{4}$)", remove = FALSE, extra = "merge", fill = "right", convert = FALSE) |> 
-#   mutate(year = as.numeric(year)) 
 
 # Split the 'name' column into 'variable' and 'year'
 dt[, c("variable", "year") := tstrsplit(name, "_(?=\\d{4}$)", perl = TRUE)]
@@ -99,3 +93,6 @@ combine_rr_columns <- function(df) {
 
 # Apply the function to the data frame
 df <- combine_rr_columns(final_df |> collect())
+
+# Save reduced dataset with all the RR with the same name combined together in a single column
+arrow::write_dataset(df, "jibe health/resultsUrbanTransitions/reference/03_exposure_and_rr/pp_rr_all_years_reduced.parquet")
