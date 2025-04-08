@@ -11,10 +11,15 @@ library(tidyverse)
 # Boolean variable for dir/file paths
 FILE_PATH_BELEN <- FALSE
 
-get_summary <- function(SCEN_NAME){
+n.i <- 2824#282727
+n.c <- 2
+
+get_summary <- function(SCEN_NAME, n.i, n.c){
+    
+    # SCEN_NAME <- 'base'
     
     if (!FILE_PATH_BELEN){
-        m <- arrow::open_dataset(here(paste0("data/", SCEN_NAME, "_dis_inter_state_trans-n.c-10-n.i-28269-n.d-19.parquet")))
+        m <- arrow::open_dataset(here(paste0("data/", SCEN_NAME, "_dis_inter_state_trans-n.c-", n.c, "-n.i-", n.i, "-n.d-19.parquet")))
     }else{
         m <- arrow::open_dataset(here(paste0("manchester/health/processed/", SCEN_NAME, "_dis_inter_state_trans-n.c-10-n.i-28269-n.d-19.parquet")))
     }
@@ -32,9 +37,9 @@ get_summary <- function(SCEN_NAME){
         mutate(agegroup = cut(age, c(0, 25, 45, 65, 85, Inf),
                               right=FALSE, include.lowest = TRUE))
     
-    m <- m |> collect() 
+    m <- m |> collect() |> mutate(id = as.numeric(id)) 
     
-    m$id <- as.numeric(m$id)
+    #m$id <- as.numeric(m$id)
     
     m <- m |> left_join(synth_pop |> select(id, age, agegroup, gender, ladcd, lsoa21cd))
     
@@ -55,12 +60,15 @@ get_summary <- function(SCEN_NAME){
     
 }
 
-dc_base <- get_summary("base") |> mutate(scen = "reference")
-dc_green <- get_summary("green") |> mutate(scen = "green")
-dc_safestreet <- get_summary("safestreet") |> mutate(scen = "safestreet")
-dc_both <- get_summary("both") |> mutate(scen = "both")
+dc_base <- get_summary("base", n.i, n.c) |> mutate(scen = "reference")
+dc_green <- get_summary("green", n.i, n.c) |> mutate(scen = "green")
+dc_safestreet <- get_summary("safestreet", n.i, n.c) |> mutate(scen = "safestreet")
+dc_both <- get_summary("both", n.i, n.c) |> mutate(scen = "both")
 
 dc <- plyr::rbind.fill(dc_base, dc_green, dc_safestreet, dc_both)
+
+# Create unique causes
+ud <- unique(dc$value)
 
 # Filter the data for the "healthy" value and reference scenario
 reference_df <- dc |> filter(value == "healthy", scen == "reference")
@@ -68,6 +76,7 @@ reference_df <- dc |> filter(value == "healthy", scen == "reference")
 zones <- read_csv(here("jibe health/zoneSystem.csv"))
 
 zones <- zones |> distinct(ladcd, ladnm)
+
 
 # Convert the data frame into a named vector for pickerInput
 zones_in <- setNames(zones$ladcd, zones$ladnm)
@@ -88,11 +97,21 @@ ui <- page_sidebar(
                     options = list(`actions-box` = TRUE), 
                     multiple = TRUE),
         
+        pickerInput(inputId = "in_causes", 
+                    label = "Diseases/causes",
+                    choices = ud,
+                    selected = ud,
+                    options = list(`actions-box` = TRUE), 
+                    multiple = TRUE),
+        
+        
         radioButtons(inputId = "in_strata", 
                      label = "Stratification",
                      choices = c("None", "Sex", "Age Group"),
                      inline = TRUE,
-                     select = "None")
+                     select = "None"),
+        checkboxInput(inputId = "in_cumulative",
+                      label = "Cumulative")
     ),
     navset_card_underline(
         id = "main_tab",
@@ -110,6 +129,7 @@ server <- function(input, output) {
         
         filtered_lads <- input$in_lads
         strata <- input$in_strata
+        causes <- input$in_causes
         
         # browser()
         
@@ -117,7 +137,7 @@ server <- function(input, output) {
         return(
             # Join the reference data with the original data to calculate the change in count
             dc |> 
-                filter(value == "healthy" & ladcd %in% filtered_lads) %>%
+                filter(value %in% causes & ladcd %in% filtered_lads) %>%
                 {
                     if (strata == "None") {
                         left_join(., reference_df, by = c("ladcd", "name"), suffix = c("", "_ref")) 
@@ -166,7 +186,7 @@ server <- function(input, output) {
         if(nrow(local_df) < 1)
             plotly::ggplotly(ggplot(data.frame()))
         else{
-            gg <- ggplot(local_df, aes(x = factor(name, levels = paste0("c", 0:10)), y = count_change, color = scen, group = scen)) +
+            gg <- ggplot(local_df, aes(x = factor(name, levels = paste0("c", 0:n.c)), y = count_change, color = scen, group = scen)) +
                 geom_line() +
                 geom_point() +
                 {

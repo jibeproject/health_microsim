@@ -21,23 +21,24 @@ set.seed(2)
 options(future.globals.maxSize = +Inf)
 
 # Set sample_pro to be greater than zero
-sample_prop <- 0
+sample_prop <- 0.001
 
 # Number of cycles/years the simulation works
-n.c <- 30
+n.c <- 2
 
 # Define DISEASE RISK to incorporate disease interaction
 DISEASE_RISK <- TRUE
 
-# for (scen in c("base", "safestreet", "green", "both"))
+for (scen in c("base", "safestreet", "green", "both"))
 {
   # Define name of the scenario
-  SCEN_SHORT_NAME <- "safestreet"
+  SCEN_SHORT_NAME <- scen
   
   # Data ----
   ## Synthetic population file with exposures and physical activity
   
   if (!FILE_PATH_BELEN){
+    #synth_pop <- arrow::open_dataset(here(paste0("jibe health/resultsUrbanTransitions/reference/03_exposure_and_rr/pp_rr_all_years.parquet")))
     synth_pop <- read_csv(here(paste0("jibe health/", SCEN_SHORT_NAME, "_pp_exposure_RR_2021.csv")))
   }else{
     synth_pop <- read_csv(here(paste0("manchester/health/processed/", SCEN_SHORT_NAME, "_pp_exposure_RR_2021.csv")))
@@ -468,7 +469,6 @@ DISEASE_RISK <- TRUE
   }else{
     arrow::write_dataset(df, paste0("manchester/health/processed/", SCEN_SHORT_NAME, "_dis_inter_state_trans-n.c-",n.c, "-n.i-", n.i, "-n.d-", length(diseases), ".parquet"))
   }
-  
   
   # arrow::write_dataset(df, paste0("data/", SCEN_SHORT_NAME, "_dis_inter_state_trans-n.c-",n.c, "-n.i-", n.i, "-n.d-", length(diseases), ".parquet"))
   
