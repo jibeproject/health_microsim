@@ -29,9 +29,9 @@ n.c <- 5
 # Define DISEASE RISK to incorporate disease interaction
 DISEASE_RISK <- TRUE
 
-#for (scen in c("base", "safestreet", "green", "both"))
+for (scen in c("base", "safestreet", "green", "both"))
 {
-  scen <- "base"
+  #scen <- "base"
   # Define name of the scenario
   SCEN_SHORT_NAME <- scen
   
@@ -44,15 +44,16 @@ DISEASE_RISK <- TRUE
   ## Synthetic population file with exposures and physical activity
   
   if (!FILE_PATH_BELEN){
-    #synth_pop <- arrow::open_dataset(here(paste0("jibe health/resultsUrbanTransitions/reference/03_exposure_and_rr/pp_rr_all_years.parquet")))
-    synth_pop <- arrow::open_dataset(here(paste0("jibe health/resultsUrbanTransitions/", dir_path, "/03_exposure_and_rr/pp_rr_all_years_reduced.parquet"))) |> to_duckdb()
-    #synth_pop <- read_csv(here(paste0("jibe health/", SCEN_SHORT_NAME, "_pp_exposure_RR_2021.csv")))
+    # synth_pop <- arrow::open_dataset(here(paste0("jibe health/resultsUrbanTransitions/reference/03_exposure_and_rr/pp_rr_all_years.parquet")))
+    # synth_pop <- arrow::open_dataset(here(paste0("jibe health/resultsUrbanTransitions/", dir_path, "/03_exposure_and_rr/pp_rr_all_years_reduced.parquet"))) |> to_duckdb()
+    synth_pop <- read_csv(here(paste0("jibe health/", SCEN_SHORT_NAME, "_pp_exposure_RR_2021.csv")))
+    #   synth_pop <- synth_pop |> dplyr::select(id, gender_2021, age_2021, starts_with("rr_"), lsoa21cd, ladcd) |> 
+    # rename(gender = gender_2021, age = age_2021)
+    
   }else{
     synth_pop <- read_csv(here(paste0("manchester/health/processed/", SCEN_SHORT_NAME, "_pp_exposure_RR_2021.csv")))
   }
   
-  synth_pop <- synth_pop |> dplyr::select(id, gender_2021, age_2021, starts_with("rr_"), lsoa21cd, ladcd) |> 
-    rename(gender = gender_2021, age = age_2021)
 
   # Introduce agegroup
   synth_pop <- synth_pop |> 
@@ -349,19 +350,19 @@ DISEASE_RISK <- TRUE
                 matched_indices <- sapply(seq_along(risk_factor), function(rf_idx) {
                   rf <- risk_factor[rf_idx]
                   matches <- dl[stri_detect_fixed(dl, rf)] # Find matches for each risk factor
-                  if (length(matches) > 0) {
-                    cat("Index in risk_factors:", idx, 
-                        "Matched strings for risk factor", rf, ":", matches, "\n")
-                  }
+                  # if (length(matches) > 0) {
+                  #   cat("Index in risk_factors:", idx, 
+                  #       "Matched strings for risk factor", rf, ":", matches, "\n")
+                  # }
                   return(any(stri_detect_fixed(dl, rf))) # Return TRUE if any match is found
                 })
                 
                 # Calculate product of relative risks for matched indices
                 product_result <- prod(disease_risks_prepped_subset[matched_indices, "relative_risk"], na.rm = TRUE)
                 
-                # Print the outcome of the prod function
-                cat("Index in risk_factors:", idx, 
-                    "Product of relative risks for matched indices:", product_result, "\n")
+                # # Print the outcome of the prod function
+                # cat("Index in risk_factors:", idx, 
+                #     "Product of relative risks for matched indices:", product_result, "\n")
                 
                 return(product_result)
               })
