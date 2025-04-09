@@ -24,7 +24,7 @@ options(future.globals.maxSize = +Inf)
 sample_prop <- 0.001
 
 # Number of cycles/years the simulation works
-n.c <- 2
+n.c <- 5
 
 # Define DISEASE RISK to incorporate disease interaction
 DISEASE_RISK <- TRUE
@@ -431,7 +431,7 @@ DISEASE_RISK <- TRUE
     return(df)
   }
   
-  td <- synth_pop
+  df <- synth_pop
   
   synth_pop <- process_all_suffixes(synth_pop, 
                                           hd |> 
@@ -489,18 +489,21 @@ DISEASE_RISK <- TRUE
     } else if (cycle %% 5 == 0){
       rr_index <- cycle / 5
     }
+    
     # browser()
+    
     # Calculate disease probability
     dis_rate <- as.numeric(sapply(rd[, cause], function(x) strsplit(x, ",")[[1]][rr_index]) |> as.numeric() 
                            * ind_spec_rate * cause_risk)
     dis_prob <- 1 - exp(-dis_rate)
-    all_cause_prob <- as.numeric(rd[, "all_cause_mortality"])
+    #all_cause_prob <- as.numeric(rd[, "all_cause_mortality"])
+    
     
     # Initialize result with current state (falling back to previous state if NA)
     result <- ifelse(is.na(curr_state), prev_state, curr_state)
     
     # Pre-compute conditions
-    already_dead <- (!is.na(curr_state) & (prev_state == 'dead' | curr_state == 'dead')) | (all_cause_prob == 0)
+    already_dead <- (!is.na(curr_state) & (prev_state == 'dead' | curr_state == 'dead')) # | (all_cause_prob == 0)
     transition_condition <- !already_dead & !is.na(dis_prob) & (runif(length(dis_prob)) < dis_prob)
     
     # Handle all-cause mortality
@@ -611,12 +614,62 @@ DISEASE_RISK <- TRUE
                 stri_replace_all_regex(x, ".*cancer.*|myeloid_leukemia|myeloma", "cancer")
               })
               
+              # browser()
+              
+              # # Calculate risk factors in bulk
+              # risk_factors[age_condition] <- sapply(disease_lists, function(dl) {
+              #   if (length(dl) == 0) return(1)
+              #   
+              #   # Print matched strings
+              #   matched_indices <- sapply(risk_factor, function(rf) {
+              #     matches <- dl[stri_detect_fixed(dl, rf)] # Find matches for each risk factor
+              #     if (length(matches) > 0) {
+              #       cat("Matched strings for risk factor", rf, ":", matches, "\n") # Print matches
+              #     }
+              #     return(any(stri_detect_fixed(dl, rf))) # Return TRUE if any match is found
+              #   })
+              #   
+              #   # Calculate product of relative risks
+              #   prod(disease_risks_prepped[matched_indices, relative_risk], na.rm = TRUE)
+              #   
+              #   # prod(disease_risks_prepped[sapply(risk_factor, function(rf) any(stri_detect_fixed(dl, rf))), 
+              #   #                            relative_risk], na.rm = TRUE)
+              # })
+              
               # Calculate risk factors in bulk
-              risk_factors[age_condition] <- sapply(disease_lists, function(dl) {
+              risk_factors[age_condition] <- sapply(seq_along(disease_lists), function(idx) {
+                dl <- disease_lists[[idx]] # Extract the disease list for the current index
                 if (length(dl) == 0) return(1)
-                prod(disease_risks_prepped[sapply(risk_factor, function(rf) any(stri_detect_fixed(dl, rf))), 
-                                           relative_risk], na.rm = TRUE)
+                
+                # Extract risk_factor column from disease_risks_prepped
+                disease_risks_prepped_subset <- disease_risks_prepped |> filter(outcome == dis)
+                risk_factor <- disease_risks_prepped_subset$risk_factor
+                
+                # Print matched strings and their indices
+                matched_indices <- sapply(seq_along(risk_factor), function(rf_idx) {
+                  rf <- risk_factor[rf_idx]
+                  matches <- dl[stri_detect_fixed(dl, rf)] # Find matches for each risk factor
+                  if (length(matches) > 0) {
+                    cat("Index in risk_factors:", idx, 
+                        "Matched strings for risk factor", rf, ":", matches, "\n")
+                  }
+                  return(any(stri_detect_fixed(dl, rf))) # Return TRUE if any match is found
+                })
+                
+                # Calculate product of relative risks for matched indices
+                product_result <- prod(disease_risks_prepped_subset[matched_indices, "relative_risk"], na.rm = TRUE)
+                
+                # Print the outcome of the prod function
+                cat("Index in risk_factors:", idx, 
+                    "Product of relative risks for matched indices:", product_result, "\n")
+                
+                return(product_result)
               })
+              
+
+              # browser()
+              #risk_factors
+              
             }
           } else if (dis %in% c("coronary_heart_disease", "stroke")) {
             age_condition <- current_age >= 18
