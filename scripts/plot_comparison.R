@@ -3,8 +3,9 @@ require(here)
 require(arrow)
 
 # Boolean variable for dir/file paths
-FILE_PATH_BELEN <- TRUE
-
+FILE_PATH_BELEN <- FALSE
+n.i <<- 2824#282727
+n.c <<- 100
 
 get_summary <- function(SCEN_NAME, group_vars = NULL){
   
@@ -12,7 +13,7 @@ get_summary <- function(SCEN_NAME, group_vars = NULL){
 
   
   if (!FILE_PATH_BELEN){
-    m <- arrow::open_dataset(paste0("data/", SCEN_NAME, "_dis_inter_state_trans-n.c-10-n.i-28269-n.d-19.parquet/"))
+    m <- arrow::open_dataset(here(paste0("data/", SCEN_NAME, "_dis_inter_state_trans-n.c-", n.c, "-n.i-", n.i, "-n.d-19.parquet")))
   }else{
     m <- arrow::open_dataset(paste0("manchester/health/processed/", SCEN_NAME, "_dis_inter_state_trans-n.c-10-n.i-28269-n.d-19.parquet/"))
   }
@@ -65,6 +66,9 @@ dc_both <- get_summary("both", group_vars = c("ladcd", "cycle", "value")) |> mut
 
 dc <- plyr::rbind.fill(dc_base, dc_green, dc_safestreet, dc_both)
 
+# dc <- plyr::rbind.fill(dc_base, dc_both)
+
+
 if (!FILE_PATH_BELEN){
   zones <- read_csv(here("jibe health/zoneSystem.csv"))
 }else{
@@ -88,7 +92,7 @@ df_change <- dc |>
   left_join(zones)
 
 # Create a line plot showing the difference for the "healthy" value, faceted by ladcd
-g <- ggplot(df_change, aes(x = factor(cycle, levels = paste0("c", 0:10)), y = count_change, color = scen, group = scen)) +
+g <- ggplot(df_change, aes(x = factor(cycle, levels = paste0("c", 0:n.c)), y = count_change, color = scen, group = scen)) +
   geom_line() +
   geom_point() +
   facet_wrap(~ ladnm) +
@@ -113,7 +117,7 @@ df_change <- dc |>
   dplyr::select(ladcd, cycle, scen, count_change) |>
   left_join(zones)
 # Create a line plot showing the difference for the "alive" value, faceted by ladcd
-g <- ggplot(df_change, aes(x = factor(cycle, levels = paste0("c", 0:10)), y = count_change, color = scen, group = scen)) +
+g <- ggplot(df_change, aes(x = factor(cycle, levels = paste0("c", 0:n.c)), y = count_change, color = scen, group = scen)) +
   geom_line() +
   geom_point() +
   facet_wrap(~ ladnm) +
@@ -240,10 +244,10 @@ plotly::ggplotly(g)
 
 ####### Cumulative by sex
 
-dc_base <- get_summary("base", group_vars = c("sex", "value")) |> mutate(scen = "reference")
-dc_green <- get_summary("green", group_vars = c("sex", "value")) |> mutate(scen = "green")
-dc_safestreet <- get_summary("safestreet", group_vars = c("sex", "value")) |> mutate(scen = "safestreet")
-dc_both <- get_summary("both", group_vars = c("sex", "value")) |> mutate(scen = "both")
+dc_base <- get_summary("base", group_vars = c("gender", "value")) |> mutate(scen = "reference")
+dc_green <- get_summary("green", group_vars = c("gender", "value")) |> mutate(scen = "green")
+dc_safestreet <- get_summary("safestreet", group_vars = c("gender", "value")) |> mutate(scen = "safestreet")
+dc_both <- get_summary("both", group_vars = c("gender", "value")) |> mutate(scen = "both")
 
 dc <- plyr::rbind.fill(dc_base, dc_green, dc_safestreet, dc_both)
 
