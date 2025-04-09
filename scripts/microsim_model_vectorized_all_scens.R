@@ -16,21 +16,22 @@ library(stringi)     # For faster string operations
 # Boolean variable for dir/file paths
 FILE_PATH_BELEN <- FALSE
 
-# For reproducibility set seed
-set.seed(2)
 options(future.globals.maxSize = +Inf)
 
 # Set sample_pro to be greater than zero
 sample_prop <- 0.001
 
 # Number of cycles/years the simulation works
-n.c <- 5
+n.c <- 100
 
 # Define DISEASE RISK to incorporate disease interaction
 DISEASE_RISK <- TRUE
 
 for (scen in c("base", "safestreet", "green", "both"))
 {
+  # For reproducibility across scenarios, set it inside the loop
+  set.seed(2)
+  
   #scen <- "base"
   # Define name of the scenario
   SCEN_SHORT_NAME <- scen
@@ -207,13 +208,14 @@ for (scen in c("base", "safestreet", "green", "both"))
     
     rr_index <- 1
     
-    if (cycle == 1 || cycle %% 5 != 0){
-      rr_index <- 1
-    } else if (cycle %% 5 == 0){
-      rr_index <- cycle / 5
-    }
-    
-    # browser()
+    # if (cycle == 1 || cycle %% 5 != 0){
+    #   rr_index <- 1
+    # } else if (cycle %% 5 == 0){
+    #   rr_index <- cycle / 5
+    # }
+    # 
+    # if (cycle == 5)
+    #   browser()
     
     # Calculate disease probability
     dis_rate <- as.numeric(sapply(rd[, cause], function(x) strsplit(x, ",")[[1]][rr_index]) |> as.numeric() 
@@ -459,6 +461,7 @@ for (scen in c("base", "safestreet", "green", "both"))
     unnest() |> 
     mutate(value = str_trim(unpacked)) |> 
     dplyr::select(-unpacked) |> 
+    mutate(value = str_replace_all(value, fixed("parkinson’s_disease"), "parkinson")) |> 
     group_by(name, value)|> 
     summarise(nv = dplyr::n(), 
               freq = round(100 * nv / nrow(m), 1)) |>  
@@ -475,6 +478,7 @@ for (scen in c("base", "safestreet", "green", "both"))
       mutate(unpacked = str_split(value, " ")) |> 
       unnest() |> 
       mutate(value = str_trim(unpacked)) |> 
+      mutate(value = str_replace_all(value, fixed("parkinson’s_disease"), "parkinson")) |> 
       dplyr::select(-unpacked) |> 
       group_by(name, value)|> 
       summarise(nv = dplyr::n(), 
@@ -530,7 +534,7 @@ for (scen in c("base", "safestreet", "green", "both"))
   }else{
     arrow::write_dataset(df, paste0("manchester/health/processed/", SCEN_SHORT_NAME, "_dis_inter_state_trans-n.c-",n.c, "-n.i-", n.i, "-n.d-", length(diseases), ".parquet"))
   }
-  
+
   # arrow::write_dataset(df, paste0("data/", SCEN_SHORT_NAME, "_dis_inter_state_trans-n.c-",n.c, "-n.i-", n.i, "-n.d-", length(diseases), ".parquet"))
   
   # rm(list = ls())
