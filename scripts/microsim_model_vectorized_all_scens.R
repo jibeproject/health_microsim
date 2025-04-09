@@ -32,7 +32,7 @@ for (scen in c("base", "safestreet", "green", "both"))
   # For reproducibility across scenarios, set it inside the loop
   set.seed(2)
   
-  #scen <- "base"
+  # scen <- "base"
   # Define name of the scenario
   SCEN_SHORT_NAME <- scen
   
@@ -205,6 +205,7 @@ for (scen in c("base", "safestreet", "green", "both"))
     # print(cause)
     prev_state <- as.character(cm[, 1])
     curr_state <- as.character(cm[, 2])
+    current_age <- (as.numeric(rd[, "age"]) + cycle)
     
     rr_index <- 1
     
@@ -215,7 +216,6 @@ for (scen in c("base", "safestreet", "green", "both"))
     # }
     # 
     # if (cycle == 5)
-    #   browser()
     
     # Calculate disease probability
     dis_rate <- as.numeric(sapply(rd[, cause], function(x) strsplit(x, ",")[[1]][rr_index]) |> as.numeric() 
@@ -228,8 +228,11 @@ for (scen in c("base", "safestreet", "green", "both"))
     result <- ifelse(is.na(curr_state), prev_state, curr_state)
     
     # Pre-compute conditions
-    already_dead <- (!is.na(curr_state) & (prev_state == 'dead' | curr_state == 'dead')) # | (all_cause_prob == 0)
+    already_dead <- (!is.na(curr_state) & (prev_state == 'dead' | curr_state == 'dead') | current_age >= 100) # | (all_cause_prob == 0)
     transition_condition <- !already_dead & !is.na(dis_prob) & (runif(length(dis_prob)) < dis_prob)
+    
+    # if (max(current_age) >= 100)
+    #   browser()
     
     # Handle all-cause mortality
     if (cause == "all_cause_mortality") {
