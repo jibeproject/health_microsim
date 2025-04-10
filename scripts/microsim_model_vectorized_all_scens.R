@@ -19,10 +19,10 @@ FILE_PATH_BELEN <- FALSE
 options(future.globals.maxSize = +Inf)
 
 # Set sample_pro to be greater than zero
-sample_prop <- 0.01
+sample_prop <- 0.001
 
 # Number of cycles/years the simulation works
-n.c <- 30
+n.c <- 10
 
 # Define DISEASE RISK to incorporate disease interaction
 DISEASE_RISK <- TRUE
@@ -217,6 +217,9 @@ for (scen in c("base", "safestreet", "green", "both"))
     # 
     # if (cycle == 5)
     
+    # if (cycle > 2 && cause == "coronary_heart_disease")
+    #   browser()
+    
     # Calculate disease probability
     dis_rate <- as.numeric(sapply(rd[, cause], function(x) strsplit(x, ",")[[1]][rr_index]) |> as.numeric() 
                            * ind_spec_rate * cause_risk)
@@ -377,27 +380,108 @@ for (scen in c("base", "safestreet", "green", "both"))
               #risk_factors
               
             }
-          } else if (dis %in% c("coronary_heart_disease", "stroke")) {
-            age_condition <- current_age >= 18
-            sex_condition <- ifelse(synth_matrix[, "sex"] == 1, "male", "female")
-            relevant_cases <- age_condition & (dis %in% c("coronary_heart_disease", "stroke"))
+          } else 
             
-            if (any(relevant_cases)) {
-              prev_states <- m[relevant_cases, paste0("c", incyc - 1)]
-              disease_lists <- stri_split_fixed(prev_states, " ")
-              sex_strings <- sex_condition[relevant_cases]
+            if (dis %in% c("coronary_heart_disease", "stroke")) {
+              age_condition <- current_age >= 18
+              sex_condition <- ifelse(synth_matrix[, "sex"] == 1, "male", "female")
+              relevant_cases <- age_condition & (dis %in% c("coronary_heart_disease", "stroke"))
               
-              risk_factors[relevant_cases] <- mapply(function(dl, sex_str) {
-                if (length(dl) == 0) return(1)
-                outcome <- if (dis == "coronary_heart_disease") "coronary_heart_disease" else "stroke"
-                prod(disease_risks_prepped[
-                  sapply(risk_factor, function(rf) any(stri_detect_fixed(dl, rf))) & 
-                    stri_detect_fixed(sex, sex_str) & 
-                    outcome == outcome, 
-                  relative_risk], na.rm = TRUE)
-              }, disease_lists, sex_strings)
+              if (any(relevant_cases)) {
+                prev_states <- m[relevant_cases, paste0("c", incyc - 1)]
+                disease_lists <- stri_split_fixed(prev_states, " ")
+                sex_strings <- sex_condition[relevant_cases]
+                
+                risk_factors[relevant_cases] <- mapply(function(dl, sex_str) {
+                  
+                  if (length(dl) == 0) return(1)
+                  
+                  # Define the outcome based on the disease
+                  local_outcome <- if (dis == "coronary_heart_disease") "coronary_heart_disease" else "stroke"
+                  
+                  # Extract risk_factor column from disease_risks_prepped
+                  disease_risks_prepped_subset <- disease_risks_prepped |> filter(outcome == local_outcome, sex == sex_str)
+                  risk_factor <- disease_risks_prepped_subset$risk_factor
+                  
+                  # Find matched risk factors
+                  matched_risk_factors <- sapply(risk_factor, function(rf) any(stri_detect_fixed(dl, rf)))
+                  
+                  # Print indices of matched risk factors for debugging
+                  matched_indices <- which(matched_risk_factors)
+                  # cat("Indices of matched risk factors:\n")
+                  # print(matched_indices)
+                  
+                  # Print matched risk factors for debugging
+                  # cat("Matched risk factors for index:\n")
+                  # print(risk_factor[matched_indices])
+                  
+                  # Filter rows based on conditions (explicitly reference 'sex' column)
+                  relevant_rows <- matched_risk_factors & 
+                    stri_detect_fixed(disease_risks_prepped_subset$sex, sex_str) & 
+                    disease_risks_prepped_subset$outcome == local_outcome
+                  
+                  # Calculate product of relative risks
+                  product <- prod(disease_risks_prepped_subset[relevant_rows, relative_risk], na.rm = TRUE)
+                  
+                  # # Print the product for each index
+                  # cat("Product of relative risks for index:\n")
+                  # print(product)
+                  
+                  return(product)
+                }, disease_lists, sex_strings)
+                
+                # browser()
+              }
             }
-          }
+            
+          #   if (dis %in% c("coronary_heart_disease", "stroke")) {
+          #   age_condition <- current_age >= 18
+          #   sex_condition <- ifelse(synth_matrix[, "sex"] == 1, "male", "female")
+          #   relevant_cases <- age_condition & (dis %in% c("coronary_heart_disease", "stroke"))
+          #   
+          #   if (any(relevant_cases)) {
+          #     prev_states <- m[relevant_cases, paste0("c", incyc - 1)]
+          #     disease_lists <- stri_split_fixed(prev_states, " ")
+          #     sex_strings <- sex_condition[relevant_cases]
+          #     
+          #     risk_factors[relevant_cases] <- mapply(function(dl, sex_str) {
+          #       if (length(dl) == 0) return(1)
+          #       
+          #       # Define the outcome based on the disease
+          #       outcome <- if (dis == "coronary_heart_disease") "coronary_heart_disease" else "stroke"
+          #       
+          #       # Extract risk_factor column from disease_risks_prepped
+          #       disease_risks_prepped_subset <- disease_risks_prepped |> filter(outcome == outcome)
+          #       risk_factor <- disease_risks_prepped_subset$risk_factor
+          #       
+          #       # Find matched risk factors
+          #       matched_risk_factors <- sapply(risk_factor, function(rf) any(stri_detect_fixed(dl, rf)))
+          #       
+          #       # # Print matched risk factors for debugging
+          #       # cat("Matched risk factors for index:\n")
+          #       # print(risk_factor[matched_risk_factors])
+          #       
+          #       # Filter rows based on conditions (explicitly reference 'sex' column)
+          #       relevant_rows <- matched_risk_factors & 
+          #         stri_detect_fixed(disease_risks_prepped_subset$sex, sex_str) & 
+          #         disease_risks_prepped_subset$outcome == outcome
+          #       
+          #       # # Print relevant rows for debugging
+          #       # cat("Relevant rows for index:\n")
+          #       # print(disease_risks_prepped_subset[relevant_rows, ])
+          #       
+          #       # Calculate product of relative risks
+          #       product <- prod(disease_risks_prepped[relevant_rows, relative_risk], na.rm = TRUE)
+          #       
+          #       # # Print the product for debugging
+          #       # cat("Product of relative risks for index:", product, "\n")
+          #       
+          #       return(product)
+          #     }, disease_lists, sex_strings)
+          #   }
+          #   
+          # }
+          
         } else {
           risk_factors <- rep(1, nrow(synth_matrix))
         }
