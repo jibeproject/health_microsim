@@ -4,8 +4,8 @@ require(arrow)
 
 # Boolean variable for dir/file paths
 FILE_PATH_BELEN <- FALSE
-n.i <<- 2824#282727
-n.c <<- 100
+n.i <<- 28269#2824#282727
+n.c <<- 30
 
 get_summary <- function(SCEN_NAME, group_vars = NULL){
   
@@ -244,10 +244,10 @@ plotly::ggplotly(g)
 
 ####### Cumulative by sex
 
-dc_base <- get_summary("base", group_vars = c("gender", "value")) |> mutate(scen = "reference")
-dc_green <- get_summary("green", group_vars = c("gender", "value")) |> mutate(scen = "green")
-dc_safestreet <- get_summary("safestreet", group_vars = c("gender", "value")) |> mutate(scen = "safestreet")
-dc_both <- get_summary("both", group_vars = c("gender", "value")) |> mutate(scen = "both")
+dc_base <- get_summary("base", group_vars = c("ladcd", "gender", "value")) |> mutate(scen = "reference")
+dc_green <- get_summary("green", group_vars = c("ladcd", "gender", "value")) |> mutate(scen = "green")
+dc_safestreet <- get_summary("safestreet", group_vars = c("ladcd", "gender", "value")) |> mutate(scen = "safestreet")
+dc_both <- get_summary("both", group_vars = c("ladcd", "gender", "value")) |> mutate(scen = "both")
 
 dc <- plyr::rbind.fill(dc_base, dc_green, dc_safestreet, dc_both)
 
@@ -263,9 +263,9 @@ reference_df <- dc %>% filter(value == "healthy", scen == "reference")
 
 df_change <- dc |> 
   filter(value == "healthy") |>
-  left_join(reference_df, by = "ladcd", suffix = c("", "_ref")) |>
+  left_join(reference_df, by = c("ladcd", "gender"), suffix = c("", "_ref")) |>
   mutate(count_change = count - count_ref) |>
-  dplyr::select(ladcd, scen, count, count_ref, count_change) |> 
+  dplyr::select(ladcd, scen, gender, count, count_ref, count_change) |> 
   left_join(zones)
 
 
@@ -273,10 +273,13 @@ df_change <- dc |>
 df_filtered <- df_change %>% filter(scen != "reference")
 
 # Create the bar chart
-g <- ggplot(df_filtered, aes(x = scen, y = count_change, fill = scen)) +
-  geom_bar(stat = "identity") +
-  facet_wrap(~ ladnm, scales = "free") +
-  labs(title = "Change in number of healthy people by Scenario and local district",
+g <- ggplot(df_filtered) +
+  aes(x = scen, y = count_change, fill = scen) +
+  geom_col() +
+  scale_fill_hue(direction = 1) +
+  theme_minimal() +
+  facet_grid(vars(gender), vars(ladnm)) +
+  labs(title = "Change in number of healthy people by Scenario, Gender and local district",
        x = "Scenario",
        y = "Count Change") +
   theme_minimal()
