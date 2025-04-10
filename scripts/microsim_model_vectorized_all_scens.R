@@ -19,10 +19,10 @@ FILE_PATH_BELEN <- FALSE
 options(future.globals.maxSize = +Inf)
 
 # Set sample_pro to be greater than zero
-sample_prop <- 0.0001
+sample_prop <- 0.1
 
 # Number of cycles/years the simulation works
-n.c <- 100
+n.c <- 30
 
 # Define DISEASE RISK to incorporate disease interaction
 DISEASE_RISK <- TRUE
