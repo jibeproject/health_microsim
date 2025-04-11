@@ -19,16 +19,17 @@ FILE_PATH_BELEN <- FALSE
 options(future.globals.maxSize = +Inf)
 
 # Set sample_pro to be greater than zero
-sample_prop <- 0.1
+sample_prop <- 0.001
 
 # Number of cycles/years the simulation works
-n.c <- 30
+n.c <- 24
 
 # Define DISEASE RISK to incorporate disease interaction
 DISEASE_RISK <- TRUE
 
-for (scen in c("base", "safestreet", "green", "both"))
+# for (scen in c("base", "safestreet", "green", "both"))
 {
+  scen <- 'base'
   # For reproducibility across scenarios, set it inside the loop
   set.seed(2)
   
@@ -46,10 +47,10 @@ for (scen in c("base", "safestreet", "green", "both"))
   
   if (!FILE_PATH_BELEN){
     # synth_pop <- arrow::open_dataset(here(paste0("jibe health/resultsUrbanTransitions/reference/03_exposure_and_rr/pp_rr_all_years.parquet")))
-    # synth_pop <- arrow::open_dataset(here(paste0("jibe health/resultsUrbanTransitions/", dir_path, "/03_exposure_and_rr/pp_rr_all_years_reduced.parquet"))) |> to_duckdb()
-    synth_pop <- read_csv(here(paste0("jibe health/", SCEN_SHORT_NAME, "_pp_exposure_RR_2021.csv")))
-    #   synth_pop <- synth_pop |> dplyr::select(id, gender_2021, age_2021, starts_with("rr_"), lsoa21cd, ladcd) |> 
-    # rename(gender = gender_2021, age = age_2021)
+    synth_pop <- arrow::open_dataset(here(paste0("jibe health/resultsUrbanTransitions/", dir_path, "/03_exposure_and_rr/pp_rr_all_years_reduced.parquet"))) |> to_duckdb()
+    # synth_pop <- read_csv(here(paste0("jibe health/", SCEN_SHORT_NAME, "_pp_exposure_RR_2021.csv")))
+    synth_pop <- synth_pop |> dplyr::select(id, gender_2021, age_2021, starts_with("rr_"), lsoa21cd, ladcd) |> 
+     rename(gender = gender_2021, age = age_2021)
     
   }else{
     synth_pop <- read_csv(here(paste0("manchester/health/processed/", SCEN_SHORT_NAME, "_pp_exposure_RR_2021.csv")))
@@ -207,18 +208,19 @@ for (scen in c("base", "safestreet", "green", "both"))
     curr_state <- as.character(cm[, 2])
     current_age <- (as.numeric(rd[, "age"]) + cycle)
     
-    rr_index <- 1
+    # rr_index <- 1
     
-    # if (cycle == 1 || cycle %% 5 != 0){
-    #   rr_index <- 1
-    # } else if (cycle %% 5 == 0){
-    #   rr_index <- cycle / 5
-    # }
+    rr_index <- round(cycle/5)
+    
+    #print(paste(cycle, rr_index))
     
     # Calculate disease probability
     dis_rate <- as.numeric(sapply(rd[, cause], function(x) strsplit(x, ",")[[1]][rr_index]) |> as.numeric() 
                            * ind_spec_rate * cause_risk)
     dis_prob <- 1 - exp(-dis_rate)
+    
+    print(paste(cycle, cause, rr_index))
+    print(summary(dis_prob))
     #all_cause_prob <- as.numeric(rd[, "all_cause_mortality"])
     
     
@@ -537,11 +539,11 @@ for (scen in c("base", "safestreet", "green", "both"))
   df$id <- rownames(m)
   
   ### Also save state transitions as a CSV
-  if (!FILE_PATH_BELEN){
-    arrow::write_dataset(df, paste0("data/", SCEN_SHORT_NAME, "_dis_inter_state_trans-n.c-",n.c, "-n.i-", n.i, "-n.d-", length(diseases), ".parquet"))
-  }else{
-    arrow::write_dataset(df, paste0("manchester/health/processed/", SCEN_SHORT_NAME, "_dis_inter_state_trans-n.c-",n.c, "-n.i-", n.i, "-n.d-", length(diseases), ".parquet"))
-  }
+  # if (!FILE_PATH_BELEN){
+  #   arrow::write_dataset(df, paste0("data/", SCEN_SHORT_NAME, "_dis_inter_state_trans-n.c-",n.c, "-n.i-", n.i, "-n.d-", length(diseases), ".parquet"))
+  # }else{
+  #   arrow::write_dataset(df, paste0("manchester/health/processed/", SCEN_SHORT_NAME, "_dis_inter_state_trans-n.c-",n.c, "-n.i-", n.i, "-n.d-", length(diseases), ".parquet"))
+  # }
 
   # arrow::write_dataset(df, paste0("data/", SCEN_SHORT_NAME, "_dis_inter_state_trans-n.c-",n.c, "-n.i-", n.i, "-n.d-", length(diseases), ".parquet"))
   
