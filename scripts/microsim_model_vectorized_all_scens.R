@@ -15,6 +15,7 @@ library(stringi)     # For faster string operations
 
 # Boolean variable for dir/file paths
 FILE_PATH_BELEN <- FALSE
+FILE_PATH_HPC <- TRUE
 
 options(future.globals.maxSize = +Inf)
 
@@ -45,14 +46,29 @@ for (scen in c("base", "safestreet", "green", "both"))
   # Data ----
   ## Synthetic population file with exposures and physical activity
   
-  if (!FILE_PATH_BELEN){
-    # synth_pop <- arrow::open_dataset(here(paste0("jibe health/resultsUrbanTransitions/reference/03_exposure_and_rr/pp_rr_all_years.parquet")))
-    #synth_pop <- arrow::open_dataset(here(paste0("jibe health/resultsUrbanTransitions/", dir_path, "/03_exposure_and_rr/pp_rr_all_years_reduced.parquet"))) |> to_duckdb()
-    synth_pop <- read_csv(here(paste0("jibe health/", SCEN_SHORT_NAME, "_pp_exposure_RR_2021.csv")))
-    #synth_pop <- synth_pop |> dplyr::select(id, gender_2021, age_2021, starts_with("rr_"), lsoa21cd, ladcd) |> 
-     #rename(gender = gender_2021, age = age_2021)
+  # if (!FILE_PATH_BELEN){
+  #   # synth_pop <- arrow::open_dataset(here(paste0("jibe health/resultsUrbanTransitions/reference/03_exposure_and_rr/pp_rr_all_years.parquet")))
+  #   #synth_pop <- arrow::open_dataset(here(paste0("jibe health/resultsUrbanTransitions/", dir_path, "/03_exposure_and_rr/pp_rr_all_years_reduced.parquet"))) |> to_duckdb()
+  #   synth_pop <- read_csv(here(paste0("jibe health/", SCEN_SHORT_NAME, "_pp_exposure_RR_2021.csv")))
+  #   #synth_pop <- synth_pop |> dplyr::select(id, gender_2021, age_2021, starts_with("rr_"), lsoa21cd, ladcd) |> 
+  #    #rename(gender = gender_2021, age = age_2021)
+  #   
+  # }else{
+  #   synth_pop <- read_csv(here(paste0("manchester/health/processed/", SCEN_SHORT_NAME, "_pp_exposure_RR_2021.csv")))
+  # }
+  
+  
+  if (FILE_PATH_HPC) {
+    # Option 1: HPC path
+    synth_pop <- arrow::open_dataset(here(paste0("health_data/processed", SCEN_SHORT_NAME, "_pp_exposure_RR_2021.csv.parquet"))) |> 
+      collect()
     
-  }else{
+  } else if (!FILE_PATH_BELEN) {
+    # Option 2: Default (Ali)
+    synth_pop <- read_csv(here(paste0("jibe health/", SCEN_SHORT_NAME, "_pp_exposure_RR_2021.csv")))
+    
+  } else {
+    # Option 3: Manchester
     synth_pop <- read_csv(here(paste0("manchester/health/processed/", SCEN_SHORT_NAME, "_pp_exposure_RR_2021.csv")))
   }
   
@@ -71,35 +87,97 @@ for (scen in c("base", "safestreet", "green", "both"))
   colnames(synth_pop) <- gsub("head_neck_cancer", "head_and_neck_cancer", colnames(synth_pop))
   
   ## Health transitions
-  if (!FILE_PATH_BELEN){
+  # if (!FILE_PATH_BELEN){
+  #   hd <- read_csv(here("jibe health/health_transitions_manchester.csv"))
+  # }else{
+  #   hd <- read_csv(here("manchester/health/processed/health_transitions_manchester.csv"))
+  # }
+  
+  
+  if (FILE_PATH_HPC) {
+    # Option 1: HPC path
+    hd <- read_csv(here(paste0("health_data/health_transitions_manchester.csv")))
+    
+  } else if (!FILE_PATH_BELEN) {
+    # Option 2: Default (e.g., Cambridge)
     hd <- read_csv(here("jibe health/health_transitions_manchester.csv"))
-  }else{
+    
+  } else {
+    # Option 3: Manchester path (default if FILE_PATH_BELEN is TRUE and FILE_PATH_HPC is FALSE)
     hd <- read_csv(here("manchester/health/processed/health_transitions_manchester.csv"))
   }
+  
   
   hd[hd$cause == "head_neck_cancer",]$cause <- "head_and_neck_cancer"
   
   # Read prevalence dataset
-  if (!FILE_PATH_BELEN){
+  # if (!FILE_PATH_BELEN){
+  #   prev <- read_csv(here(paste0("jibe health/", SCEN_SHORT_NAME, "_prevalence_id.csv")))
+  # }else{
+  #   prev <- read_csv(here(paste0("manchester/health/processed/", SCEN_SHORT_NAME, "_prevalence_id.csv")))
+  # }
+  
+  
+  
+  if (FILE_PATH_HPC) {
+    # Option 1: HPC path
+    prev <- read_csv(here(paste0("health_data/", SCEN_SHORT_NAME, "_prevalence_id.csv")))
+    
+  } else if (!FILE_PATH_BELEN) {
+    # Option 2: Default (Ali)
     prev <- read_csv(here(paste0("jibe health/", SCEN_SHORT_NAME, "_prevalence_id.csv")))
-  }else{
+    
+  } else {
+    # Option 3: Manchester path (default if FILE_PATH_BELEN is TRUE and FILE_PATH_HPC is FALSE)
     prev <- read_csv(here(paste0("manchester/health/processed/", SCEN_SHORT_NAME, "_prevalence_id.csv")))
   }
   
+  
   # Read zones dataset
-  if (!FILE_PATH_BELEN){
+  # if (!FILE_PATH_BELEN){
+  #   zones <- read_csv(here("jibe health/zoneSystem.csv"))
+  # }else{
+  #   zones <- read_csv(here("manchester/health/processed/zoneSystem.csv"))
+  # }
+  
+  if (FILE_PATH_HPC) {
+    # Option 1: HPC path
+    zones <- read_csv(here(paste0("health_data/zoneSystem.csv")))
+    
+  } else if (!FILE_PATH_BELEN) {
+    # Option 2: Default (Ali)
     zones <- read_csv(here("jibe health/zoneSystem.csv"))
-  }else{
-    zones <- read_csv(here("manchester/health/processed/zoneSystem.csv"))
+    
+  } else {
+    # Option 3: Manchester path (default if FILE_PATH_BELEN is TRUE and FILE_PATH_HPC is FALSE)
+    zones <- read_csv(here(paste0("manchester/health/processed/", SCEN_SHORT_NAME, "_prevalence_id.csv")))
   }
+  
+  
+  
 
-  # Read risk factor
-  if (!FILE_PATH_BELEN){
+  # # Read risk factor
+  # if (!FILE_PATH_BELEN){
+  #   disease_risks <<- read_csv("jibe health/mod_disease_risks.csv")
+  # }else{
+  #   disease_risks <<- read_csv("health/mod_disease_risks.csv")
+  # }
+
+  if (FILE_PATH_HPC) {
+    # Option 1: HPC path
+    disease_risks <<- read_csv("health_data/mod_disease_risks.csv")
+    
+  } else if (!FILE_PATH_BELEN) {
+    # Option 2: Default (Ali)
     disease_risks <<- read_csv("jibe health/mod_disease_risks.csv")
-  }else{
+    
+  } else {
+    # Option 3: Manchester path (default if FILE_PATH_BELEN is TRUE and FILE_PATH_HPC is FALSE)
     disease_risks <<- read_csv("health/mod_disease_risks.csv")
   }
-
+  
+  
+  
   
   if (sample_prop > 0){
     synth_pop <- synth_pop  |> 
@@ -539,12 +617,29 @@ for (scen in c("base", "safestreet", "green", "both"))
   df$id <- rownames(m)
   
   ### Also save state transitions as a CSV
-  if (!FILE_PATH_BELEN){
-    arrow::write_dataset(df, paste0("data/", SCEN_SHORT_NAME, "_dis_inter_state_trans-n.c-",n.c, "-n.i-", n.i, "-n.d-", length(diseases), ".parquet"))
-  }else{
-    arrow::write_dataset(df, paste0("manchester/health/processed/", SCEN_SHORT_NAME, "_dis_inter_state_trans-n.c-",n.c, "-n.i-", n.i, "-n.d-", length(diseases), ".parquet"))
-  }
+  # if (!FILE_PATH_BELEN){
+  #   arrow::write_dataset(df, paste0("data/", SCEN_SHORT_NAME, "_dis_inter_state_trans-n.c-",n.c, "-n.i-", n.i, "-n.d-", length(diseases), ".parquet"))
+  # }else{
+  #   arrow::write_dataset(df, paste0("manchester/health/processed/", SCEN_SHORT_NAME, "_dis_inter_state_trans-n.c-",n.c, "-n.i-", n.i, "-n.d-", length(diseases), ".parquet"))
+  # }
 
+  if (FILE_PATH_HPC) {
+    # Option 1: HPC path
+    arrow::write_dataset(df, paste0("health_data/results/", SCEN_SHORT_NAME, "_dis_inter_state_trans-n.c-", n.c, "-n.i-", n.i, "-n.d-", length(diseases), ".parquet"))
+    
+  } else if (!FILE_PATH_BELEN) {
+    # Option 2: Default (Ali)
+    arrow::write_dataset(df, paste0("data/", SCEN_SHORT_NAME, "_dis_inter_state_trans-n.c-", n.c, "-n.i-", n.i, "-n.d-", length(diseases), ".parquet"))
+    
+  } else {
+    # Option 3: Manchester path (default if FILE_PATH_BELEN is TRUE and FILE_PATH_HPC is FALSE)
+    arrow::write_dataset(df, paste0("manchester/health/processed/", SCEN_SHORT_NAME, "_dis_inter_state_trans-n.c-", n.c, "-n.i-", n.i, "-n.d-", length(diseases), ".parquet"))
+  }
+  
+  
+  
+  
+  
   # arrow::write_dataset(df, paste0("data/", SCEN_SHORT_NAME, "_dis_inter_state_trans-n.c-",n.c, "-n.i-", n.i, "-n.d-", length(diseases), ".parquet"))
   
   # rm(list = ls())
