@@ -1,6 +1,6 @@
 ---
 title: "Health Data Manchester"
-author: "Marina Berdikhaniva, Belen Zapata-Diomedi"
+author: "Belen Zapata-Diomedi,Marina Berdikhaniva"
 email: "mbzd2@cam.ac.uk, mb2592@cam.ac.uk"
 date: today
 format: 
@@ -1002,7 +1002,9 @@ gbd <- bind_rows(
   read.csv(here("manchester/health/original/gbd/parkinsons1.csv")),
   read.csv(here("manchester/health/original/gbd/parkinsons3.csv")))
 
-gbdp <- gbd_process(gbd)
+gbdp <- gbd_process(gbd) %>%
+  filter(measure %in% c("Prevalence", "Incidence"))
+write_csv(gbdp, here("manchester/health/processed/gbdp.csv"))
 
 # GBD data for Northwest (just diseases with low numbers for LADs in Grater Manchester)
 
@@ -1010,10 +1012,14 @@ gbd_england <-  read.csv(here("manchester/health/original/GBD/england_nortwest.c
 
 
 gbdp_nw <- gbd_england %>% filter(location == "North West England") %>%
-  gbd_process(.)
+  gbd_process(.) %>%
+  filter(measure %in% c("Prevalence", "Incidence"))
+write_csv(gbdp_nw, here("manchester/health/processed/gbdp_nw.csv"))
 
 gbdp_england <- gbd_england %>% filter(location == "England") %>%
-  gbd_process(.)
+  gbd_process(.) %>%
+  filter(measure %in% c("Prevalence", "Incidence"))
+write_csv(gbd_england, here("manchester/health/processed/gbdp_england.csv"))
 ```
 
 ## Replace small diseases
@@ -1026,7 +1032,7 @@ Information on the average age onset of diseases is also needed to set a
 lower threshold below which the min cases per 100,000 does not apply.
 
 | Disease                                          | Average onset age                                                                                             | Source                                                                                                                                                                       |
-|--------------------------------------------------|---------------------------------------------------------------------------------------------------------------|------------------------------------------------------------------------------------------------------------------------------------------------------------------------------|
+|------------------|----------------------|---------------------------------|
 | **Major Depressive Disorder**                    | Often emerges during adolescence or early adulthood, typically between ages 18 and 25                         | [NHS & Mental Health Foundation UK](http%20s://www.me%20ntalhealth%20.org.uk/); [National Institute for Health and Care Excellence (NIC E)](https:%20//www.nice%20.org.uk/). |
 | **Prostate Cancer**                              | Commonly diagnosed in men aged 65 and older.​                                                                  | [Cancer Research UK](https%20://www.can%20cerresearc%20huk.org/).                                                                                                            |
 | **Colon and Rectum Cancer**                      | The majority of cases are diagnosed in individuals over 50.​                                                   | [NHS Bowel Cancer Screening Progra mme](https%20://www.nhs%20.uk/condit%20ions/bowel%20-cancer-sc%20reening/).                                                               |
@@ -1056,93 +1062,98 @@ lower threshold below which the min cases per 100,000 does not apply.
 
 ```{r}
 
-## Read onset disease table (might not use)
-
-disease_onset <- read_csv(here("health/disease_onset.csv")) %>%
-  select(cause, age_onset = age)
-
-## Check for small values
-
-gbd_lads_small <- gbdp %>%
-  filter(!measure == "Deaths") %>%
-  left_join(disease_onset, by = "cause") %>%  # Explicitly join by cause
-  mutate(small_lads = case_when(val <= 20 ~ "yes",    
-    TRUE ~ "no"                             
-  ))
-
-## List diseases with small numbers for at least one lad
-
-small_diseases_lads <- gbd_lads_small %>% filter(small_lads == "yes") %>%
-  distinct(cause) %>%
-  pull(cause)
-
-## Aggreagate for Greater Manchester
-
-gbd_GM_small <- gbdp %>%
-  filter(!measure == "Deaths") %>%
-  group_by(measure, sex, agegroup, from_age, to_age, cause, metric, year, val, agediff, val1yr) %>%
-  summarise(val_GM = sum(val), 
-            val1yr_GM = sum(val1yr)) %>%
-  ungroup() %>%
-  left_join(disease_onset, by = "cause") %>%  # Explicitly join by cause
-  mutate(small_gm = case_when(val_GM <= 20 ~ "yes",    
-    TRUE ~ "no"                             
-  ), 
-  rate_1_GM=val_GM/100000)
-
-gbd_nw_small <- gbdp_nw %>% 
-  left_join(disease_onset, by = "cause") %>%  # Explicitly join by cause
-  mutate(small_nw = case_when(val <= 20 ~ "yes",    
-    TRUE ~ "no"                             
-  )) %>% rename(location_region = location, 
-                val_nw = val, 
-                val1yr_nw = val1yr, 
-                rate_1_nw = rate_1)
+### Data for England and NorthWest is only for diseases identified as having small numbers for LADs and Greater Manchester (Breast cancer, Esophageal cancer, Stomach cancer, Nasopharynx cancer, Chronic myeloid leukemia, Larynx cancer, Other pharynx cancer, Multiple myeloma, Diabetes mellitus type 2, Lip and oral cavity cancer, Liver cancer, Bladder cancer)
 
 
-gbd_eng_small <- gbdp_england %>% 
-  left_join(disease_onset, by = "cause") %>%  # Explicitly join by cause
-  mutate(small_eng = case_when(val <= 20 ~ "yes",    
-    TRUE ~ "no"                             
-  )) %>% rename(location_country = location, 
-                val_eng = val, 
-                val1yr_eng = val1yr, 
-                rate_1_eng = rate_1)
 
+# Flag LAD groups with any value < 20 from age 40+
+lad_group_flags <- gbdp %>%
+  group_by(measure, location, sex, agegroup, from_age, to_age, cause, metric, year, agediff) %>%
+  summarise(replace_group = any(val < 20 & from_age >= 40), .groups = "drop")
 
-## Replace rates in LADs data if small with Greater Manchester, NorthWest, England
+# Attach replace flag to LAD-level data
+gbd_lads_flagged <- gbdp %>%
+  left_join(lad_group_flags, by = c("measure", "location", "sex", "agegroup", "from_age", "to_age", "cause", "metric", "year", "agediff"))
 
+# Prepare fallback datasets
 
-gbd_combined <- left_join(gbd_lads_small, gbd_GM_small) %>% 
-                left_join(gbd_nw_small) %>%
-                left_join(gbd_eng_small) %>%
+# GM fallback — aggregate LADs into GM
+gbdp_GM <- gbdp %>%
+  group_by(measure, sex, agegroup, from_age, to_age, cause, metric, year, agediff) %>%
+  summarise(
+    val_GM = sum(val),
+    val1yr_GM = sum(val1yr),
+    .groups = "drop"
+  ) %>%
   mutate(
-    # Replace 'val' based on conditions
+    rate_1_GM = val_GM / 100000,
+    fallback_valid_GM = val_GM >= 20 & from_age >= 40
+  )
+
+#  NW fallback — already aggregated
+gbdp_nw_clean <- gbdp_nw %>%
+  rename(
+    val_NW = val,
+    val1yr_NW = val1yr,
+    rate_1_NW = rate_1
+  ) %>%
+  mutate(
+    fallback_valid_NW = val_NW >= 20 & from_age >= 40
+  )
+
+# England fallback — already aggregated, always acceptable
+gbdp_england_clean <- gbdp_england %>%
+  rename(
+    val_ENG = val,
+    val1yr_ENG = val1yr,
+    rate_1_ENG = rate_1
+  )
+
+# Join fallback data to LAD-level observations
+gbd_joined <- gbd_lads_flagged %>%
+  rename(original_location = location) %>%
+  left_join(gbdp_GM, by = c("measure", "sex", "agegroup", "from_age", "to_age", "cause", "metric", "year", "agediff")) %>%
+  left_join(gbdp_nw_clean, by = c("measure", "sex", "agegroup", "from_age", "to_age", "cause", "metric", "year", "agediff")) %>%
+  left_join(gbdp_england_clean, by = c("measure", "sex", "agegroup", "from_age", "to_age", "cause", "metric", "year", "agediff"))
+
+#  Replace LAD values where flagged, based on fallback hierarchy
+gbd_final <- gbd_joined %>%
+  mutate(
+    replaced_with = case_when(
+      replace_group & fallback_valid_GM ~ "Greater Manchester",
+      replace_group & !fallback_valid_GM & fallback_valid_NW ~ "North West",
+      replace_group & (!fallback_valid_GM & !fallback_valid_NW) ~ "England",
+      TRUE ~ "Original"
+    ),
     val = case_when(
-      small_lads == "yes" & small_gm == "yes" ~ val_nw,
-      small_lads == "yes" ~ val_GM,
-      small_nw == "yes" ~ val_eng,
-      TRUE ~ val  # Keep original value if no condition is met
+      replace_group & fallback_valid_GM ~ val_GM,
+      replace_group & !fallback_valid_GM & fallback_valid_NW ~ val_NW,
+      replace_group & (!fallback_valid_GM & !fallback_valid_NW) ~ val_ENG,
+      TRUE ~ val
     ),
-    # Replace 'rate_1' based on conditions
-    rate_1 = case_when(
-      small_lads == "yes" & small_gm == "yes" ~ rate_1_nw,
-      small_lads == "yes" ~ rate_1_GM,
-      small_nw == "yes" ~ rate_1_eng,
-      TRUE ~ rate_1  # Keep original value if no condition is met
-    ),
-    # Replace 'val1yr' based on conditions
     val1yr = case_when(
-      small_lads == "yes" & small_gm == "yes" ~ val1yr_nw,
-      small_lads == "yes" ~ val1yr_GM,
-      small_nw == "yes" ~ val1yr_eng,
-      TRUE ~ val1yr  # Keep original value if no condition is met
-    )
-  ) %>% select(measure, sex, agediff, agegroup, from_age, to_age, cause, year, val1yr,rate_1, location)
+      replace_group & fallback_valid_GM ~ val1yr_GM,
+      replace_group & !fallback_valid_GM & fallback_valid_NW ~ val1yr_NW,
+      replace_group & (!fallback_valid_GM & !fallback_valid_NW) ~ val1yr_ENG,
+      TRUE ~ val1yr
+    ),
+    rate_1 = case_when(
+      replace_group & fallback_valid_GM ~ rate_1_GM,
+      replace_group & !fallback_valid_GM & fallback_valid_NW ~ rate_1_NW,
+      replace_group & (!fallback_valid_GM & !fallback_valid_NW) ~ rate_1_ENG,
+      TRUE ~ rate_1
+    ),
+    location = original_location
+  ) %>%
+  select(measure, sex, cause, year, agegroup, from_age, to_age,
+         val, val1yr, rate_1, location, replaced_with, agediff)
 
-gbdp_combined <- gbd_combined
+# View how many groups were replaced
+table(gbd_final$replaced_with)
 
-  
+gbdp <- gbd_final
+write_csv(gbd_final, here("manchester/health/processed/gbd_processed.csv"))
+
 ```
 
 ## Interpolation
