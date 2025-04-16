@@ -64,8 +64,11 @@ dc_green <- get_summary("green", group_vars = c("ladcd", "cycle", "value")) |> m
 dc_safestreet <- get_summary("safestreet", group_vars = c("ladcd", "cycle", "value")) |> mutate(scen = "safestreet")
 dc_both <- get_summary("both", group_vars = c("ladcd", "cycle", "value")) |> mutate(scen = "both")
 
-dc_lad_overtime <- plyr::rbind.fill(dc_base, dc_green, dc_safestreet, dc_both)
+# dc_lad_overtime <- plyr::rbind.fill(dc_base, dc_green, dc_safestreet, dc_both)
 
+dc_lad_overtime <- plyr::rbind.fill(dc_base, dc_green, dc_safestreet)
+
+# dc_lad_overtime <- plyr::rbind.fill(dc_base, dc_safestreet)
 
 if (!FILE_PATH_BELEN){
   zones <- read_csv(here("jibe health/zoneSystem.csv"))
@@ -125,6 +128,33 @@ g <- ggplot(df_change_lad_overtime_alive, aes(x = factor(cycle, levels = paste0(
   theme_minimal()
 plotly::ggplotly(g)
 
+###### Diseases over time
+
+# Filter the data for the "dead" value and reference scenario
+reference_df_lad_overtime_disease <- dc_lad_overtime %>%
+  filter(!value %in% c("dead", "healthy"), scen == "reference") 
+# Join the reference data with the original data to calculate the change in count
+df_change_lad_overtime_disease <- dc_lad_overtime |>
+  filter(!value %in% c("dead", "healthy")) |>
+  # group_by(cycle, ladcd, scen) |> summarise(count = sum(count)) |>
+  # ungroup() |>
+  left_join(reference_df_lad_overtime_disease, by = c("ladcd", "cycle", "value"), suffix = c("", "_ref")) |>
+  mutate(count_change = count - count_ref) |>
+  dplyr::select(ladcd, cycle, scen, count_change, value) |>
+  left_join(zones)
+# Create a line plot showing the difference for the "alive" value, faceted by ladcd
+g <- ggplot(df_change_lad_overtime_disease, aes(x = factor(cycle, levels = paste0("c", 0:n.c)), y = count_change, color = value, group = scen)) +
+  geom_line() +
+  geom_point() +
+  facet_wrap(~ ladnm) +
+  labs(title = "Change in Count of diseases Compared to Reference",
+       x = "Year",
+       y = "Change in Count") +
+  theme_minimal()
+plotly::ggplotly(g)
+
+
+
 
 ###### Cumulative 
 
@@ -135,7 +165,10 @@ dc_green <- get_summary("green", group_vars = c("ladcd", "value")) |> mutate(sce
 dc_safestreet <- get_summary("safestreet", group_vars = c("ladcd", "value")) |> mutate(scen = "safestreet")
 dc_both <- get_summary("both", group_vars = c("ladcd", "value")) |> mutate(scen = "both")
 
-dc_cumulative_lad <- plyr::rbind.fill(dc_base, dc_green, dc_safestreet, dc_both)
+# dc_cumulative_lad <- plyr::rbind.fill(dc_base, dc_green, dc_safestreet, dc_both)
+
+dc_cumulative_lad <- plyr::rbind.fill(dc_base, dc_green, dc_safestreet)
+
 
 if (!FILE_PATH_BELEN){
   zones <- read_csv(here("jibe health/zoneSystem.csv"))
