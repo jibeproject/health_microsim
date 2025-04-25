@@ -4,8 +4,8 @@ require(arrow)
 
 # Boolean variable for dir/file paths
 FILE_PATH_BELEN <- TRUE
-n.i <<- 282727
-n.c <<- 30
+n.i <<- 2827285
+n.c <<- 50
 
 get_summary <- function(SCEN_NAME, group_vars = NULL){
   
@@ -64,9 +64,9 @@ dc_green <- get_summary("green", group_vars = c("ladcd", "cycle", "value")) |> m
 dc_safestreet <- get_summary("safestreet", group_vars = c("ladcd", "cycle", "value")) |> mutate(scen = "safestreet")
 dc_both <- get_summary("both", group_vars = c("ladcd", "cycle", "value")) |> mutate(scen = "both")
 
-# dc_lad_overtime <- plyr::rbind.fill(dc_base, dc_green, dc_safestreet, dc_both)
+ dc_lad_overtime <- plyr::rbind.fill(dc_base, dc_green, dc_safestreet, dc_both)
 
-dc_lad_overtime <- plyr::rbind.fill(dc_base, dc_green, dc_safestreet)
+# dc_lad_overtime <- plyr::rbind.fill(dc_base, dc_green, dc_safestreet)
 
 # dc_lad_overtime <- plyr::rbind.fill(dc_base, dc_safestreet)
 
@@ -167,7 +167,7 @@ dc_both <- get_summary("both", group_vars = c("ladcd", "value")) |> mutate(scen 
 
 # dc_cumulative_lad <- plyr::rbind.fill(dc_base, dc_green, dc_safestreet, dc_both)
 
-dc_cumulative_lad <- plyr::rbind.fill(dc_base, dc_green, dc_safestreet)
+dc_cumulative_lad <- plyr::rbind.fill(dc_base, dc_green, dc_safestreet, dc_both)
 
 
 if (!FILE_PATH_BELEN){

@@ -14,13 +14,13 @@ library(data.table)  # For faster data operations
 library(stringi)     # For faster string operations
 
 # Boolean variable for dir/file paths
-FILE_PATH_BELEN <- FALSE
-FILE_PATH_HPC <- TRUE
+FILE_PATH_BELEN <- TRUE
+FILE_PATH_HPC <- FALSE
 
 options(future.globals.maxSize = +Inf)
 
 # Set sample_pro to be greater than zero
-sample_prop <- 0.001
+sample_prop <- 0
 
 # Number of cycles/years the simulation works
 n.c <- 10
@@ -30,7 +30,7 @@ DISEASE_RISK <- TRUE
 
 for (scen in c("base", "safestreet", "green", "both"))
 {
-  #scen <- 'base'
+  # scen <- 'base'
   # For reproducibility across scenarios, set it inside the loop
   set.seed(2)
   
@@ -72,7 +72,7 @@ for (scen in c("base", "safestreet", "green", "both"))
     synth_pop <- read_csv(here(paste0("manchester/health/processed/", SCEN_SHORT_NAME, "_pp_exposure_RR_2021.csv")))
   }
   
-
+  
   # Introduce agegroup
   synth_pop <- synth_pop |> 
     mutate(agegroup = cut(age, c(0, 25, 45, 65, 85, Inf),
@@ -150,19 +150,19 @@ for (scen in c("base", "safestreet", "green", "both"))
     
   } else {
     # Option 3: Manchester path (default if FILE_PATH_BELEN is TRUE and FILE_PATH_HPC is FALSE)
-    zones <- read_csv(here(paste0("manchester/health/processed/", SCEN_SHORT_NAME, "_prevalence_id.csv")))
+    zones <- read_csv(here(paste0("manchester/health/processed/", SCEN_SHORT_NAME, "zoneSystem.csv")))
   }
   
   
   
-
+  
   # # Read risk factor
   # if (!FILE_PATH_BELEN){
   #   disease_risks <<- read_csv("jibe health/mod_disease_risks.csv")
   # }else{
   #   disease_risks <<- read_csv("health/mod_disease_risks.csv")
   # }
-
+  
   if (FILE_PATH_HPC) {
     # Option 1: HPC path
     disease_risks <<- read_csv("health_data/mod_disease_risks.csv")
@@ -173,7 +173,7 @@ for (scen in c("base", "safestreet", "green", "both"))
     
   } else {
     # Option 3: Manchester path (default if FILE_PATH_BELEN is TRUE and FILE_PATH_HPC is FALSE)
-    disease_risks <<- read_csv("health/mod_disease_risks.csv")
+    disease_risks <<- read_csv(here("health/mod_disease_risks.csv"))
   }
   
   
@@ -238,9 +238,9 @@ for (scen in c("base", "safestreet", "green", "both"))
   df <- synth_pop
   
   synth_pop <- process_all_suffixes(synth_pop, 
-                                          hd |> 
-                                            dplyr::select(cause) |> 
-                                            distinct()) 
+                                    hd |> 
+                                      dplyr::select(cause) |> 
+                                      distinct()) 
   
   names(synth_pop) <- str_replace(names(synth_pop), "^all_path_|pm_|ap_|pa_|PHYSICAL_ACTIVITY_|AIR_POLLUTION_", "")
   
@@ -371,6 +371,8 @@ for (scen in c("base", "safestreet", "green", "both"))
   # Main simulation function
   run_simulation <- function(synth_pop_wprob, m, hd, disease_risks, n.c, diseases, DISEASE_RISK = TRUE) {
     # Prepare data for fast access
+    
+    # synth_pop_wprob <- synth_pop
     hd_prepped <- prep_health_data(hd)
     if (DISEASE_RISK) disease_risks_prepped <- prep_disease_risks(disease_risks)
     
@@ -482,7 +484,7 @@ for (scen in c("base", "safestreet", "green", "both"))
                 
               }
             }
-            
+          
         } else {
           risk_factors <- rep(1, nrow(synth_matrix))
         }
@@ -622,7 +624,7 @@ for (scen in c("base", "safestreet", "green", "both"))
   # }else{
   #   arrow::write_dataset(df, paste0("manchester/health/processed/", SCEN_SHORT_NAME, "_dis_inter_state_trans-n.c-",n.c, "-n.i-", n.i, "-n.d-", length(diseases), ".parquet"))
   # }
-
+  
   if (FILE_PATH_HPC) {
     # Option 1: HPC path
     arrow::write_dataset(df, paste0("health_data/results/", SCEN_SHORT_NAME, "_dis_inter_state_trans-n.c-", n.c, "-n.i-", n.i, "-n.d-", length(diseases), ".parquet"))
