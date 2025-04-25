@@ -11,8 +11,8 @@ library(tidyverse)
 # Boolean variable for dir/file paths
 FILE_PATH_BELEN <- FALSE
 
-n.i <- 2824#282727
-n.c <- 2
+n.i <- 282727#28269#2824#282727
+n.c <- 30
 
 get_summary <- function(SCEN_NAME, n.i, n.c){
     
@@ -70,9 +70,6 @@ dc <- plyr::rbind.fill(dc_base, dc_green, dc_safestreet, dc_both)
 # Create unique causes
 ud <- unique(dc$value)
 
-# Filter the data for the "healthy" value and reference scenario
-reference_df <- dc |> filter(value == "healthy", scen == "reference")
-
 zones <- read_csv(here("jibe health/zoneSystem.csv"))
 
 zones <- zones |> distinct(ladcd, ladnm)
@@ -100,7 +97,7 @@ ui <- page_sidebar(
         pickerInput(inputId = "in_causes", 
                     label = "Diseases/causes",
                     choices = ud,
-                    selected = ud,
+                    selected = "healthy",
                     options = list(`actions-box` = TRUE), 
                     multiple = TRUE),
         
@@ -130,23 +127,54 @@ server <- function(input, output) {
         filtered_lads <- input$in_lads
         strata <- input$in_strata
         causes <- input$in_causes
+        cumulative <- input$in_cumulative
         
-        # browser()
-        
-        # c("None", "Sex", "Age Group"
-        return(
-            # Join the reference data with the original data to calculate the change in count
-            dc |> 
-                filter(value %in% causes & ladcd %in% filtered_lads) %>%
+        # reference_df <- dc |> 
+        #     filter(value != "dead", scen == "reference") |> 
+        #     group_by(cycle, ladcd, scen) |> summarise(count = sum(count)) # futher grouping here as there are people in diff health states
+        # # Join the reference data with the original data to calculate the change in count
+        # df_change <- dc |>
+        #     filter(value != "dead") |>
+        #     group_by(cycle, ladcd, scen) |> summarise(count = sum(count)) |>
+        #     ungroup() |>
+        #     left_join(reference_df, by = c("ladcd", "cycle"), suffix = c("", "_ref")) |>
+        #     mutate(count_change = count - count_ref) |>
+        #     dplyr::select(ladcd, cycle, scen, count_change) |>
+        #     left_join(zones)
+    
+        if (cumulative){
+            
+            reference_df <- dc |> filter(value != "dead", scen == "reference") %>%
                 {
-                    if (strata == "None") {
-                        left_join(., reference_df, by = c("ladcd", "name"), suffix = c("", "_ref")) 
-                    } else if (strata == "Sex") {
-                        left_join(., reference_df, by = c("ladcd", "name", "gender"), suffix = c("", "_ref")) 
-                    } else {
-                        left_join(., reference_df, by = c("ladcd", "name", "agegroup"), suffix = c("", "_ref")) 
+                    if (strata == "None"){
+                        group_by(., ladcd, scen)
+                    }
+                    else if (strata == "Sex") {
+                        group_by(., gender, ladcd, scen)
+                    }else {
+                        group_by(., agegroup, ladcd, scen)
                     }
                 } %>%
+                summarise(count = sum(count))
+            
+            
+            return(dc |> 
+                filter(value != "dead" & ladcd %in% filtered_lads) %>%
+                {
+                    if (strata == "None") {
+                        group_by(., ladcd, scen) |> 
+                            summarise(count = sum(count)) |> 
+                            left_join(., reference_df, by = c("ladcd"), suffix = c("", "_ref")) 
+                    } else if (strata == "Sex") {
+                        group_by(., gender, ladcd, scen) |> 
+                            summarise(count = sum(count)) |> 
+                            left_join(., reference_df, by = c("ladcd", "gender"), suffix = c("", "_ref")) 
+                    } else {
+                        group_by(., agegroup, ladcd, scen) |>
+                            summarise(count = sum(count)) |> 
+                            left_join(., reference_df, by = c("ladcd", "agegroup"), suffix = c("", "_ref")) 
+                    }
+                } %>% 
                 mutate(count_change = count - count_ref) %>% {
                     if (strata == "None") {
                         group_by(., ladcd, name, scen) 
@@ -159,8 +187,49 @@ server <- function(input, output) {
                 summarise(count_change = sum(count_change), .groups = "keep") |> 
                 left_join(zones)
             )
+            
+            # browser()
+            
+        }else{
+            
+            # Filter the data for the "healthy" value and reference scenario
+            reference_df <- dc |> filter(value %in% causes, scen == "reference")
+            
+            
+            return(
+                # Join the reference data with the original data to calculate the change in count
+                dc |> 
+                    filter(value %in% causes & ladcd %in% filtered_lads) %>%
+                    {
+                        if (strata == "None") {
+                            left_join(., reference_df, by = c("ladcd", "name"), suffix = c("", "_ref")) 
+                        } else if (strata == "Sex") {
+                            left_join(., reference_df, by = c("ladcd", "name", "gender"), suffix = c("", "_ref")) 
+                        } else {
+                            left_join(., reference_df, by = c("ladcd", "name", "agegroup"), suffix = c("", "_ref")) 
+                        }
+                    } %>%
+                    mutate(count_change = count - count_ref) %>% {
+                        if (strata == "None") {
+                            group_by(., ladcd, name, scen) 
+                        } else if (strata == "Sex") {
+                            group_by(., ladcd, name, gender, scen)
+                        } else {
+                            group_by(., ladcd, name, agegroup, scen)
+                        }
+                    } %>%
+                    summarise(count_change = sum(count_change), .groups = "keep") |> 
+                    left_join(zones)
+            )
+            
+            
+        }
+
+        # c("None", "Sex", "Age Group"
         
     })
+    
+    
     
     
     output$out_health_plot <- renderPlotly({
