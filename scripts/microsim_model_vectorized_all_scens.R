@@ -14,16 +14,22 @@ library(data.table)  # For faster data operations
 library(stringi)     # For faster string operations
 
 # Boolean variable for dir/file paths
-FILE_PATH_BELEN <- TRUE
+FILE_PATH_BELEN <- FALSE
 FILE_PATH_HPC <- FALSE
 
 options(future.globals.maxSize = +Inf)
 
+#if (.Platform$OS.type == "windows"){
+plan("future::multisession")
+#}else{
+#  plan("future::multicore")
+#}
+
 # Set sample_pro to be greater than zero
-sample_prop <- 0
+sample_prop <- 0.001
 
 # Number of cycles/years the simulation works
-n.c <- 10
+n.c <- 5
 
 # Define DISEASE RISK to incorporate disease interaction
 DISEASE_RISK <- TRUE
@@ -277,8 +283,6 @@ for (scen in c("base", "safestreet", "green", "both"))
   # Create a list of diseases from teh burden data
   diseases <- unique(hd$cause)
   
-  
-  
   # Vectorized version of get_state
   get_state_vectorized <- function(rd, cycle, cause, cm, ind_spec_rate, cause_risk = 1) {
     # print(cause)
@@ -288,9 +292,52 @@ for (scen in c("base", "safestreet", "green", "both"))
     
     rr_index <- 1
     
+    # if (cause == "coronary_heart_disease")
+    # 
+    # rr_diabetes <- df %>%
+    #   filter(risk_factor == "diabetes",
+    #          outcome == "all_cause_mortality",
+    #          age_range == "40 to 70",
+    #          sex == "female") %>%
+    #   pull(relative_risk)
+    # 
+    # rr_all_cause_dementia <- df %>%
+    #   filter(risk_factor == "all_cause_dementia",
+    #          outcome == "all_cause_mortality",
+    #          age_range == "40 to 70",
+    #          sex == "female") %>%
+    #   pull(relative_risk)
+    # 
+    # rr_stroke <- df %>%
+    #   filter(risk_factor == "stroke",
+    #          outcome == "all_cause_mortality",
+    #          age_range == "40 to 70",
+    #          sex == "female") %>%
+    #   pull(relative_risk)
+    # 
+    # rr_coronary_heart_disease <- df %>%
+    #   filter(risk_factor == "coronary_heart_disease",
+    #          outcome == "all_cause_mortality",
+    #          age_range == "40 to 70",
+    #          sex == "female") %>%
+    #   pull(relative_risk)
+    # 
+    # rr_depression <- df %>%
+    #   filter(risk_factor == "depression",
+    #          outcome == "all_cause_mortality",
+    #          age_range == "40 to 70",
+    #          sex == "female") %>%
+    #   pull(relative_risk)
+    
+    # if (cause == "coronary_heart_disease"){
+    #   browser()
+    # }
+    
     #rr_index <- round(cycle/5)
     
     #print(paste(cycle, rr_index))
+    
+    # if (cause == "c")
     
     # Calculate disease probability
     dis_rate <- as.numeric(sapply(rd[, cause], function(x) strsplit(x, ",")[[1]][rr_index]) |> as.numeric() 
@@ -370,6 +417,8 @@ for (scen in c("base", "safestreet", "green", "both"))
   
   # Main simulation function
   run_simulation <- function(synth_pop_wprob, m, hd, disease_risks, n.c, diseases, DISEASE_RISK = TRUE) {
+    
+    # synth_pop_wprob <- synth_pop
     # Prepare data for fast access
     
     # synth_pop_wprob <- synth_pop
@@ -420,7 +469,7 @@ for (scen in c("base", "safestreet", "green", "both"))
               })
               
               # Calculate risk factors in bulk
-              risk_factors[age_condition] <- sapply(seq_along(disease_lists), function(idx) {
+              risk_factors[age_condition] <- future_sapply(seq_along(disease_lists), function(idx) {
                 dl <- disease_lists[[idx]] # Extract the disease list for the current index
                 if (length(dl) == 0) return(1)
                 
@@ -442,9 +491,7 @@ for (scen in c("base", "safestreet", "green", "both"))
               })
               
             }
-          } else 
-            
-            if (dis %in% c("coronary_heart_disease", "stroke")) {
+          } else if (dis %in% c("coronary_heart_disease", "stroke")) {
               age_condition <- current_age >= 18
               sex_condition <- ifelse(synth_matrix[, "sex"] == 1, "male", "female")
               relevant_cases <- age_condition & (dis %in% c("coronary_heart_disease", "stroke"))
@@ -454,7 +501,7 @@ for (scen in c("base", "safestreet", "green", "both"))
                 disease_lists <- stri_split_fixed(prev_states, " ")
                 sex_strings <- sex_condition[relevant_cases]
                 
-                risk_factors[relevant_cases] <- mapply(function(dl, sex_str) {
+                risk_factors[relevant_cases] <- future_mapply(function(dl, sex_str) {
                   
                   if (length(dl) == 0) return(1)
                   
@@ -477,7 +524,7 @@ for (scen in c("base", "safestreet", "green", "both"))
                     disease_risks_prepped_subset$outcome == local_outcome
                   
                   # Calculate product of relative risks
-                  product <- prod(disease_risks_prepped_subset[relevant_rows, relative_risk], na.rm = TRUE)
+                  product <- prod(disease_risks_prepped_subset[relevant_rows, "relative_risk"], na.rm = TRUE)
                   
                   return(product)
                 }, disease_lists, sex_strings)
@@ -627,23 +674,15 @@ for (scen in c("base", "safestreet", "green", "both"))
   
   if (FILE_PATH_HPC) {
     # Option 1: HPC path
-    arrow::write_dataset(df, paste0("health_data/results/", SCEN_SHORT_NAME, "_dis_inter_state_trans-n.c-", n.c, "-n.i-", n.i, "-n.d-", length(diseases), ".parquet"))
+    arrow::write_dataset(df, paste0("health_data/results/", SCEN_SHORT_NAME, "_dis_inter_", DISEASE_RISK, "_state_trans-n.c-", n.c, "-n.i-", n.i, "-n.d-", length(diseases), ".parquet"))
     
   } else if (!FILE_PATH_BELEN) {
     # Option 2: Default (Ali)
-    arrow::write_dataset(df, paste0("data/", SCEN_SHORT_NAME, "_dis_inter_state_trans-n.c-", n.c, "-n.i-", n.i, "-n.d-", length(diseases), ".parquet"))
+    arrow::write_dataset(df, paste0("data/", SCEN_SHORT_NAME, "_dis_inter_", DISEASE_RISK, "_state_trans-n.c-", n.c, "-n.i-", n.i, "-n.d-", length(diseases), ".parquet"))
     
   } else {
     # Option 3: Manchester path (default if FILE_PATH_BELEN is TRUE and FILE_PATH_HPC is FALSE)
-    arrow::write_dataset(df, paste0("manchester/health/processed/", SCEN_SHORT_NAME, "_dis_inter_state_trans-n.c-", n.c, "-n.i-", n.i, "-n.d-", length(diseases), ".parquet"))
+    arrow::write_dataset(df, paste0("manchester/health/processed/", SCEN_SHORT_NAME, "_dis_inter_", DISEASE_RISK, "_state_trans-n.c-", n.c, "-n.i-", n.i, "-n.d-", length(diseases), ".parquet"))
   }
-  
-  
-  
-  
-  
-  # arrow::write_dataset(df, paste0("data/", SCEN_SHORT_NAME, "_dis_inter_state_trans-n.c-",n.c, "-n.i-", n.i, "-n.d-", length(diseases), ".parquet"))
-  
-  # rm(list = ls())
   
 }
