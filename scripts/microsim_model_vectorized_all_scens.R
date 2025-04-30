@@ -26,13 +26,13 @@ plan("future::multisession")
 #}
 
 # Set sample_pro to be greater than zero
-sample_prop <- 0.001
+sample_prop <- 0.1
 
 # Number of cycles/years the simulation works
-n.c <- 5
+n.c <- 30
 
 # Define DISEASE RISK to incorporate disease interaction
-DISEASE_RISK <- TRUE
+DISEASE_RISK <- FALSE
 
 for (scen in c("base", "safestreet", "green", "both"))
 {
@@ -85,6 +85,9 @@ for (scen in c("base", "safestreet", "green", "both"))
                           right=FALSE, include.lowest = TRUE))
   
   synth_pop <- synth_pop |> collect()
+  
+  # Remove all but PA RRs
+  synth_pop <- synth_pop |> dplyr::select(-c(contains("ndvi") | contains("noise") | contains("pm") | contains("no2"))) 
   
   # Rename parkinson's disease to parkinson
   colnames(synth_pop) <- gsub("parkinson's_disease", "parkinson", colnames(synth_pop))
@@ -243,10 +246,14 @@ for (scen in c("base", "safestreet", "green", "both"))
   
   df <- synth_pop
   
+  existing_causes <- synth_pop |> ungroup() |> dplyr::select(contains("all_path")) |> names()
+  hd <- hd |> filter(cause %in% gsub("all_path_","", existing_causes)) 
+  
   synth_pop <- process_all_suffixes(synth_pop, 
                                     hd |> 
                                       dplyr::select(cause) |> 
                                       distinct()) 
+  
   
   names(synth_pop) <- str_replace(names(synth_pop), "^all_path_|pm_|ap_|pa_|PHYSICAL_ACTIVITY_|AIR_POLLUTION_", "")
   
@@ -337,8 +344,9 @@ for (scen in c("base", "safestreet", "green", "both"))
     
     #print(paste(cycle, rr_index))
     
-    # if (cause == "c")
-    
+    # if (cause == "copd")
+    #   browser()
+    # print(cause)
     # Calculate disease probability
     dis_rate <- as.numeric(sapply(rd[, cause], function(x) strsplit(x, ",")[[1]][rr_index]) |> as.numeric() 
                            * ind_spec_rate * cause_risk)
@@ -558,128 +566,128 @@ for (scen in c("base", "safestreet", "green", "both"))
   tic()
   m <- run_simulation(synth_pop, m, hd, disease_risks, n.c, diseases, DISEASE_RISK)
   toc()
-  
-  
+
+
   ## some plots to visualise results
-  
+
   # Create individual states, while ignoring the all_cause_mortality state as dead state already captures it
   l <- data.frame(states = c('dead', diseases |> str_subset(pattern = "all_cause_mortality", negate = TRUE)), freq = 0, c = 0)
   for (ind in 1:n.c){
-    df <- unlist(strsplit(m[, ind], " ")) |> 
+    df <- unlist(strsplit(m[, ind], " ")) |>
       as.data.frame()
     names(df) <- 'states'
-    tbl <- df |> 
-      group_by(states) |> 
-      summarise(cn = dplyr::n()) |> 
-      mutate(freq = round(cn / sum(cn) * 100, 1), c = ind) |> 
+    tbl <- df |>
+      group_by(states) |>
+      summarise(cn = dplyr::n()) |>
+      mutate(freq = round(cn / sum(cn) * 100, 1), c = ind) |>
       dplyr::select(-cn)
     l <- plyr::rbind.fill(l, tbl)
   }
-  
+
   l$c <- as.factor(l$c)
-  
+
   l <- l |> filter(!is.na(states))
-  
+
   # Generate historic state transitions of all diseases + dead
   ggplot(l |> filter(freq > 0)) +
     aes(x = c, y = freq, fill = states) +
     geom_col() +
     labs(x = "Years", y = "Frequency (%)", title = paste(SCEN_SHORT_NAME, "State transitions over the years")) +
     theme_minimal()
-  
+
   plotly::ggplotly(ggplot(l |> filter(states != "healthy"), aes(x = c, y = freq, color = states, group = states)) + geom_line() + geom_point() +
-                     labs(x = "Years", y = "Frequency (%)", title = paste(SCEN_SHORT_NAME, "State transitions over the years"))) 
-  
-  
-  m |> as.data.frame() |> 
-    rownames_to_column("id") |> 
-    pivot_longer(cols = -c(id)) |> 
-    mutate(unpacked = str_split(value, " ")) |> 
-    unnest() |> 
-    mutate(value = str_trim(unpacked)) |> 
-    dplyr::select(-unpacked) |> 
-    mutate(value = str_replace_all(value, fixed("parkinson’s_disease"), "parkinson")) |> 
-    group_by(name, value)|> 
-    summarise(nv = dplyr::n(), 
-              freq = round(100 * nv / nrow(m), 1)) |>  
-    filter(nv > 0) |> 
-    pivot_wider(id_cols = value, 
+                     labs(x = "Years", y = "Frequency (%)", title = paste(SCEN_SHORT_NAME, "State transitions over the years")))
+
+
+  m |> as.data.frame() |>
+    rownames_to_column("id") |>
+    pivot_longer(cols = -c(id)) |>
+    mutate(unpacked = str_split(value, " ")) |>
+    unnest() |>
+    mutate(value = str_trim(unpacked)) |>
+    dplyr::select(-unpacked) |>
+    mutate(value = str_replace_all(value, fixed("parkinson’s_disease"), "parkinson")) |>
+    group_by(name, value)|>
+    summarise(nv = dplyr::n(),
+              freq = round(100 * nv / nrow(m), 1)) |>
+    filter(nv > 0) |>
+    pivot_wider(id_cols = value,
                 names_from = name, values_from = nv) |> print()
-  
+
   prep_trans_df <- function(m, measure = "freq"){
-    
+
     # measure <- "freq"
-    df <- m |> as.data.frame() |> 
-      rownames_to_column("id") |> 
-      pivot_longer(cols = -c(id)) |> 
-      mutate(unpacked = str_split(value, " ")) |> 
-      unnest() |> 
-      mutate(value = str_trim(unpacked)) |> 
-      mutate(value = str_replace_all(value, fixed("parkinson’s_disease"), "parkinson")) |> 
-      dplyr::select(-unpacked) |> 
-      group_by(name, value)|> 
-      summarise(nv = dplyr::n(), 
-                freq = round(100 * nv / nrow(m), 1)) |>  
-      filter(freq > 0) |> 
+    df <- m |> as.data.frame() |>
+      rownames_to_column("id") |>
+      pivot_longer(cols = -c(id)) |>
+      mutate(unpacked = str_split(value, " ")) |>
+      unnest() |>
+      mutate(value = str_trim(unpacked)) |>
+      mutate(value = str_replace_all(value, fixed("parkinson’s_disease"), "parkinson")) |>
+      dplyr::select(-unpacked) |>
+      group_by(name, value)|>
+      summarise(nv = dplyr::n(),
+                freq = round(100 * nv / nrow(m), 1)) |>
+      filter(freq > 0) |>
       {\(.) if(measure == "freq"){
         pivot_wider(., id_cols = value, names_from = name, values_from = freq)
       }
         else{
           pivot_wider(., id_cols = value, names_from = name, values_from = nv)
         }
-      }()  |> 
-      rename(cause = value) |> 
-      pivot_longer(cols = -cause) |> 
-      as.data.frame() |> 
+      }()  |>
+      rename(cause = value) |>
+      pivot_longer(cols = -cause) |>
+      as.data.frame() |>
       filter(cause != "healthy")
-    
-    
+
+
     df$name <- gsub("c","",as.character(df$name))
     df$name <- as.numeric(df$name)
-    
+
     df <- df |> arrange(cause, name)
-    
+
     return(df)
-    
+
   }
-  
-  plotly::ggplotly(ggplot(prep_trans_df(m, measure = "freq"), 
-                          aes(x = name, y = value, color = cause, group = cause) ) + 
-                     geom_point() + 
+
+  plotly::ggplotly(ggplot(prep_trans_df(m, measure = "freq"),
+                          aes(x = name, y = value, color = cause, group = cause) ) +
+                     geom_point() +
                      geom_line() +
                      labs(title = paste(SCEN_SHORT_NAME, "Disease freq over time"), x = "years", y = "freq (%) "))
-  
-  
-  plotly::ggplotly(ggplot(prep_trans_df(m, measure = "nv"), 
-                          aes(x = name, y = value, color = cause, group = cause) ) + 
-                     geom_point() + 
+
+
+  plotly::ggplotly(ggplot(prep_trans_df(m, measure = "nv"),
+                          aes(x = name, y = value, color = cause, group = cause) ) +
+                     geom_point() +
                      geom_line() +
                      labs(title = paste(SCEN_SHORT_NAME, "Disease count over time"), x = "years", y = "count (n) "))
-  
-  
+
+
   # # # Save the diagram
   # ggsave(paste0("diagrams/state_trans-n.c-",n.c, "-n.i-", n.i, "-n.d-", length(diseases), ".png"), height = 5, width = 10, units = "in", dpi = 600, scale = 1)
-  # # 
-  
-  
+  # #
+
+
   df <- as.data.frame(m)
   df$id <- rownames(m)
-  
+
   ### Also save state transitions as a CSV
   # if (!FILE_PATH_BELEN){
   #   arrow::write_dataset(df, paste0("data/", SCEN_SHORT_NAME, "_dis_inter_state_trans-n.c-",n.c, "-n.i-", n.i, "-n.d-", length(diseases), ".parquet"))
   # }else{
   #   arrow::write_dataset(df, paste0("manchester/health/processed/", SCEN_SHORT_NAME, "_dis_inter_state_trans-n.c-",n.c, "-n.i-", n.i, "-n.d-", length(diseases), ".parquet"))
   # }
-  
+
   if (FILE_PATH_HPC) {
     # Option 1: HPC path
     arrow::write_dataset(df, paste0("health_data/results/", SCEN_SHORT_NAME, "_dis_inter_", DISEASE_RISK, "_state_trans-n.c-", n.c, "-n.i-", n.i, "-n.d-", length(diseases), ".parquet"))
-    
+
   } else if (!FILE_PATH_BELEN) {
     # Option 2: Default (Ali)
     arrow::write_dataset(df, paste0("data/", SCEN_SHORT_NAME, "_dis_inter_", DISEASE_RISK, "_state_trans-n.c-", n.c, "-n.i-", n.i, "-n.d-", length(diseases), ".parquet"))
-    
+
   } else {
     # Option 3: Manchester path (default if FILE_PATH_BELEN is TRUE and FILE_PATH_HPC is FALSE)
     arrow::write_dataset(df, paste0("manchester/health/processed/", SCEN_SHORT_NAME, "_dis_inter_", DISEASE_RISK, "_state_trans-n.c-", n.c, "-n.i-", n.i, "-n.d-", length(diseases), ".parquet"))
