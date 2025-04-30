@@ -26,10 +26,10 @@ plan("future::multisession")
 #}
 
 # Set sample_pro to be greater than zero
-sample_prop <- 0.1
+sample_prop <- 0.001
 
 # Number of cycles/years the simulation works
-n.c <- 30
+n.c <- 1
 
 # Define DISEASE RISK to incorporate disease interaction
 DISEASE_RISK <- FALSE
@@ -121,7 +121,7 @@ for (scen in c("base", "safestreet", "green", "both"))
   
   # Read prevalence dataset
   # if (!FILE_PATH_BELEN){
-  #   prev <- read_csv(here(paste0("jibe health/", SCEN_SHORT_NAME, "_prevalence_id.csv")))
+  #   <- <- read_csv(here(paste0("jibe health/", SCEN_SHORT_NAME, "_prevalence_id.csv")))
   # }else{
   #   prev <- read_csv(here(paste0("manchester/health/processed/", SCEN_SHORT_NAME, "_prevalence_id.csv")))
   # }
@@ -269,6 +269,9 @@ for (scen in c("base", "safestreet", "green", "both"))
   m <- matrix(nrow = n.i, ncol = n.c + 1,
               dimnames = list(paste0("id", 1:n.i, sep = ""),
                               paste0("c", 0:n.c, sep = "")))
+  
+  prev$diseases <- gsub("copd","", as.character(prev$diseases))
+  prev$diseases <- trimws(prev$diseases)
   
   
   td <- synth_pop |> 
