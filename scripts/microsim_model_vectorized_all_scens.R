@@ -246,14 +246,13 @@ for (scen in c("base", "safestreet", "green", "both"))
   
   df <- synth_pop
   
-  existing_causes <- synth_pop |> ungroup() |> dplyr::select(contains("all_path")) |> names()
-  hd <- hd |> filter(cause %in% gsub("all_path_","", existing_causes)) 
+  existing_causes <- synth_pop |> ungroup() |> dplyr::select(contains("pa")) |> names()
+  hd <- hd |> filter(cause %in% gsub("pa_","", existing_causes)) 
   
   synth_pop <- process_all_suffixes(synth_pop, 
                                     hd |> 
                                       dplyr::select(cause) |> 
                                       distinct()) 
-  
   
   names(synth_pop) <- str_replace(names(synth_pop), "^all_path_|pm_|ap_|pa_|PHYSICAL_ACTIVITY_|AIR_POLLUTION_", "")
   
