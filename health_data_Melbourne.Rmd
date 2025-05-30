@@ -1404,7 +1404,7 @@ We do not have data by socioeconomic status for depression.
         S2*
 
     -   *Cardiovascular disease death: by sex and socioeconomic area for
-        2016: Table S2*
+        2016: Table S3*
 
     -   *Type 2 diabetes prevalence: by sex and socioeconomic area for
         2016: Table S7*
@@ -2675,14 +2675,38 @@ file, then save required output files.
 
 ```{r}
 
+# SA2 codes
+SA2_Melb <- read.csv(here("melbourne/health/original/ABS/SA2_2016_AUST.csv")) %>%
+  dplyr::select(SA2_MAINCODE_2016, SA2_5DIGITCODE_2016, GCCSA_NAME_2016) %>%
+  filter(GCCSA_NAME_2016 == "Greater Melbourne")
 
+# assemble all required files
 data_melbourne <- mort_disagg %>% 
   bind_rows(cancer_incidence_area, cancer_prevalence_area, 
             cvd_dem_dia_copd_inc, cvd_dem_dia_copd_prev, 
             depression_incidence %>% mutate(rate = val_interpolated), 
             depression_prevalence %>% mutate(rate = val_interpolated)) %>%
-  mutate(cause=tolower(cause), 
-         measure=tolower(measure)) %>%
+  mutate(measure=tolower(measure)) %>%
+  
+  # standardise disease names
+  mutate(cause = tolower(cause)) %>%
+  mutate(cause = case_when(
+    cause == "alzheimer's disease and other dementias" ~ "all_cause_dementia",
+    cause == "all cause"                               ~ "all_cause_mortality",
+    cause == "chronic obstructive pulmonary disease"   ~ "copd",
+    cause == "ischemic heart disease"                  ~ "coronary_heart_disease",
+    cause == "depressive disorders"                    ~ "depression",
+    cause == "diabetes mellitus type 2"                ~ "diabetes",
+    cause == "diabetes type 2"                         ~ "diabetes",
+    .default = cause
+  )) %>%
+  mutate(cause = gsub(" ", "_", cause)) %>%
+  
+  # filter to Greater Melbourne, where SA2 is available
+  filter(sa2_code %in% SA2_Melb$SA2_MAINCODE_2016 | 
+           sa2_code %in% SA2_Melb$SA2_5DIGITCODE_2016 | 
+           is.na(sa2_code)) %>%
+
   select(age, sex, sa2_code, sa2_name, educ, rate, prob, cause, measure, socio)
 
 write_csv(data_melbourne, file=here("melbourne/health/processed/data_melbourne.csv"))
@@ -2694,9 +2718,9 @@ mort_inc_melbourne <- data_melbourne %>%
   filter(!is.na(rate)) %>%  # several non-modelled cancers do not have rates for incidence
   mutate(location_code = case_when(
     !is.na(sa2_code) & !is.na(educ) & !is.na(socio) ~ 
-      paste(as.character(sa2_code), educ, as.character(socio), sep = "_"),
+      paste(as.character(sa2_code), educ, sep = "_"),  # don't need socio if have SA2
     !is.na(sa2_code) & !is.na(educ)  ~ paste(as.character(sa2_code), educ, sep = "_"),
-    !is.na(sa2_code) & !is.na(socio) ~ paste(as.character(sa2_code), as.character(socio), sep = "_"),
+    !is.na(sa2_code) & !is.na(socio) ~ as.character(sa2_code),  # don't need socio if have SA2
     !is.na(educ) & !is.na(socio)     ~ paste(educ, socio, sep = "_"),
     !is.na(sa2_code)                 ~ as.character(sa2_code),
     !is.na(socio)                    ~ as.character(socio),
@@ -2704,16 +2728,16 @@ mort_inc_melbourne <- data_melbourne %>%
     TRUE                             ~ NA
   ),
   location_type = case_when(
-    !is.na(sa2_code) & !is.na(educ) & !is.na(socio) ~ "SA2_educ_socio",
+    !is.na(sa2_code) & !is.na(educ) & !is.na(socio) ~ "SA2_educ",  # don't need socio if have SA2
     !is.na(sa2_code) & !is.na(educ)  ~ "SA2_educ",
-    !is.na(sa2_code) & !is.na(socio) ~ "SA2_socio",
+    !is.na(sa2_code) & !is.na(socio) ~ "SA2",  # don't need socio if have SA2
     !is.na(educ) & !is.na(socio)     ~ "educ_socio",
     !is.na(sa2_code)                 ~ "SA2",
     !is.na(socio)                    ~ "socio",
     !is.na(educ)                     ~ "educ",
     TRUE                             ~ NA
   )) %>%
-  # mutate(cause = gsub(" ", "_", cause)) %>%
+  mutate(sex = tolower(sex)) %>%
   dplyr::select(age, sex, location_code, cause, rate, measure, location_type)
 
 write_csv(mort_inc_melbourne, 
@@ -2721,11 +2745,15 @@ write_csv(mort_inc_melbourne,
 
 # output file for prevalence
 prev_melbourne <- data_melbourne %>%
-  filter(measure == "prevalence") %>%  mutate(location_code = case_when(
+  filter(measure == "prevalence") %>% 
+  left_join(SA2_Melb, by = c("sa2_code"= "SA2_5DIGITCODE_2016")) %>%
+  dplyr::select(-sa2_code) %>%
+  rename(sa2_code = SA2_MAINCODE_2016) %>%
+  mutate(location_code = case_when(
     !is.na(sa2_code) & !is.na(educ) & !is.na(socio) ~ 
-      paste(as.character(sa2_code), educ, as.character(socio), sep = "_"),
+      paste(as.character(sa2_code), educ, sep = "_"),  # don't need socio if have SA2
     !is.na(sa2_code) & !is.na(educ)  ~ paste(as.character(sa2_code), educ, sep = "_"),
-    !is.na(sa2_code) & !is.na(socio) ~ paste(as.character(sa2_code), as.character(socio), sep = "_"),
+    !is.na(sa2_code) & !is.na(socio) ~ as.character(sa2_code),  # don't need socio if have SA2
     !is.na(educ) & !is.na(socio)     ~ paste(educ, socio, sep = "_"),
     !is.na(sa2_code)                 ~ as.character(sa2_code),
     !is.na(socio)                    ~ as.character(socio),
@@ -2733,16 +2761,19 @@ prev_melbourne <- data_melbourne %>%
     TRUE                             ~ NA
   ),
   location_type = case_when(
-    !is.na(sa2_code) & !is.na(educ) & !is.na(socio) ~ "SA2_educ_socio",
+    !is.na(sa2_code) & !is.na(educ) & !is.na(socio) ~ "SA2_educ",  # don't need socio if have SA2
     !is.na(sa2_code) & !is.na(educ)  ~ "SA2_educ",
-    !is.na(sa2_code) & !is.na(socio) ~ "SA2_socio",
+    !is.na(sa2_code) & !is.na(socio) ~ "SA2",  # don't need socio if have SA2
     !is.na(educ) & !is.na(socio)     ~ "educ_socio",
     !is.na(sa2_code)                 ~ "SA2",
     !is.na(socio)                    ~ "socio",
     !is.na(educ)                     ~ "educ",
     TRUE                             ~ NA
   )) %>%
-  # mutate(cause = gsub(" ", "_", cause)) %>%
+  mutate(sex = case_when(
+    sex == "Male" ~ 1,
+    sex == "Female" ~ 2
+  )) %>%
   dplyr::select(age, sex, location_code, cause, rate, measure, location_type)
 
 write_csv(prev_melbourne, 
