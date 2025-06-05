@@ -1,0 +1,407 @@
+# === Load libraries ===
+suppressPackageStartupMessages({
+  library(tidyverse)
+  library(arrow)
+  library(DT)
+})
+
+
+## Data preparation to be moved to another script (also to allow change of filles)
+# === Global Settings ===
+FILE_PATH_BELEN <- TRUE
+n.i <- 282727
+n.c <- 30
+
+# === Load zone names ===
+zones <- if (!FILE_PATH_BELEN) {
+  read_csv("jibe health/zoneSystem.csv")
+} else {
+  read_csv("manchester/health/processed/zoneSystem.csv")
+} |> distinct(ladcd, ladnm)
+
+# === European Standard Population (ESP2013) ===
+esp2013 <- c(
+  rep(4000, 1), rep(5500, 4),  # 0-4, 5-9, 10-14, 15-19, 20-24
+  rep(5500, 2), rep(6000, 2),  # 25-29, 30-34, 35-39, 40-44
+  rep(6000, 2), rep(5000, 2),  # 45-49, 50-54, 55-59, 60-64
+  rep(4000, 2), rep(2500, 2),  # 65-69, 70-74, 75-79, 80-84
+  rep(1500, 2)                 # 85-89, 90+
+)
+
+
+# === Data loading function ===
+get_summary <- function(SCEN_NAME, group_vars = NULL, summarise = TRUE) {
+  file_path <- if (!FILE_PATH_BELEN) {
+    paste0("data/", SCEN_NAME, "_dis_inter_state_trans-n.c-noAPRISK-", n.c, "-n.i-", n.i, "-n.d-19.parquet")
+  } else {
+    paste0("manchester/health/processed/", SCEN_NAME, "_dis_inter_state_trans-n.c-noAPRISK-", n.c, "-n.i-", n.i, "-n.d-19.parquet")
+  }
+  m <- arrow::open_dataset(file_path) |> collect()
+  m$id <- as.numeric(m$id)
+  
+  pop_path <- if (!FILE_PATH_BELEN) {
+    paste0("jibe health/", SCEN_NAME, "_pp_exposure_RR_2021.csv")
+  } else {
+    paste0("manchester/health/processed/", SCEN_NAME, "_pp_exposure_RR_2021.csv")
+  }
+  if (!file.exists(pop_path)) stop("Population exposure file does not exist: ", pop_path)
+  synth_pop <- readr::read_csv(pop_path) |>
+    mutate(agegroup = cut(age, c(0, 25, 45, 65, 85, Inf), right = FALSE, include.lowest = TRUE))
+  
+  m <- m |> left_join(synth_pop |> select(id, age, agegroup, gender, ladcd, lsoa21cd))
+  
+  long_data <- m |>
+    pivot_longer(cols = starts_with("c")) |>
+    arrange(parse_number(name)) |>
+    mutate(
+      cycle = as.numeric(str_remove(name, "^c")),
+      unpacked = str_split(value, " ")
+    ) |>
+    unnest(unpacked) |>
+    mutate(
+      value = str_trim(unpacked),
+      value = str_replace_all(value, fixed("parkinson’s_disease"), "parkinson"),
+      is_disease = value %in% c("diabetes", "stroke", "depression", "ischemic_heart_disease",
+                                "all_cause_dementia", "parkinson", "dead") # could select all diseases
+    ) |>
+    select(-unpacked)
+  
+  if (!is.null(group_vars) && summarise && length(group_vars) > 0) {
+    long_data <- long_data |>
+      group_by(across(all_of(group_vars))) |>
+      summarise(count = dplyr::n(), .groups = "drop") |>
+      mutate(freq = round(count / sum(count) * 100, 1))
+  }
+  
+  return(long_data)
+}
+
+# # === Load preprocessed data ===
+all_data <- list(
+  base = get_summary("base", summarise = FALSE) |> mutate(scen = "reference"),
+  green = get_summary("green", summarise = FALSE) |> mutate(scen = "green"),
+  safestreet = get_summary("safestreet", summarise = FALSE) |> mutate(scen = "safestreet"),
+  both = get_summary("both", summarise = FALSE) |> mutate(scen = "both")
+)
+
+# # === Prepare time delay data ===
+
+process_scenario <- function(scen_name) {
+  # scen_name <- "base"
+  df <- get_summary(scen_name) %>%
+    mutate(
+      scen = scen_name,
+      cycle_numeric = as.numeric(str_remove(cycle, "^c"))
+    ) %>%
+    # filter(value != "healthy") %>%
+    dplyr::group_by(id, disease = value) %>%
+    dplyr::summarise(
+      time_to_event = min(cycle_numeric),
+      .groups = "drop"
+    )
+}
+
+
+base_diag <- process_scenario("base") |> dplyr::rename(time_reference = time_to_event)
+green_diag <- process_scenario("green") |> dplyr::rename(time_green = time_to_event)
+safer_diag <- process_scenario("safestreet") |> dplyr::rename(time_safestreet = time_to_event)
+both_diag <- process_scenario("both") |> dplyr::rename(time_both = time_to_event)
+
+
+list(base_diag, green_diag, safer_diag, both_diag) |>
+  purrr::imap(~{
+    message(.y, ": ", paste(names(.x), collapse = ", "))
+    if (!all(c("id", "disease") %in% names(.x))) {
+      stop(.y, " does not contain required columns 'id' and 'disease'")
+    }
+  })
+
+result_wide <- base_diag %>%
+  full_join(green_diag, by = c("id", "disease")) %>%
+  full_join(safer_diag, by = c("id", "disease")) %>%
+  full_join(both_diag, by = c("id", "disease"))
+
+age_sex_lad <- get_summary("base", summarise = FALSE) %>%
+  dplyr::select(id, agegroup, gender, ladcd) %>%
+  distinct(id, .keep_all = TRUE) %>%
+  left_join(zones)
+
+result_wide <- result_wide %>%
+  left_join(age_sex_lad, by = "id") %>%
+  mutate(
+    time_reference = replace_na(time_reference, 0),
+    diff_green = if_else(is.na(time_green), -1, time_green - time_reference),
+    diff_safer = if_else(is.na(time_safestreet), -1, time_safestreet - time_reference),
+    diff_both  = if_else(is.na(time_both), -1, time_both - time_reference)
+  )
+
+# # === Alive Over Time Tab Data ===
+alive_data <- bind_rows(all_data) %>% # life years
+  filter(value != "dead") %>%
+  dplyr::group_by(cycle, scen, ladcd, agegroup, gender) %>%
+  dplyr::summarise(alive_n = n_distinct(id), .groups = "drop") %>%
+  left_join(zones, by = "ladcd")
+
+alive_data_overall <- alive_data %>%
+  dplyr::group_by(cycle, scen) %>%
+  dplyr::summarise(alive=sum(alive_n)) %>%
+  dplyr::mutate(type = "overall",
+                name = "overall")
+
+alive_data_sex <- alive_data %>%
+  dplyr::group_by(cycle, scen, gender) %>%
+  dplyr::summarise(alive=sum(alive_n)) %>%
+  dplyr::mutate(type = "sex") %>%
+  dplyr::rename(name=gender) %>%
+  dplyr::mutate(name = (case_when(name == 1 ~ "male",
+                                  name == 2 ~ "female")))
+
+alive_data_age <- alive_data %>%
+  dplyr::group_by(cycle, scen, agegroup) %>%
+  dplyr::summarise(alive=sum(alive_n)) %>%
+  dplyr::mutate(type = "age") %>%
+  dplyr::rename(name=agegroup)
+
+alive_data_lad <- alive_data %>%
+  dplyr::group_by(cycle, scen, ladnm) %>%
+  dplyr::summarise(alive=sum(alive_n)) %>%
+  dplyr::mutate(type = "lad") %>%
+  dplyr::rename(name=ladnm)
+
+alive_data_all <- bind_rows(alive_data_overall, alive_data_age, alive_data_lad, alive_data_sex)
+
+saveRDS(alive_data_all, "manchester/health/processed/life_years_overtime.RDS")
+
+# # === Alive Accumulated Tab Data ===
+
+alive_acc_data <- bind_rows(all_data) %>%
+  filter(value != "dead") %>%
+  dplyr::group_by(cycle, scen, ladcd, agegroup, gender) %>%
+  dplyr::summarise(alive_n = n_distinct(id), .groups = "drop") %>%
+  dplyr::group_by(scen, ladcd, agegroup, gender) %>%
+  dplyr::summarise(acc_alive = sum(alive_n), .groups = "drop") %>%
+  left_join(zones, by = "ladcd")
+
+
+alive_acc_overall <- alive_acc_data %>%
+  dplyr::group_by(scen) %>%
+  dplyr::summarise(alive = sum(acc_alive), .groups = "drop") %>%
+  dplyr::mutate(type = "overall", name = "overall")
+
+
+alive_acc_sex <- alive_acc_data %>%
+  dplyr::group_by(scen, gender) %>%
+  dplyr::summarise(alive = sum(acc_alive), .groups = "drop") %>%
+  dplyr::mutate(type = "sex") %>%
+  dplyr::rename(name = gender) %>%
+  dplyr::mutate(name = case_when(name == 1 ~ "male",
+                                 name == 2 ~ "female"))
+
+
+alive_acc_age <- alive_acc_data %>%
+  dplyr::group_by(scen, agegroup) %>%
+  dplyr::summarise(alive = sum(acc_alive), .groups = "drop") %>%
+  dplyr::mutate(type = "age") %>%
+  dplyr::rename(name = agegroup)
+
+
+alive_acc_lad <- alive_acc_data %>%
+  dplyr::group_by(scen, ladnm) %>%
+  dplyr::summarise(alive = sum(acc_alive), .groups = "drop") %>%
+  dplyr::mutate(type = "lad") %>%
+  dplyr::rename(name = ladnm)
+
+
+alive_acc_all <- bind_rows(alive_acc_overall, alive_acc_age, alive_acc_lad, alive_acc_sex)
+
+
+saveRDS(alive_acc_all, "manchester/health/processed/accumulated_life_years.RDS")
+
+
+# # === Avoided Disease/Death Tab Data ===
+avoided_data <- result_wide %>%
+  dplyr::filter(time_reference > 0) %>%
+  pivot_longer(cols = starts_with("diff_"), names_to = "scenario", values_to = "time_event") %>%
+  dplyr::filter(scenario != "time_reference") %>%
+  dplyr::mutate(
+    avoided = time_event == -1
+  ) %>%
+  dplyr::group_by(scenario, disease, ladnm, agegroup, gender) %>%
+  dplyr::summarise(count = sum(avoided, na.rm = TRUE), .groups = "drop") %>%
+  dplyr::mutate(type = "avoided")
+
+# Overall avoided
+avoided_overall <- avoided_data %>%
+  dplyr::group_by(scenario, disease) %>%
+  dplyr::summarise(avoided_n = sum(count), .groups = "drop") %>%
+  dplyr::mutate(type = "overall", name = "overall")
+
+# Avoided by sex
+avoided_sex <- avoided_data %>%
+  dplyr::group_by(scenario, disease, gender) %>%
+  dplyr::summarise(avoided_n = sum(count), .groups = "drop") %>%
+  dplyr::mutate(type = "sex") %>%
+  dplyr::rename(name = gender) %>%
+  dplyr::mutate(name = case_when(name == 1 ~ "male",
+                                 name == 2 ~ "female"))
+# Avoided by age group
+avoided_age <- avoided_data %>%
+  dplyr::group_by(scenario, disease, agegroup) %>%
+  dplyr::summarise(avoided_n = sum(count), .groups = "drop") %>%
+  dplyr::mutate(type = "age") %>%
+  dplyr::rename(name = agegroup)
+
+# # Avoided by LAD
+avoided_lad <- avoided_data %>%
+  dplyr::group_by(scenario, disease, ladnm) %>%
+  dplyr::summarise(avoided_n = sum(count), .groups = "drop") %>%
+  dplyr::mutate(type = "lad") %>%
+  dplyr::rename(name = ladnm)
+
+# Combine all
+avoided_all <- bind_rows(avoided_overall, avoided_sex, avoided_age, avoided_lad)
+
+# Save
+saveRDS(avoided_all, "manchester/health/processed/avoided_events.RDS")
+
+# # === Disease Delay Tab Data ===
+delay_data <- result_wide %>%
+  filter(time_reference > 0) %>%
+  pivot_longer(cols = c(diff_green, diff_safer, diff_both),
+               names_to = "scenario", values_to = "delay_cycles") %>%
+  filter(delay_cycles >= 0) %>%
+  dplyr::group_by(scenario, disease, ladnm, agegroup, gender) %>%
+  dplyr::summarise(mean_delay = mean(delay_cycles * 365, na.rm = TRUE), .groups = "drop") %>%
+  dplyr::mutate(type = "delay")
+
+# Overall delay
+delay_overall <- delay_data %>%
+  dplyr::group_by(scenario, disease) %>%
+  dplyr::summarise(delay_days = mean(mean_delay, na.rm = TRUE), .groups = "drop") %>%
+  dplyr::mutate(type = "overall", name = "overall")
+
+# Delay by sex
+delay_sex <- delay_data %>%
+  dplyr::group_by(scenario, disease, gender) %>%
+  dplyr::summarise(delay_days = mean(mean_delay, na.rm = TRUE), .groups = "drop") %>%
+  dplyr::mutate(type = "sex") %>%
+  dplyr::rename(name = gender) %>%
+  dplyr::mutate(name = case_when(name == 1 ~ "male",
+                                 name == 2 ~ "female"))
+
+# # Delay by age group
+delay_age <- delay_data %>%
+  dplyr::group_by(scenario, disease, agegroup) %>%
+  dplyr::summarise(delay_days = mean(mean_delay, na.rm = TRUE), .groups = "drop") %>%
+  dplyr::mutate(type = "age") %>%
+  dplyr::rename(name = agegroup)
+
+# Delay by LAD
+delay_lad <- delay_data %>%
+  dplyr::group_by(scenario, disease, ladnm) %>%
+  dplyr::summarise(delay_days = mean(mean_delay, na.rm = TRUE), .groups = "drop") %>%
+  dplyr::mutate(type = "lad") %>%
+  dplyr::rename(name = ladnm)
+
+# Combine all
+delay_all <- bind_rows(delay_overall, delay_sex, delay_age, delay_lad)
+
+# Save
+saveRDS(delay_all, "manchester/health/processed/delay_days.RDS")
+
+# # === Age standardized rates ====
+
+run_age_standardised_rate_by_agegroup <- function(summary_raw, zones) {
+  std_pop <- tibble(
+    agegroup = c("0-24", "25-44", "45-64", "65-84", "85+"), # European standard population
+    std_pop = c(
+      sum(esp2013[1:5]),
+      sum(esp2013[6:9]),
+      sum(esp2013[10:13]),
+      sum(esp2013[14:17]),
+      sum(esp2013[18:19])
+    )
+  )
+  
+  summary_raw <- map2_dfr(
+    all_data,
+    names(all_data),
+    ~ mutate(.x, source = .y)  # Example function that adds the name as a column
+  )
+  
+  target_cycles <- c(0, 10, 20)
+  states <- c("healthy", "diabetes", "stroke", "coronary_heart_disease",
+              "breast_cancer", "colon_cancer", "lung_cancer", "depression", "all_cause_dementia", "dead")
+  
+  
+  df <- summary_raw |>
+    dplyr::filter(value %in% states, cycle %in% target_cycles) |>
+    dplyr::mutate(agegroup = cut(age, c(0, 25, 45, 65, 85, Inf),
+                                 labels = c("0-24", "25-44", "45-64", "65-84", "85+"),
+                                 right = FALSE, include.lowest = TRUE)) |>
+    dplyr::group_by(scen, ladcd, gender, agegroup, value, cycle) |>
+    dplyr::summarise(count = n(), .groups = "drop") |>
+    left_join(std_pop, by = "agegroup")
+  
+  ### Data with groupings of results for age_std rates
+  
+  # overall
+  
+  df_overall <- df  |>
+    dplyr::group_by(scen, value, cycle) |>
+    dplyr::summarise(rate = sum((count * std_pop) / 100000, na.rm = TRUE), .groups = "drop") |>
+    dplyr::mutate(type="overall",
+                  name = "overall") |>
+    dplyr::select(c("scen", "value", "rate", "type", "name", "cycle"))
+  
+  # by lad
+  
+  df_lad <- df  |>
+    dplyr::group_by(scen, value, ladcd, cycle) |>
+    dplyr::summarise(rate = sum((count * std_pop) / 100000, na.rm = TRUE), .groups = "drop") |>
+    dplyr::mutate(type="lad") |>
+    left_join(zones) |>
+    dplyr::select(c("scen", "value", "rate", "type", "ladcd", "cycle")) |>
+    left_join(zones) |>
+    dplyr::rename(name=ladnm)
+  
+  # by age
+  
+  df_age <- df  |>
+    dplyr::group_by(scen, value, agegroup, cycle) |>
+    dplyr::summarise(rate = sum((count * std_pop) / 100000, na.rm = TRUE), .groups = "drop") |>
+    dplyr::mutate(type="age") |>
+    dplyr::select(c("scen", "value", "rate", "type", "cycle", "agegroup")) |>
+    dplyr::rename(name=agegroup)
+  
+  # by sex
+  
+  df_sex <- df  |>
+    dplyr::group_by(scen, value, gender, cycle) |>
+    dplyr::summarise(rate = sum((count * std_pop) / 100000, na.rm = TRUE), .groups = "drop") |>
+    dplyr::mutate(type="sex") |>
+    dplyr::select(c("scen", "value", "rate", "type", "cycle", "gender")) |>
+    dplyr::mutate(gender = (case_when(gender == 1 ~ "male",
+                                      gender == 2 ~ "female"))) |>
+    dplyr::rename(name=gender)
+  
+  df <-bind_rows(df_overall, df_lad, df_age, df_sex)
+  
+  return(df)
+}
+
+# === Load all data and compute standardised rates ===
+all_data <- list(
+  base = get_summary("base", summarise = FALSE) |> mutate(scen = "reference"),
+  green = get_summary("green", summarise = FALSE) |> mutate(scen = "green"),
+  safestreet = get_summary("safestreet", summarise = FALSE) |> mutate(scen = "safestreet"),
+  both = get_summary("both", summarise = FALSE) |> mutate(scen = "both")
+)
+
+std_rates_table <- map2_dfr(
+  all_data,
+  names(all_data),
+  ~run_age_standardised_rate_by_agegroup(.x, zones)
+)
+
+saveRDS(std_rates_table, "manchester/health/processed/std_rates_tables.RDS")
