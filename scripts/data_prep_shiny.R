@@ -176,10 +176,9 @@ result_wide <- result_wide %>%
   left_join(age_sex_lad, by = "id") %>%
   mutate(
     time_reference = replace_na(time_reference, 0),
-    # diff_green = if_else(is.na(time_green), -1, time_green - time_reference),
-    # diff_safer = if_else(is.na(time_safestreet), -1, time_safestreet - time_reference),
-    diff_both  = if_else(is.na(time_both), -1, time_both - time_reference)
+    diff_both = if_else(is.na(time_both), NA_real_, time_both - time_reference)
   )
+## To fix, cannot be -1 when not happening because difference can be -1
 
 # # === Alive Over Time Tab Data ===
 alive_data <- bind_rows(all_data) %>% # life years
@@ -272,7 +271,8 @@ avoided_data <- result_wide %>%
   pivot_longer(cols = starts_with("diff_"), names_to = "scenario", values_to = "time_event") %>%
   dplyr::filter(scenario != "time_reference") %>%
   dplyr::mutate(
-    avoided = time_event == -1
+    avoided = is.na(time_event)
+
   ) %>%
   dplyr::group_by(scenario, disease, ladnm, agegroup, gender) %>%
   dplyr::summarise(count = sum(avoided, na.rm = TRUE), .groups = "drop") %>%
