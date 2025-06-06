@@ -6,7 +6,7 @@ suppressPackageStartupMessages({
 })
 
 
-## Data preparation to be moved to another script (also to allow change of filles)
+
 # === Global Settings ===
 FILE_PATH_BELEN <- TRUE
 n.i <- 282727
