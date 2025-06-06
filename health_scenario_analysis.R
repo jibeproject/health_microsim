@@ -194,7 +194,7 @@ shinyApp(
         geom_col(position = position_dodge()) +
         facet_wrap(~name, scales = "free_y") +
         labs(
-          title = paste("Avoided Deaths for", input$avoided_disease_select, "by", input$avoided_facet),
+          title = paste("Avoided cases for", input$avoided_disease_select, "by", input$avoided_facet),
           y = "Avoided Deaths",
           x = "Scenario"
         ) +
