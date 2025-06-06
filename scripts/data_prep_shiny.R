@@ -9,6 +9,7 @@ suppressPackageStartupMessages({
 
 # === Global Settings ===
 FILE_PATH_BELEN <- TRUE
+FILE_PATH_JAVA <- TRUE
 n.i <- 282727
 n.c <- 30
 
@@ -31,13 +32,32 @@ esp2013 <- c(
 
 # === Data loading function ===
 get_summary <- function(SCEN_NAME, group_vars = NULL, summarise = TRUE) {
-  file_path <- if (!FILE_PATH_BELEN) {
+  
+  SCEN_NAME <- "base"
+  
+  file_path <- file_path <- if (!FILE_PATH_BELEN) {
     paste0("data/", SCEN_NAME, "_dis_inter_state_trans-n.c-noAPRISK-", n.c, "-n.i-", n.i, "-n.d-19.parquet")
+  } else if (exists("FILE_PATH_JAVA") && FILE_PATH_BELEN && FILE_PATH_JAVA) {
+    paste0("manchester/health/processed/java/", SCEN_NAME, "_pp_healthDiseaseTracker_2031.csv")
   } else {
     paste0("manchester/health/processed/", SCEN_NAME, "_dis_inter_state_trans-n.c-noAPRISK-", n.c, "-n.i-", n.i, "-n.d-19.parquet")
   }
-  m <- arrow::open_dataset(file_path) |> collect()
+  
+  ## Condition to open parquet and csv files
+  if (grepl("\\.csv$", file_path)) {
+    m <- readr::read_csv(file_path)
+  } else {
+    m <- arrow::open_dataset(file_path) |> collect()
+  }
   m$id <- as.numeric(m$id)
+  
+  ## Condition if Java change years for cycles
+  
+  if (exists("FILE_PATH_JAVA") && FILE_PATH_JAVA) {
+    year_cols <- grep("^20", names(m), value = TRUE)
+    new_names <- paste0("c", seq_along(year_cols) - 1)
+    names(m)[match(year_cols, names(m))] <- new_names
+  }
   
   pop_path <- if (!FILE_PATH_BELEN) {
     paste0("jibe health/", SCEN_NAME, "_pp_exposure_RR_2021.csv")
@@ -55,8 +75,7 @@ get_summary <- function(SCEN_NAME, group_vars = NULL, summarise = TRUE) {
     arrange(parse_number(name)) |>
     mutate(
       cycle = as.numeric(str_remove(name, "^c")),
-      unpacked = str_split(value, " ")
-    ) |>
+       unpacked = str_split(value, "\\|")) |>
     unnest(unpacked) |>
     mutate(
       value = str_trim(unpacked),
@@ -65,6 +84,9 @@ get_summary <- function(SCEN_NAME, group_vars = NULL, summarise = TRUE) {
                                 "all_cause_dementia", "parkinson", "dead") # could select all diseases
     ) |>
     select(-unpacked)
+  
+  ## For Jave version some adjustments ((1) after dead registered as null, change to dead, (2) if not born
+  ## registered as 
   
   if (!is.null(group_vars) && summarise && length(group_vars) > 0) {
     long_data <- long_data |>
@@ -79,8 +101,8 @@ get_summary <- function(SCEN_NAME, group_vars = NULL, summarise = TRUE) {
 # # === Load preprocessed data ===
 all_data <- list(
   base = get_summary("base", summarise = FALSE) |> mutate(scen = "reference"),
-  green = get_summary("green", summarise = FALSE) |> mutate(scen = "green"),
-  safestreet = get_summary("safestreet", summarise = FALSE) |> mutate(scen = "safestreet"),
+  # green = get_summary("green", summarise = FALSE) |> mutate(scen = "green"),
+  # safestreet = get_summary("safestreet", summarise = FALSE) |> mutate(scen = "safestreet"),
   both = get_summary("both", summarise = FALSE) |> mutate(scen = "both")
 )
 
