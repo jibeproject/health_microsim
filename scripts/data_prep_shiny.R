@@ -32,7 +32,7 @@ esp2013 <- c(
 # === Data loading function ===
 get_summary <- function(SCEN_NAME, group_vars = NULL, summarise = TRUE) {
   
-  SCEN_NAME <- "base"
+  # SCEN_NAME <- "base"
   
   file_path <- file_path <- if (!FILE_PATH_BELEN) {
     paste0("data/", SCEN_NAME, "_dis_inter_state_trans-n.c-noAPRISK-", n.c, "-n.i-", n.i, "-n.d-19.parquet")
@@ -150,22 +150,21 @@ process_scenario <- function(scen_name) {
 
 
 base_diag <- process_scenario("base") |> dplyr::rename(time_reference = time_to_event)
-green_diag <- process_scenario("green") |> dplyr::rename(time_green = time_to_event)
-safer_diag <- process_scenario("safestreet") |> dplyr::rename(time_safestreet = time_to_event)
+# green_diag <- process_scenario("green") |> dplyr::rename(time_green = time_to_event)
+# safer_diag <- process_scenario("safestreet") |> dplyr::rename(time_safestreet = time_to_event)
 both_diag <- process_scenario("both") |> dplyr::rename(time_both = time_to_event)
 
 
-list(base_diag, green_diag, safer_diag, both_diag) |>
-  purrr::imap(~{
-    message(.y, ": ", paste(names(.x), collapse = ", "))
-    if (!all(c("id", "disease") %in% names(.x))) {
-      stop(.y, " does not contain required columns 'id' and 'disease'")
-    }
-  })
+valid_data <- c("base_diag", "green_diag", "safer_diag", "both_diag") |>
+  purrr::keep(exists) |>
+  mget(envir = .GlobalEnv) |>
+  purrr::keep(~ all(c("id", "disease") %in% names(.x))) |>
+  purrr::iwalk(~ message(.y, ": ", paste(names(.x), collapse = ", ")))
+
 
 result_wide <- base_diag %>%
-  full_join(green_diag, by = c("id", "disease")) %>%
-  full_join(safer_diag, by = c("id", "disease")) %>%
+  # full_join(green_diag, by = c("id", "disease")) %>%
+  # full_join(safer_diag, by = c("id", "disease")) %>%
   full_join(both_diag, by = c("id", "disease"))
 
 age_sex_lad <- get_summary("base", summarise = FALSE) %>%
@@ -177,8 +176,8 @@ result_wide <- result_wide %>%
   left_join(age_sex_lad, by = "id") %>%
   mutate(
     time_reference = replace_na(time_reference, 0),
-    diff_green = if_else(is.na(time_green), -1, time_green - time_reference),
-    diff_safer = if_else(is.na(time_safestreet), -1, time_safestreet - time_reference),
+    # diff_green = if_else(is.na(time_green), -1, time_green - time_reference),
+    # diff_safer = if_else(is.na(time_safestreet), -1, time_safestreet - time_reference),
     diff_both  = if_else(is.na(time_both), -1, time_both - time_reference)
   )
 
@@ -217,7 +216,9 @@ alive_data_lad <- alive_data %>%
 
 alive_data_all <- bind_rows(alive_data_overall, alive_data_age, alive_data_lad, alive_data_sex)
 
-saveRDS(alive_data_all, "manchester/health/processed/life_years_overtime.RDS")
+## Change number files if you want to keep them for different test runs
+
+saveRDS(alive_data_all, "manchester/health/processed/life_years_overtime_java_1p.RDS")
 
 # # === Alive Accumulated Tab Data ===
 
@@ -262,7 +263,7 @@ alive_acc_lad <- alive_acc_data %>%
 alive_acc_all <- bind_rows(alive_acc_overall, alive_acc_age, alive_acc_lad, alive_acc_sex)
 
 
-saveRDS(alive_acc_all, "manchester/health/processed/accumulated_life_years.RDS")
+saveRDS(alive_acc_all, "manchester/health/processed/accumulated_life_years_java_1p.RDS")
 
 
 # # === Avoided Disease/Death Tab Data ===
@@ -309,12 +310,12 @@ avoided_lad <- avoided_data %>%
 avoided_all <- bind_rows(avoided_overall, avoided_sex, avoided_age, avoided_lad)
 
 # Save
-saveRDS(avoided_all, "manchester/health/processed/avoided_events.RDS")
+saveRDS(avoided_all, "manchester/health/processed/avoided_events_java_1p.RDS")
 
 # # === Disease Delay Tab Data ===
 delay_data <- result_wide %>%
   filter(time_reference > 0) %>%
-  pivot_longer(cols = c(diff_green, diff_safer, diff_both),
+  pivot_longer(cols = (diff_both), #c(diff_green, diff_safer, diff_both), # change to do in code checkign if file exists
                names_to = "scenario", values_to = "delay_cycles") %>%
   filter(delay_cycles >= 0) %>%
   dplyr::group_by(scenario, disease, ladnm, agegroup, gender) %>%
@@ -354,7 +355,7 @@ delay_lad <- delay_data %>%
 delay_all <- bind_rows(delay_overall, delay_sex, delay_age, delay_lad)
 
 # Save
-saveRDS(delay_all, "manchester/health/processed/delay_days.RDS")
+saveRDS(delay_all, "manchester/health/processed/delay_days_java_1p.RDS")
 
 # # === Age standardized rates ====
 
@@ -440,8 +441,8 @@ run_age_standardised_rate_by_agegroup <- function(summary_raw, zones) {
 # === Load all data and compute standardised rates ===
 all_data <- list(
   base = get_summary("base", summarise = FALSE) |> mutate(scen = "reference"),
-  green = get_summary("green", summarise = FALSE) |> mutate(scen = "green"),
-  safestreet = get_summary("safestreet", summarise = FALSE) |> mutate(scen = "safestreet"),
+  # green = get_summary("green", summarise = FALSE) |> mutate(scen = "green"),
+  # safestreet = get_summary("safestreet", summarise = FALSE) |> mutate(scen = "safestreet"),
   both = get_summary("both", summarise = FALSE) |> mutate(scen = "both")
 )
 
@@ -451,4 +452,4 @@ std_rates_table <- map2_dfr(
   ~run_age_standardised_rate_by_agegroup(.x, zones)
 )
 
-saveRDS(std_rates_table, "manchester/health/processed/std_rates_tables.RDS")
+saveRDS(std_rates_table, "manchester/health/processed/std_rates_tables_java_1p.RDS")

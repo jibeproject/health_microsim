@@ -8,12 +8,20 @@ suppressPackageStartupMessages({
 
 ## data_prep_shiny.R has to be run for each different run of the data (in scripts)
 
+## Read closed cohort, no AP
+# life_years_over_time <- readRDS("manchester/health/processed/life_years_overtime.RDS")
+# life_years_accumulated <- readRDS("manchester/health/processed/accumulated_life_years.RDS")
+# disease_dead_avoided <- readRDS("manchester/health/processed/avoided_events.RDS")
+# delay_events <- readRDS("manchester/health/processed/delay_days.RDS")
+# std_rates_table <- readRDS("manchester/health/processed/std_rates_tables.RDS")
 
-life_years_over_time <- readRDS("manchester/health/processed/life_years_overtime.RDS")
-life_years_accumulated <- readRDS("manchester/health/processed/accumulated_life_years.RDS")
-disease_dead_avoided <- readRDS("manchester/health/processed/avoided_events.RDS")
-delay_events <- readRDS("manchester/health/processed/delay_days.RDS")
-std_rates_table <- readRDS("manchester/health/processed/std_rates_tables.RDS")
+## Read Java 1p all exposures
+
+life_years_over_time <- readRDS("manchester/health/processed/life_years_overtime_java_1p.RDS")
+life_years_accumulated <- readRDS("manchester/health/processed/accumulated_life_years_java_1p.RDS")
+disease_dead_avoided <- readRDS("manchester/health/processed/avoided_events_java_1p.RDS")
+delay_events <- readRDS("manchester/health/processed/delay_days_java_1p.RDS")
+std_rates_table <- readRDS("manchester/health/processed/std_rates_tables_java_1p.RDS")
 
 # === Shiny App ===
 library(shiny)
