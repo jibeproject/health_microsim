@@ -3,9 +3,8 @@ suppressPackageStartupMessages({
   library(tidyverse)
   library(arrow)
   library(DT)
+  library(purrr)
 })
-
-
 
 # === Global Settings ===
 FILE_PATH_BELEN <- TRUE
@@ -72,21 +71,42 @@ get_summary <- function(SCEN_NAME, group_vars = NULL, summarise = TRUE) {
   
   long_data <- m |>
     pivot_longer(cols = starts_with("c")) |>
-    arrange(parse_number(name)) |>
+    arrange(id, parse_number(name)) |>
     mutate(
       cycle = as.numeric(str_remove(name, "^c")),
-       unpacked = str_split(value, "\\|")) |>
+      unpacked = str_split(value, "\\|")
+    ) |>
     unnest(unpacked) |>
     mutate(
       value = str_trim(unpacked),
       value = str_replace_all(value, fixed("parkinson’s_disease"), "parkinson"),
-      is_disease = value %in% c("diabetes", "stroke", "depression", "ischemic_heart_disease",
-                                "all_cause_dementia", "parkinson", "dead") # could select all diseases
+      value = na_if(value, "null")  # Convert "null" strings to proper NA
     ) |>
-    select(-unpacked)
+    select(-unpacked) |>
+    arrange(id, cycle) |>
+    
+    # Remove rows before first non-NA value (i.e. pre-birth) 
+    group_by(id) |>
+    mutate(
+      birth_cycle = suppressWarnings(min(cycle[!is.na(value)], na.rm = TRUE))
+    ) |>
+    filter(cycle >= birth_cycle) |>
+    
+    # Forward-fill 'dead' after first appearance
+    mutate(
+      dead_seen = cumsum(coalesce(value == "dead", FALSE)) > 0,
+      value = if_else(dead_seen, "dead", value)
+    ) |>
+    ungroup() |>
+    
+    # Identify diseases
+    mutate(
+      is_disease = value %in% c(
+        "diabetes", "stroke", "depression", "ischemic_heart_disease",
+        "all_cause_dementia", "parkinson", "dead"
+      )
+    )
   
-  ## For Jave version some adjustments ((1) after dead registered as null, change to dead, (2) if not born
-  ## registered as 
   
   if (!is.null(group_vars) && summarise && length(group_vars) > 0) {
     long_data <- long_data |>
@@ -105,6 +125,11 @@ all_data <- list(
   # safestreet = get_summary("safestreet", summarise = FALSE) |> mutate(scen = "safestreet"),
   both = get_summary("both", summarise = FALSE) |> mutate(scen = "both")
 )
+
+## Save for checking
+
+# Save each dataframe in the list as a separate parquet file
+# walk2(all_data, names(all_data), ~ write_parquet(.x, paste0("manchester/health/processed/", .y, "_long_data.parquet")))
 
 # # === Prepare time delay data ===
 
