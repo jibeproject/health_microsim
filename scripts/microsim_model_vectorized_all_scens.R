@@ -26,10 +26,10 @@ plan("future::multisession")
 #}
 
 # Set sample_pro to be greater than zero
-sample_prop <- 0.1
+sample_prop <- 0.001
 
 # Number of cycles/years the simulation works
-n.c <- 30
+n.c <- 1
 
 # Define DISEASE RISK to incorporate disease interaction
 DISEASE_RISK <- FALSE
@@ -121,7 +121,7 @@ for (scen in c("base", "safestreet", "green", "both"))
   
   # Read prevalence dataset
   # if (!FILE_PATH_BELEN){
-  #   prev <- read_csv(here(paste0("jibe health/", SCEN_SHORT_NAME, "_prevalence_id.csv")))
+  #   <- <- read_csv(here(paste0("jibe health/", SCEN_SHORT_NAME, "_prevalence_id.csv")))
   # }else{
   #   prev <- read_csv(here(paste0("manchester/health/processed/", SCEN_SHORT_NAME, "_prevalence_id.csv")))
   # }
@@ -246,14 +246,13 @@ for (scen in c("base", "safestreet", "green", "both"))
   
   df <- synth_pop
   
-  existing_causes <- synth_pop |> ungroup() |> dplyr::select(contains("all_path")) |> names()
-  hd <- hd |> filter(cause %in% gsub("all_path_","", existing_causes)) 
+  existing_causes <- synth_pop |> ungroup() |> dplyr::select(contains("pa")) |> names()
+  hd <- hd |> filter(cause %in% gsub("pa_","", existing_causes)) 
   
   synth_pop <- process_all_suffixes(synth_pop, 
                                     hd |> 
                                       dplyr::select(cause) |> 
                                       distinct()) 
-  
   
   names(synth_pop) <- str_replace(names(synth_pop), "^all_path_|pm_|ap_|pa_|PHYSICAL_ACTIVITY_|AIR_POLLUTION_", "")
   
@@ -270,6 +269,9 @@ for (scen in c("base", "safestreet", "green", "both"))
   m <- matrix(nrow = n.i, ncol = n.c + 1,
               dimnames = list(paste0("id", 1:n.i, sep = ""),
                               paste0("c", 0:n.c, sep = "")))
+  
+  prev$diseases <- gsub("copd","", as.character(prev$diseases))
+  prev$diseases <- trimws(prev$diseases)
   
   
   td <- synth_pop |> 
