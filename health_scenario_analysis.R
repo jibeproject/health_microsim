@@ -35,7 +35,7 @@ shinyApp(
     sidebarLayout(
       sidebarPanel(
         conditionalPanel(
-          condition = "input.tabs == 'Rates'",
+          condition = "input.tabs == 'Age standardised rate per 100,000'",
           selectInput("value_select", "Select Condition:",
                       choices = unique(std_rates_table$value)),
           selectInput("cycle_select", "Select Cycle:",
@@ -44,24 +44,24 @@ shinyApp(
                       choices = unique(std_rates_table$type))
         ),
         conditionalPanel(
-          condition = "input.tabs == 'Life Years Over Time'",
+          condition = "input.tabs == 'Life years gained over time'",
           selectInput("life_facet", "Facet Life Years by:",
                       choices = unique(life_years_over_time$type))
         ),
         conditionalPanel(
-          condition = "input.tabs == 'Accumulated Life Years'",
+          condition = "input.tabs == 'Accumulated life years gained over time'",
           selectInput("acc_life_facet", "Facet Accumulated Life Years by:",
                       choices = unique(life_years_accumulated$type))
         ),
         conditionalPanel(
-          condition = "input.tabs == 'Avoided Deaths by Disease'",
+          condition = "input.tabs == 'Avoided events'",
           selectInput("avoided_disease_select", "Select Disease:",
                       choices = unique(disease_dead_avoided$disease)),
           selectInput("avoided_facet", "Facet Avoided Deaths by:",
                       choices = unique(disease_dead_avoided$type))
         ),
         conditionalPanel(
-          condition = "input.tabs == 'Delay in Events'",
+          condition = "input.tabs == 'Delay in events'",
           selectInput("delay_disease_select", "Select Disease:",
                       choices = unique(delay_events$disease))
         )
@@ -69,23 +69,23 @@ shinyApp(
       mainPanel(
         tabsetPanel(
           id = "tabs",
-          tabPanel("Rates",
+          tabPanel("Age standardised rate per 100,000",
                    plotOutput("typeRatePlot"),
                    dataTableOutput("typeRateTable")
           ),
-          tabPanel("Life Years Over Time",
+          tabPanel("Life years gained over time",
                    plotOutput("lifeYearsPlot"),
                    dataTableOutput("lifeYearsTable")
           ),
-          tabPanel("Accumulated Life Years",
+          tabPanel("Accumulated life years gained over time",
                    plotOutput("accLifeYearsPlot"),
                    dataTableOutput("accLifeYearsTable")
           ),
-          tabPanel("Avoided Deaths by Disease",
+          tabPanel("Avoided events",
                    plotOutput("avoidedDeathsPlot"),
                    dataTableOutput("avoidedDeathsTable")
           ),
-          tabPanel("Delay in Events",
+          tabPanel("Delay in events",
                    dataTableOutput("delayEventsTable")
           )
         )

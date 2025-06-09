@@ -33,6 +33,7 @@ esp2013 <- c(
 get_summary <- function(SCEN_NAME, group_vars = NULL, summarise = TRUE) {
   
   # SCEN_NAME <- "base"
+  # group_vars = NULL
   
   file_path <- file_path <- if (!FILE_PATH_BELEN) {
     paste0("data/", SCEN_NAME, "_dis_inter_state_trans-n.c-noAPRISK-", n.c, "-n.i-", n.i, "-n.d-19.parquet")
@@ -98,6 +99,13 @@ get_summary <- function(SCEN_NAME, group_vars = NULL, summarise = TRUE) {
       value = if_else(dead_seen, "dead", value)
     ) |>
     ungroup() |>
+    
+    # Create cycle age_cycle and agegroup_cycle
+    
+    mutate(
+      age_cycle = age + cycle,
+      agegroup_cycle = cut(age_cycle, c(0, 25, 45, 65, 85, Inf), right = FALSE, include.lowest = TRUE)
+    ) |>
     
     # Identify diseases
     mutate(
@@ -381,26 +389,92 @@ run_age_standardised_rate_by_agegroup <- function(summary_raw, zones) {
   states <- c("healthy", "diabetes", "stroke", "coronary_heart_disease",
               "breast_cancer", "colon_cancer", "lung_cancer", "depression", "all_cause_dementia", "dead")
   
+#Prevalence: Person has the disease in the current or any previous cycle.
   
-  df <- summary_raw |>
-    dplyr::filter(value %in% states, cycle %in% target_cycles) |>
-    dplyr::mutate(agegroup = cut(age, c(0, 25, 45, 65, 85, Inf),
-                                 labels = c("0-24", "25-44", "45-64", "65-84", "85+"),
-                                 right = FALSE, include.lowest = TRUE)) |>
-    dplyr::group_by(scen, ladcd, gender, agegroup, value, cycle) |>
-    dplyr::summarise(count = n(), .groups = "drop") |>
-    left_join(std_pop, by = "agegroup")
+# #Incidence: Person is diagnosed with the disease in this cycle only, but not in any previous cycle.
+#   
+# Old code
+#   df <- summary_raw |> ###  Should separate incidence and prevalence. Incidence new case in year and prevalence case in current and previous year. 
+#     dplyr::filter(value %in% states, cycle %in% target_cycles) |> # ASR for a given year
+#     dplyr::mutate(agegroup = cut(age_cycle, c(0, 25, 45, 65, 85, Inf),
+#                                  labels = c("0-24", "25-44", "45-64", "65-84", "85+"),
+#                                  right = FALSE, include.lowest = TRUE)) |>
+#     dplyr::group_by(scen, ladcd, gender, agegroup, cycle) |>
+#     dplyr::summarise(count = n_distinct(value), .groups = "drop", 
+#                      population = n_distinct(id)) |> # should be rate per 100,000
+#     left_join(std_pop, by = "agegroup") |>
+#     ungroup()
   
-  ### Data with groupings of results for age_std rates
+  # Filter to diseases of interest
+  disease_long <- summary_raw |>
+    # filter(value %in% states) |> # comment out for filtering to some diseases 
+    select(id, cycle, value, age_cycle, scen, ladcd, gender)
+  
+  # Disease history per person
+  inc_prev <- disease_long |>
+    arrange(id, value, cycle) |>
+    group_by(id, value) |>
+    mutate(
+      first_diagnosis = min(cycle, na.rm = TRUE),  # first time disease appeared
+      ever_had = cycle >= first_diagnosis,         # prevalence: ever had up to this cycle
+      incident = cycle == first_diagnosis          # incidence: first time seen
+    ) |>
+    ungroup()
+  
+  # Add age group again
+  inc_prev <- inc_prev |>
+    mutate(agegroup = cut(
+      age_cycle, 
+      breaks = c(0, 25, 45, 65, 85, Inf), 
+      labels = c("0-24", "25-44", "45-64", "65-84", "85+"), 
+      right = FALSE,
+      include.lowest = TRUE
+    ))
+  
+  # Summarise counts
+  summary_incprev <- inc_prev |>
+    group_by(scen, ladcd, gender, agegroup, cycle, value) |>
+    summarise(
+      prevalence = n_distinct(id[ever_had]),
+      incidence = n_distinct(id[incident]),
+      .groups = "drop"
+    )
+  
+  # Step 5 (optional): Add total population and rate calculations
+  population_df <- summary_raw |>
+    # filter(cycle %in% target_cycles) |> 
+    mutate(agegroup = cut(
+      age_cycle, 
+      c(0, 25, 45, 65, 85, Inf),
+      labels = c("0-24", "25-44", "45-64", "65-84", "85+"),
+      right = FALSE,
+      include.lowest = TRUE
+    )) |>
+    group_by(scen, ladcd, gender, agegroup, cycle) |>
+    summarise(population = n_distinct(id), .groups = "drop")
+  
+  ## Ali up to here for age standardised rates
+  summary_incprev <- summary_incprev |>
+    left_join(population_df, by = c("scen", "ladcd", "gender", "agegroup", "cycle")) |>
+    mutate(
+      incidence_rate = (incidence / population) * 100000,
+      prevalence_rate = (prevalence / population) * 100000
+    ) |> filter(cycle %in%target_cycles) #|>
+    # left_join(std_pop) |>
+    # dplyr::mutate(std_rate_inc = incidence_rate*std_pop/100000, na.rm = TRUE, .groups = "drop")
+    # 
+    # 
+  ### Data with groupings of results for age_std rates (below should be difference for incidence and prevalence)
   
   # overall
+   options(scipen=999)
   
-  df_overall <- df  |>
+  df_overall <- summary_incprev |>
     dplyr::group_by(scen, value, cycle) |>
-    dplyr::summarise(rate = sum((count * std_pop) / 100000, na.rm = TRUE), .groups = "drop") |>
+ dplyr::summarise(std_rate_inc = sum(incidence_rate)*sum(std_pop)/100000, na.rm = TRUE, .groups = "drop") |> # ali this should the rate per 100k and one for prevalence and one for incidence
     dplyr::mutate(type="overall",
                   name = "overall") |>
-    dplyr::select(c("scen", "value", "rate", "type", "name", "cycle"))
+    dplyr::select(c("scen", "value", "std_rate_inc", "type", "name", "cycle"))
   
   # by lad
   
