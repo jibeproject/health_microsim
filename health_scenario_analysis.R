@@ -4,6 +4,8 @@ suppressPackageStartupMessages({
   library(arrow)
   library(DT)
   library(shiny)
+  library(plotly)
+  library(shinyWidgets)
 })
 
 ## data_prep_shiny.R has to be run for each different run of the data (in scripts)
@@ -17,11 +19,11 @@ suppressPackageStartupMessages({
 
 ## Read Java 1p all exposures
 
-life_years_over_time <- readRDS("manchester/health/processed/life_years_overtime_java_1p.RDS")
-life_years_accumulated <- readRDS("manchester/health/processed/accumulated_life_years_java_1p.RDS")
-disease_dead_avoided <- readRDS("manchester/health/processed/avoided_events_java_1p.RDS")
-delay_events <- readRDS("manchester/health/processed/delay_days_java_1p.RDS")
-std_rates_table <- readRDS("manchester/health/processed/std_rates_tables_java_1p.RDS")
+life_years_over_time <- readRDS("data/life_years_overtime_java_1p.RDS") |> filter(!is.na(name))
+life_years_accumulated <- readRDS("data/accumulated_life_years_java_1p.RDS") |> filter(!is.na(name))
+disease_dead_avoided <- readRDS("data/avoided_events_java_1p.RDS") |> filter(!is.na(name))
+delay_events <- readRDS("data/delay_days_java_1p.RDS") |> filter(!is.na(name))
+std_rates_table <- readRDS("data/std_rates_tables_java_1p.RDS") |> filter(rate > 0)
 
 # === Shiny App ===
 library(shiny)
@@ -36,33 +38,33 @@ shinyApp(
       sidebarPanel(
         conditionalPanel(
           condition = "input.tabs == 'Age standardised rate per 100,000'",
-          selectInput("value_select", "Select Condition:",
+          awesomeRadio("value_select", "Select Condition:",
                       choices = unique(std_rates_table$value)),
-          selectInput("cycle_select", "Select Cycle:",
+          awesomeRadio("cycle_select", "Select Cycle:",
                       choices = sort(unique(std_rates_table$cycle))),
-          selectInput("facet_by", "Facet By (Rates):",
+          awesomeRadio("facet_by", "Facet By (Rates):",
                       choices = unique(std_rates_table$type))
         ),
         conditionalPanel(
           condition = "input.tabs == 'Life years gained over time'",
-          selectInput("life_facet", "Facet Life Years by:",
+          awesomeRadio("life_facet", "Facet Life Years by:",
                       choices = unique(life_years_over_time$type))
         ),
         conditionalPanel(
           condition = "input.tabs == 'Accumulated life years gained over time'",
-          selectInput("acc_life_facet", "Facet Accumulated Life Years by:",
+          awesomeRadio("acc_life_facet", "Facet Accumulated Life Years by:",
                       choices = unique(life_years_accumulated$type))
         ),
         conditionalPanel(
           condition = "input.tabs == 'Avoided events'",
-          selectInput("avoided_disease_select", "Select Disease:",
+          awesomeRadio("avoided_disease_select", "Select Disease:",
                       choices = unique(disease_dead_avoided$disease)),
-          selectInput("avoided_facet", "Facet Avoided Deaths by:",
+          awesomeRadio("avoided_facet", "Facet Avoided Deaths by:",
                       choices = unique(disease_dead_avoided$type))
         ),
         conditionalPanel(
           condition = "input.tabs == 'Delay in events'",
-          selectInput("delay_disease_select", "Select Disease:",
+          awesomeRadio("delay_disease_select", "Select Disease:",
                       choices = unique(delay_events$disease))
         )
       ),
@@ -70,19 +72,19 @@ shinyApp(
         tabsetPanel(
           id = "tabs",
           tabPanel("Age standardised rate per 100,000",
-                   plotOutput("typeRatePlot"),
+                   plotlyOutput("typeRatePlot"),
                    dataTableOutput("typeRateTable")
           ),
           tabPanel("Life years gained over time",
-                   plotOutput("lifeYearsPlot"),
+                   plotlyOutput("lifeYearsPlot"),
                    dataTableOutput("lifeYearsTable")
           ),
           tabPanel("Accumulated life years gained over time",
-                   plotOutput("accLifeYearsPlot"),
+                   plotlyOutput("accLifeYearsPlot"),
                    dataTableOutput("accLifeYearsTable")
           ),
           tabPanel("Avoided events",
-                   plotOutput("avoidedDeathsPlot"),
+                   plotlyOutput("avoidedDeathsPlot"),
                    dataTableOutput("avoidedDeathsTable")
           ),
           tabPanel("Delay in events",
@@ -96,7 +98,7 @@ shinyApp(
   server = function(input, output) {
     # === Rates ===
     filtered_data <- reactive({
-      std_rates_table %>%
+      std_rates_table |>
         filter(
           value == input$value_select,
           cycle == input$cycle_select,
@@ -104,28 +106,33 @@ shinyApp(
         )
     })
     
-    output$typeRatePlot <- renderPlot({
+    output$typeRatePlot <- renderPlotly({
       df <- filtered_data()
       req(nrow(df) > 0)
       
-      ggplot(df, aes(x = scen, y = rate, fill = scen)) +
-        geom_col(position = position_dodge()) +
+      plotly::ggplotly(ggplot(df, aes(x = scen, y = rate, fill = scen, label = rate)) +
+        geom_col(position=position_dodge2(preserve = "single")) +
+        # facet_grid(~name, scales = "free_y") +
         facet_wrap(~name, scales = "free_y") +
+        geom_text(inherit.aes = T, size = 6/.pt,
+                  aes(label = round(rate, 2), 
+                                       y= rate - .1 * after_scale(max(rate)))) +
         labs(
           title = paste("Rates for", input$value_select, "at cycle", input$cycle_select, "by", input$facet_by),
           y = "Rate per 100,000",
           x = "Scenario"
         ) +
         theme_minimal()
+      )
     })
     
     output$typeRateTable <- renderDataTable({
       df <- filtered_data()
       
       if (input$facet_by != "overall" && input$facet_by %in% names(df)) {
-        df <- df %>% select(scen, !!sym(input$facet_by), value, cycle, rate) %>% distinct()
+        df <- df |> select(scen, !!sym(input$facet_by), value, cycle, rate) |> distinct()
       } else {
-        df <- df %>% select(scen, value, cycle, rate, type, name) %>% distinct()
+        df <- df |> select(scen, value, cycle, rate, type, name) |> distinct()
       }
       
       datatable(df, options = list(pageLength = 10))
@@ -133,11 +140,11 @@ shinyApp(
     
     # === Life Years Over Time ===
     filtered_life_data <- reactive({
-      life_years_over_time %>%
+      life_years_over_time |>
         filter(type == input$life_facet)
     })
     
-    output$lifeYearsPlot <- renderPlot({
+    output$lifeYearsPlot <- renderPlotly({
       df <- filtered_life_data()
       req(nrow(df) > 0)
       
@@ -154,53 +161,62 @@ shinyApp(
     
     output$lifeYearsTable <- renderDataTable({
       df <- filtered_life_data()
-      df <- df %>% select(cycle, scen, alive, type, name)
+      df <- df |> select(cycle, scen, alive, type, name)
       datatable(df, options = list(pageLength = 10))
     })
     
     # === Accumulated Life Years ===
     filtered_acc_life_data <- reactive({
-      life_years_accumulated %>%
+      life_years_accumulated |>
         filter(type == input$acc_life_facet)
     })
     
-    output$accLifeYearsPlot <- renderPlot({
+    output$accLifeYearsPlot <- renderPlotly({
       df <- filtered_acc_life_data()
       req(nrow(df) > 0)
       
-      ggplot(df, aes(x = scen, y = alive, fill = scen)) +
-        geom_col(position = position_dodge()) +
+      plotly::ggplotly(
+        ggplot(df, aes(x = scen, y = alive, fill = scen)) +
+        geom_col(position=position_dodge2(preserve = "single")) +
         facet_wrap(~name, scales = "free_y") +
+        geom_text(inherit.aes = T, size = 6/.pt,
+                  aes(label = formatC(alive, format = "e"), # round(alive, 2) 
+                      y= alive - .1 * after_scale(max(alive)))) +
         labs(
           title = paste("Accumulated Life Years by", input$acc_life_facet),
           y = "Life Years (Accumulated)",
           x = "Scenario"
         ) +
         theme_minimal()
+      )
     })
     
     output$accLifeYearsTable <- renderDataTable({
       df <- filtered_acc_life_data()
-      df <- df %>% select(scen, alive, type, name)
+      df <- df |> select(scen, alive, type, name)
       datatable(df, options = list(pageLength = 10))
     })
     
     # === Avoided Deaths by Disease ===
     filtered_avoided_data <- reactive({
-      disease_dead_avoided %>%
+      disease_dead_avoided |>
         filter(
           disease == input$avoided_disease_select,
           type == input$avoided_facet
         )
     })
     
-    output$avoidedDeathsPlot <- renderPlot({
+    output$avoidedDeathsPlot <- renderPlotly({
       df <- filtered_avoided_data()
       req(nrow(df) > 0)
       
       ggplot(df, aes(x = scenario, y = avoided_n, fill = scenario)) +
-        geom_col(position = position_dodge()) +
+        
+        geom_col(position=position_dodge2(preserve = "single")) +
         facet_wrap(~name, scales = "free_y") +
+        geom_text(inherit.aes = T, size = 6/.pt,
+                  aes(label = formatC(avoided_n, format = "e"), # round(alive, 2) 
+                      y= avoided_n - .1 * after_scale(max(avoided_n)))) +
         labs(
           title = paste("Avoided cases for", input$avoided_disease_select, "by", input$avoided_facet),
           y = "Avoided Deaths",
@@ -211,20 +227,20 @@ shinyApp(
     
     output$avoidedDeathsTable <- renderDataTable({
       df <- filtered_avoided_data()
-      df <- df %>% select(scenario, avoided_n, type, name)
+      df <- df |> select(scenario, avoided_n, type, name)
       datatable(df, options = list(pageLength = 10))
     })
     
     # === Delay in Events ===
     filtered_delay_data <- reactive({
-      delay_events %>%
+      delay_events |>
         filter(disease == input$delay_disease_select)
     })
     
     output$delayEventsTable <- renderDataTable({
       df <- filtered_delay_data()
-      df <- df %>%
-        mutate(delay_days = round(delay_days, 0)) %>%
+      df <- df |>
+        mutate(delay_days = round(delay_days, 0)) |>
         select(scenario, delay_days, type, name)
       
       datatable(df, options = list(pageLength = 10))
