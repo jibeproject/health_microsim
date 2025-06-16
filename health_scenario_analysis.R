@@ -19,11 +19,11 @@ suppressPackageStartupMessages({
 
 ## Read Java 1p all exposures
 
-life_years_over_time <- readRDS("data/life_years_overtime_java_1p.RDS") |> filter(!is.na(name))
-life_years_accumulated <- readRDS("data/accumulated_life_years_java_1p.RDS") |> filter(!is.na(name))
-disease_dead_avoided <- readRDS("data/avoided_events_java_1p.RDS") |> filter(!is.na(name))
-delay_events <- readRDS("data/delay_days_java_1p.RDS") |> filter(!is.na(name))
-std_rates_table <- readRDS("data/std_rates_tables_java_1p.RDS")# |> filter(std_rate_inc > 0)
+life_years_over_time <- readRDS("shiny_data/life_years_overtime_java_1p.RDS") |> filter(!is.na(name))
+life_years_accumulated <- readRDS("shiny_data/accumulated_life_years_java_1p.RDS") |> filter(!is.na(name))
+disease_dead_avoided <- readRDS("shiny_data/avoided_events_java_1p.RDS") |> filter(!is.na(name))
+delay_events <- readRDS("shiny_data/delay_days_java_1p.RDS") |> filter(!is.na(name))
+std_rates_table <- readRDS("shiny_data/std_rates_tables_java_1p.RDS")# |> filter(std_rate_inc > 0)
 
 # === Shiny App ===
 library(shiny)
