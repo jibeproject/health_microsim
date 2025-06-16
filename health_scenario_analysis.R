@@ -23,7 +23,7 @@ life_years_over_time <- readRDS("data/life_years_overtime_java_1p.RDS") |> filte
 life_years_accumulated <- readRDS("data/accumulated_life_years_java_1p.RDS") |> filter(!is.na(name))
 disease_dead_avoided <- readRDS("data/avoided_events_java_1p.RDS") |> filter(!is.na(name))
 delay_events <- readRDS("data/delay_days_java_1p.RDS") |> filter(!is.na(name))
-std_rates_table <- readRDS("data/std_rates_tables_java_1p.RDS") |> filter(rate > 0)
+std_rates_table <- readRDS("data/std_rates_tables_java_1p.RDS")# |> filter(std_rate_inc > 0)
 
 # === Shiny App ===
 library(shiny)
@@ -38,6 +38,8 @@ shinyApp(
       sidebarPanel(
         conditionalPanel(
           condition = "input.tabs == 'Age standardised rate per 100,000'",
+          awesomeRadio("rate_select", "Select Rate:",
+                       choices = c("Incidence", "Prevalence")),
           awesomeRadio("value_select", "Select Condition:",
                       choices = unique(std_rates_table$value)),
           awesomeRadio("cycle_select", "Select Cycle:",
@@ -98,41 +100,82 @@ shinyApp(
   server = function(input, output) {
     # === Rates ===
     filtered_data <- reactive({
+      
+      if (input$rate_select == "Prevalence"){
       std_rates_table |>
         filter(
           value == input$value_select,
           cycle == input$cycle_select,
           type == input$facet_by
-        )
+        ) |> 
+          dplyr::select(-c(std_rate_inc)) |> 
+          distinct()
+      }else{
+          std_rates_table |>
+            filter(
+              value == input$value_select,
+              cycle == input$cycle_select,
+              type == input$facet_by
+            ) |> 
+          dplyr::select(-c(std_rate_prev)) |> 
+            distinct()
+      }
     })
     
     output$typeRatePlot <- renderPlotly({
       df <- filtered_data()
       req(nrow(df) > 0)
       
-      plotly::ggplotly(ggplot(df, aes(x = scen, y = rate, fill = scen, label = rate)) +
-        geom_col(position=position_dodge2(preserve = "single")) +
-        # facet_grid(~name, scales = "free_y") +
-        facet_wrap(~name, scales = "free_y") +
-        geom_text(inherit.aes = T, size = 6/.pt,
-                  aes(label = round(rate, 2), 
-                                       y= rate - .1 * after_scale(max(rate)))) +
-        labs(
-          title = paste("Rates for", input$value_select, "at cycle", input$cycle_select, "by", input$facet_by),
-          y = "Rate per 100,000",
-          x = "Scenario"
-        ) +
-        theme_minimal()
-      )
+      if(input$rate_select == "Prevalence"){
+        plotly::ggplotly(ggplot(df, aes(x = scen, y = std_rate_prev, fill = scen, label = std_rate_prev)) +
+                           geom_col(position=position_dodge2(preserve = "single")) +
+                           # facet_grid(~name, scales = "free_y") +
+                           facet_wrap(~name, scales = "free_y") +
+                           geom_text(inherit.aes = T, size = 6/.pt,
+                                     aes(label = round(std_rate_prev, 2), 
+                                         y= std_rate_prev - .1 * after_scale(max(std_rate_prev)))) +
+                           labs(
+                             title = paste("Prevalence rates for", input$value_select, "at cycle", input$cycle_select, "by", input$facet_by),
+                             y = "Rate per 100,000",
+                             x = "Scenario"
+                           ) +
+                           theme_minimal()
+        )
+      }else{
+          
+          plotly::ggplotly(ggplot(df, aes(x = scen, y = std_rate_inc, fill = scen, label = std_rate_inc)) +
+                             geom_col(position=position_dodge2(preserve = "single")) +
+                             # facet_grid(~name, scales = "free_y") +
+                             facet_wrap(~name, scales = "free_y") +
+                             geom_text(inherit.aes = T, size = 6/.pt,
+                                       aes(label = round(std_rate_inc, 2), 
+                                           y= std_rate_inc - .1 * after_scale(max(std_rate_inc)))) +
+                             labs(
+                               title = paste("Incidence rates for", input$value_select, "at cycle", input$cycle_select, "by", input$facet_by),
+                               y = "Rate per 100,000",
+                               x = "Scenario"
+                             ) +
+                             theme_minimal()
+          )
+        }
+      
     })
     
     output$typeRateTable <- renderDataTable({
       df <- filtered_data()
       
-      if (input$facet_by != "overall" && input$facet_by %in% names(df)) {
-        df <- df |> select(scen, !!sym(input$facet_by), value, cycle, rate) |> distinct()
-      } else {
-        df <- df |> select(scen, value, cycle, rate, type, name) |> distinct()
+      if (input$rate_select == "Incidence")
+        if (input$facet_by != "overall" && input$facet_by %in% names(df)) {
+          df <- df |> select(scen, !!sym(input$facet_by), value, cycle, std_rate_inc) |> distinct()
+        } else {
+          df <- df |> select(scen, value, cycle, std_rate_inc, type, name) |> distinct()
+        }
+      else{
+        if (input$facet_by != "overall" && input$facet_by %in% names(df)) {
+          df <- df |> select(scen, !!sym(input$facet_by), value, cycle, std_rate_prev) |> distinct()
+        } else {
+          df <- df |> select(scen, value, cycle, std_rate_prev, type, name) |> distinct()
+        }
       }
       
       datatable(df, options = list(pageLength = 10))
@@ -175,20 +218,45 @@ shinyApp(
       df <- filtered_acc_life_data()
       req(nrow(df) > 0)
       
-      plotly::ggplotly(
-        ggplot(df, aes(x = scen, y = alive, fill = scen)) +
-        geom_col(position=position_dodge2(preserve = "single")) +
+      p <- ggplot(df, aes(x = scen, y = alive, fill = scen)) +
+        geom_col(width = 0.9, position = position_dodge2(preserve = "single")) +
         facet_wrap(~name, scales = "free_y") +
-        geom_text(inherit.aes = T, size = 6/.pt,
-                  aes(label = formatC(alive, format = "e"), # round(alive, 2) 
-                      y= alive - .1 * after_scale(max(alive)))) +
         labs(
           title = paste("Accumulated Life Years by", input$acc_life_facet),
           y = "Life Years (Accumulated)",
           x = "Scenario"
         ) +
         theme_minimal()
-      )
+      
+      if (input$acc_life_facet == "overall") {
+        p <- p + geom_text(
+          inherit.aes = TRUE, size = 6/.pt,
+          aes(
+            label = formatC(alive, format = "e"),
+            y = alive - .1 * after_scale(max(alive))
+          )
+        )
+      }
+      
+      plotly::ggplotly(p)
+      
+      
+      # plotly::ggplotly(
+      #   ggplot(df, aes(x = scen, y = alive, fill = scen)) +
+      #   geom_col(position=position_dodge2(preserve = "single")) +
+      #   facet_wrap(~name, scales = "free_y") +
+      #   if (input$acc_life_facet == "overall")  {
+      #     geom_text(inherit.aes = T, size = 6/.pt,
+      #                                                 aes(label = formatC(alive, format = "e"), # round(alive, 2) 
+      #                                                     y= alive - .1 * after_scale(max(alive))))
+      #     } +
+      #   labs(
+      #     title = paste("Accumulated Life Years by", input$acc_life_facet),
+      #     y = "Life Years (Accumulated)",
+      #     x = "Scenario"
+      #   ) +
+      #   theme_minimal()
+      # )
     })
     
     output$accLifeYearsTable <- renderDataTable({
