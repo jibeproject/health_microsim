@@ -42,7 +42,7 @@ shinyApp(
                        choices = c("Incidence", "Prevalence")),
           awesomeRadio("value_select", "Select Condition:",
                       choices = unique(std_rates_table$value)),
-          awesomeRadio("cycle_select", "Select Cycle:",
+          awesomeRadio("cycle_select", "Select Simulation Year:",
                       choices = sort(unique(std_rates_table$cycle))),
           awesomeRadio("facet_by", "Facet By (Rates):",
                       choices = unique(std_rates_table$type))
@@ -135,7 +135,7 @@ shinyApp(
                                      aes(label = round(std_rate_prev, 2), 
                                          y= std_rate_prev - .1 * after_scale(max(std_rate_prev)))) +
                            labs(
-                             title = paste("Prevalence rates for", input$value_select, "at cycle", input$cycle_select, "by", input$facet_by),
+                             title = paste("Prevalence rates for", input$value_select, "at simulation year", input$cycle_select, "by", input$facet_by),
                              y = "Rate per 100,000",
                              x = "Scenario"
                            ) +
@@ -151,7 +151,7 @@ shinyApp(
                                        aes(label = round(std_rate_inc, 2), 
                                            y= std_rate_inc - .1 * after_scale(max(std_rate_inc)))) +
                              labs(
-                               title = paste("Incidence rates for", input$value_select, "at cycle", input$cycle_select, "by", input$facet_by),
+                               title = paste("Incidence rates for", input$value_select, "at simulation year", input$cycle_select, "by", input$facet_by),
                                y = "Rate per 100,000",
                                x = "Scenario"
                              ) +
@@ -197,7 +197,7 @@ shinyApp(
         labs(
           title = paste("Life Years Over Time by", input$life_facet),
           y = "Life Years",
-          x = "Cycle"
+          x = "Simulation year"
         ) +
         theme_minimal()
     })
