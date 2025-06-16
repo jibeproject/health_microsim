@@ -231,7 +231,7 @@ alive_data_all <- bind_rows(alive_data_overall, alive_data_age, alive_data_lad, 
 
 ## Change number files if you want to keep them for different test runs
 
-saveRDS(alive_data_all, "data/life_years_overtime_java_1p.RDS")
+saveRDS(alive_data_all, "shiny_data/life_years_overtime_java_1p.RDS")
 
 # # === Alive Accumulated Tab Data ===
 
@@ -276,7 +276,7 @@ alive_acc_lad <- alive_acc_data |>
 alive_acc_all <- bind_rows(alive_acc_overall, alive_acc_age, alive_acc_lad, alive_acc_sex)
 
 
-saveRDS(alive_acc_all, "data/accumulated_life_years_java_1p.RDS")
+saveRDS(alive_acc_all, "shiny_data/accumulated_life_years_java_1p.RDS")
 
 
 # # === Avoided Disease/Death Tab Data ===
@@ -323,12 +323,12 @@ avoided_lad <- avoided_data |>
 avoided_all <- bind_rows(avoided_overall, avoided_sex, avoided_age, avoided_lad)
 
 # Save
-saveRDS(avoided_all, "data/avoided_events_java_1p.RDS")
+saveRDS(avoided_all, "shiny_data/avoided_events_java_1p.RDS")
 
 # # === Disease Delay Tab Data ===
 delay_data <- result_wide |>
   filter(time_reference > 0) |>
-  pivot_longer(cols = c(diff_both, diff_green, diff_safer, diff_both), # change to do in code checking if file exists
+  pivot_longer(cols = c(diff_both, diff_green, diff_safeStreet, diff_both), # change to do in code checking if file exists
                names_to = "scenario", values_to = "delay_cycles") |>
   filter(delay_cycles >= 0) |>
   dplyr::group_by(scenario, disease, ladnm, agegroup, gender) |>
@@ -368,7 +368,7 @@ delay_lad <- delay_data |>
 delay_all <- bind_rows(delay_overall, delay_sex, delay_age, delay_lad)
 
 # Save
-saveRDS(delay_all, "data/delay_days_java_1p.RDS")
+saveRDS(delay_all, "shiny_data/delay_days_java_1p.RDS")
 
 # # === Age standardized rates ====
 
@@ -464,7 +464,8 @@ run_age_standardised_rate_by_agegroup <- function(summary_raw, zones) {
       prevalence_rate = (prevalence / population) * 100000
     ) |> filter(cycle %in%target_cycles) |>
     left_join(std_pop) |> 
-    dplyr::mutate(std_rate_inc = incidence_rate*std_pop/100000, std_rate_prev = prevalence_rate*std_pop/100000)
+    dplyr::mutate(std_rate_inc = incidence_rate*std_pop/100000, 
+                  std_rate_prev = prevalence_rate*std_pop/100000)
     #
     #
   ### Data with groupings of results for age_std rates (below should be difference for incidence and prevalence)
@@ -472,8 +473,8 @@ run_age_standardised_rate_by_agegroup <- function(summary_raw, zones) {
   # overall
   df_overall <- summary_incprev |>
     dplyr::group_by(scen, value, cycle) |>
- dplyr::summarise(std_rate_inc = sum(std_rate_inc, na.rm = T)/sum(std_pop, na.rm = T)*100000,
-               std_rate_prev = sum(std_rate_prev, na.rm = T)/sum(std_pop, na.rm = T)*100000) |>
+ dplyr::summarise(std_rate_inc = sum(std_rate_inc, na.rm = T),
+               std_rate_prev = sum(std_rate_prev, na.rm = T)) |>
     # ali this should the rate per 100k and one for prevalence and one for incidence
     dplyr::mutate(type="overall",
                   name = "overall") #|>
@@ -483,8 +484,8 @@ run_age_standardised_rate_by_agegroup <- function(summary_raw, zones) {
 
   df_lad <- summary_incprev  |>
     dplyr::group_by(scen, value, ladcd, cycle) |>
-    dplyr::summarise(std_rate_inc = sum(incidence, na.rm = T) * sum(std_pop, na.rm = T) / 100000,
-                     std_rate_prev = sum(prevalence, na.rm = T) * sum(std_pop, na.rm = T) / 100000) |>
+    dplyr::summarise(std_rate_inc = sum(std_rate_inc, na.rm = T),
+                     std_rate_prev = sum(std_rate_prev, na.rm = T)) |>
     dplyr::mutate(type="lad") |>
     left_join(zones |> distinct(ladcd, ladnm)) |>
     dplyr::rename(name=ladnm)
@@ -493,8 +494,8 @@ run_age_standardised_rate_by_agegroup <- function(summary_raw, zones) {
 
   df_age <- summary_incprev |>
     dplyr::group_by(scen, value, agegroup, cycle) |>
-    dplyr::summarise(std_rate_inc = sum(incidence, na.rm = T) * sum(std_pop, na.rm = T) / 100000,
-                     std_rate_prev = sum(prevalence, na.rm = T) * sum(std_pop, na.rm = T) / 100000) |>
+    dplyr::summarise(std_rate_inc = sum(std_rate_inc, na.rm = T),
+                     std_rate_prev = sum(std_rate_prev, na.rm = T)) |>
     dplyr::mutate(type="age") |> 
     dplyr::rename(name=agegroup)
 
@@ -502,8 +503,8 @@ run_age_standardised_rate_by_agegroup <- function(summary_raw, zones) {
 
   df_sex <- summary_incprev  |>
     dplyr::group_by(scen, value, gender, cycle) |>
-    dplyr::summarise(std_rate_inc = sum(incidence, na.rm = T) * sum(std_pop, na.rm = T) / 100000,
-                     std_rate_prev = sum(prevalence, na.rm = T) * sum(std_pop, na.rm = T) / 100000) |>
+    dplyr::summarise(std_rate_inc = sum(std_rate_inc, na.rm = T),
+                     std_rate_prev = sum(std_rate_prev, na.rm = T)) |>
     dplyr::mutate(type="sex") |>
     dplyr::mutate(gender = (case_when(gender == 1 ~ "male",
                                       gender == 2 ~ "female"))) |>
@@ -607,4 +608,4 @@ std_rates_table <- map2_dfr(
   ~run_age_standardised_rate_by_agegroup(.x, zones)
 )
 
-saveRDS(std_rates_table, "data/std_rates_tables_java_1p.RDS")
+saveRDS(std_rates_table, "shiny_data/std_rates_tables_java_1p.RDS")
