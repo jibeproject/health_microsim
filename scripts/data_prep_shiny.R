@@ -68,9 +68,11 @@ get_summary <- function(SCEN_NAME, group_vars = NULL, summarise = TRUE) {
   }
   if (!file.exists(pop_path)) stop("Population exposure file does not exist: ", pop_path)
   synth_pop <- readr::read_csv(pop_path) |>
-    mutate(agegroup = cut(age, c(0, 25, 45, 65, 85, Inf), right = FALSE, include.lowest = TRUE))
+    mutate(agegroup = cut(age, c(0, 25, 45, 65, 85, Inf), 
+                          labels = c("0-24", "25-44", "45-64", "65-84", "85+"),
+                          right = FALSE, 
+                          include.lowest = TRUE))
   synth_pop <- synth_pop |> left_join(zones  |> rename(zone = oaID) |> dplyr::select(zone, ladcd, lsoa21cd))
-  
   
   m <- m |> left_join(synth_pop |> dplyr::select(id, age, agegroup, gender, ladcd, lsoa21cd))
   
@@ -108,7 +110,9 @@ get_summary <- function(SCEN_NAME, group_vars = NULL, summarise = TRUE) {
     
     mutate(
       age_cycle = age + cycle,
-      agegroup_cycle = cut(age_cycle, c(0, 25, 45, 65, 85, Inf), right = FALSE, include.lowest = TRUE)
+      agegroup_cycle = cut(age_cycle, c(0, 25, 45, 65, 85, Inf), 
+                           labels = c("0-24", "25-44", "45-64", "65-84", "85+"),
+                           right = FALSE, include.lowest = TRUE)
     ) |>
     
     # Identify diseases
@@ -384,7 +388,7 @@ run_age_standardised_rate_by_agegroup <- function(summary_raw, zones) {
       sum(esp2013[14:17]),
       sum(esp2013[18:19])
     )
-  )
+  ) |> mutate(std_prop = std_pop / sum(std_pop))
 
   target_cycles <- c(0, 10, 20)
   states <- c("healthy", "diabetes", "stroke", "coronary_heart_disease",
@@ -443,7 +447,7 @@ run_age_standardised_rate_by_agegroup <- function(summary_raw, zones) {
 
   # Step 5 (optional): Add total population and rate calculations
   population_df <- summary_raw |>
-    # filter(cycle %in% target_cycles) |>
+    filter(cycle %in% target_cycles) |>
     mutate(agegroup = cut(
       age_cycle,
       c(0, 25, 45, 65, 85, Inf),
@@ -460,12 +464,14 @@ run_age_standardised_rate_by_agegroup <- function(summary_raw, zones) {
   summary_incprev <- summary_incprev |>
     left_join(population_df, by = c("scen", "ladcd", "gender", "agegroup", "cycle")) |>
     mutate(
-      incidence_rate = (incidence / population) * 100000,
-      prevalence_rate = (prevalence / population) * 100000
+      incidence_rate = (incidence / population),
+      prevalence_rate = (prevalence / population)
     ) |> filter(cycle %in%target_cycles) |>
     left_join(std_pop) |> 
-    dplyr::mutate(std_rate_inc = incidence_rate*std_pop/100000, 
-                  std_rate_prev = prevalence_rate*std_pop/100000)
+    dplyr::mutate(std_rate_inc = incidence_rate*std_prop*100000, 
+                  std_rate_prev = prevalence_rate*std_prop*100000)
+  
+  # browser()
     #
     #
   ### Data with groupings of results for age_std rates (below should be difference for incidence and prevalence)
@@ -473,13 +479,11 @@ run_age_standardised_rate_by_agegroup <- function(summary_raw, zones) {
   # overall
   df_overall <- summary_incprev |>
     dplyr::group_by(scen, value, cycle) |>
- dplyr::summarise(std_rate_inc = sum(std_rate_inc, na.rm = T),
-               std_rate_prev = sum(std_rate_prev, na.rm = T)) |>
-    # ali this should the rate per 100k and one for prevalence and one for incidence
-    dplyr::mutate(type="overall",
-                  name = "overall") #|>
-    #dplyr::select(c("scen", "value", "std_rate_inc", "std_rate_prev", "type", "name", "cycle"))
-
+    dplyr::mutate(std_rate_inc = sum(std_rate_inc, na.rm = T),
+                  std_rate_prev = sum(std_rate_prev, na.rm = T),
+                  type="overall",
+                  name = "overall") |> 
+    dplyr::select(scen, value, std_rate_inc, std_rate_prev, type, name, cycle)
   # by lad
 
   df_lad <- summary_incprev  |>
@@ -488,7 +492,8 @@ run_age_standardised_rate_by_agegroup <- function(summary_raw, zones) {
                      std_rate_prev = sum(std_rate_prev, na.rm = T)) |>
     dplyr::mutate(type="lad") |>
     left_join(zones |> distinct(ladcd, ladnm)) |>
-    dplyr::rename(name=ladnm)
+    dplyr::rename(name=ladnm) |> 
+    dplyr::select(scen, value, std_rate_inc, std_rate_prev, ladcd, type, name, cycle)
 
   # by age
 
@@ -497,7 +502,8 @@ run_age_standardised_rate_by_agegroup <- function(summary_raw, zones) {
     dplyr::summarise(std_rate_inc = sum(std_rate_inc, na.rm = T),
                      std_rate_prev = sum(std_rate_prev, na.rm = T)) |>
     dplyr::mutate(type="age") |> 
-    dplyr::rename(name=agegroup)
+    dplyr::rename(name=agegroup)  |> 
+    dplyr::select(scen, value, std_rate_inc, std_rate_prev, type, name, cycle)
 
   # by sex
 
@@ -505,7 +511,8 @@ run_age_standardised_rate_by_agegroup <- function(summary_raw, zones) {
     dplyr::group_by(scen, value, gender, cycle) |>
     dplyr::summarise(std_rate_inc = sum(std_rate_inc, na.rm = T),
                      std_rate_prev = sum(std_rate_prev, na.rm = T)) |>
-    dplyr::mutate(type="sex") |>
+    dplyr::mutate(type="sex") |> 
+    dplyr::select(scen, value, std_rate_inc, std_rate_prev, type, cycle, gender) |> 
     dplyr::mutate(gender = (case_when(gender == 1 ~ "male",
                                       gender == 2 ~ "female"))) |>
     dplyr::rename(name=gender)
@@ -515,85 +522,6 @@ run_age_standardised_rate_by_agegroup <- function(summary_raw, zones) {
   return(df)
 }
 
-
-# run_age_standardised_rate_by_agegroup <- function(summary_raw, zones) {
-#   # summary_raw <- all_data$base
-#   std_pop <- tibble(
-#     agegroup = c("0-24", "25-44", "45-64", "65-84", "85+"), # European standard population
-#     std_pop = c(
-#       sum(esp2013[1:5]),
-#       sum(esp2013[6:9]),
-#       sum(esp2013[10:13]),
-#       sum(esp2013[14:17]),
-#       sum(esp2013[18:19])
-#     )
-#   )
-#   
-#   # summary_raw <- map2_dfr(
-#   #   summary_raw,
-#   #   names(summary_raw),
-#   #   ~ mutate(.x, source = .y)  # Example function that adds the name as a column
-#   # )
-#   # 
-#   target_cycles <- c(0, 10, 20, 30, 40, 50)
-#   states <- c("healthy", "diabetes", "stroke", "coronary_heart_disease",
-#               "breast_cancer", "colon_cancer", "lung_cancer", "depression", "all_cause_dementia", "dead")
-#   
-#   
-#   df <- summary_raw |>
-#     dplyr::filter(value %in% states, cycle %in% target_cycles) |>
-#     dplyr::mutate(agegroup = cut(age, c(0, 25, 45, 65, 85, Inf),
-#                                  labels = c("0-24", "25-44", "45-64", "65-84", "85+"),
-#                                  right = FALSE, include.lowest = TRUE)) |>
-#     dplyr::group_by(scen, ladcd, gender, agegroup, value, cycle) |>
-#     dplyr::summarise(count = n(), .groups = "drop") |>
-#     left_join(std_pop, by = "agegroup")
-#   
-#   ### Data with groupings of results for age_std rates
-#   
-#   # overall
-#   
-#   df_overall <- df  |>
-#     dplyr::group_by(scen, value, cycle) |>
-#     dplyr::summarise(rate = sum((count * std_pop) / 100000, na.rm = TRUE), .groups = "drop") |>
-#     dplyr::mutate(type="overall",
-#                   name = "overall") |>
-#     dplyr::select(c("scen", "value", "rate", "type", "name", "cycle"))
-#   
-#   # by lad
-#   
-#   df_lad <- df  |>
-#     dplyr::group_by(scen, value, ladcd, cycle) |>
-#     dplyr::summarise(rate = sum((count * std_pop) / 100000, na.rm = TRUE), .groups = "drop") |>
-#     dplyr::mutate(type="lad") |>
-#     left_join(zones |> distinct(ladcd, .keep_all = T) |>  dplyr::select(ladcd, ladnm)) |>
-#     dplyr::select(c("scen", "value", "rate", "type", "ladcd", "cycle", "ladnm")) |>
-#     dplyr::rename(name=ladnm)
-#   
-#   # by age
-#   
-#   df_age <- df  |>
-#     dplyr::group_by(scen, value, agegroup, cycle) |>
-#     dplyr::summarise(rate = sum((count * std_pop) / 100000, na.rm = TRUE), .groups = "drop") |>
-#     dplyr::mutate(type="age") |>
-#     dplyr::select(c("scen", "value", "rate", "type", "cycle", "agegroup")) |>
-#     dplyr::rename(name=agegroup)
-#   
-#   # by sex
-#   
-#   df_sex <- df  |>
-#     dplyr::group_by(scen, value, gender, cycle) |>
-#     dplyr::summarise(rate = sum((count * std_pop) / 100000, na.rm = TRUE), .groups = "drop") |>
-#     dplyr::mutate(type="sex") |>
-#     dplyr::select(c("scen", "value", "rate", "type", "cycle", "gender")) |>
-#     dplyr::mutate(gender = (case_when(gender == 1 ~ "male",
-#                                       gender == 2 ~ "female"))) |>
-#     dplyr::rename(name=gender)
-#   
-#   df <-bind_rows(df_overall, df_lad, df_age, df_sex)
-#   
-#   return(df)
-# }
 # === Load all data and compute standardised rates ===
 all_data <- list(
   base = get_summary("base", summarise = FALSE) |> mutate(scen = "reference"),
