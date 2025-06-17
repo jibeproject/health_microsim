@@ -126,38 +126,29 @@ shinyApp(
       df <- filtered_data()
       req(nrow(df) > 0)
       
-      if(input$rate_select == "Prevalence"){
-        plotly::ggplotly(ggplot(df, aes(x = scen, y = std_rate_prev, fill = scen, label = std_rate_prev)) +
-                           geom_col(position=position_dodge2(preserve = "single")) +
-                           # facet_grid(~name, scales = "free_y") +
-                           facet_wrap(~name, scales = "free_y") +
-                           geom_text(inherit.aes = T, size = 6/.pt,
-                                     aes(label = round(std_rate_prev, 2), 
-                                         y= std_rate_prev - .1 * after_scale(max(std_rate_prev)))) +
-                           labs(
-                             title = paste("Prevalence rates for", input$value_select, "at simulation year", input$cycle_select, "by", input$facet_by),
-                             y = "Rate per 100,000",
-                             x = "Scenario"
-                           ) +
-                           theme_minimal()
-        )
-      }else{
-          
-          plotly::ggplotly(ggplot(df, aes(x = scen, y = std_rate_inc, fill = scen, label = std_rate_inc)) +
-                             geom_col(position=position_dodge2(preserve = "single")) +
-                             # facet_grid(~name, scales = "free_y") +
-                             facet_wrap(~name, scales = "free_y") +
-                             geom_text(inherit.aes = T, size = 6/.pt,
-                                       aes(label = round(std_rate_inc, 2), 
-                                           y= std_rate_inc - .1 * after_scale(max(std_rate_inc)))) +
-                             labs(
-                               title = paste("Incidence rates for", input$value_select, "at simulation year", input$cycle_select, "by", input$facet_by),
-                               y = "Rate per 100,000",
-                               x = "Scenario"
-                             ) +
-                             theme_minimal()
-          )
-        }
+      var_name <- "std_rate_prev"
+      main_title <- "Prevalence"
+      
+      if(input$rate_select != "Prevalence"){
+        var_name <- "std_rate_inc"
+        main_title <- "Incidence"
+      }
+      
+      
+      plotly::ggplotly(ggplot(df, aes(x = scen, y = .data[[var_name]], fill = scen, label = .data[[var_name]])) +
+                         geom_col(position=position_dodge2(preserve = "single")) +
+                         # facet_grid(~name, scales = "free_y") +
+                         facet_wrap(~name, scales = "free_y") +
+                         geom_text(inherit.aes = T, size = 6/.pt,
+                                   aes(label = round(.data[[var_name]], 2), 
+                                       y= .data[[var_name]] - .1 * after_scale(max(.data[[var_name]])))) +
+                         labs(
+                           title = paste(main_title, "rates for", input$value_select, "at simulation year", input$cycle_select, "by", input$facet_by),
+                           y = "Rate per 100,000",
+                           x = "Scenario"
+                         ) +
+                         theme_minimal()
+      )
       
     })
     
