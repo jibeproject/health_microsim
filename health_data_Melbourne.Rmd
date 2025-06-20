@@ -2245,12 +2245,16 @@ For depression, we only have GBD data by age and sex.
 # Incidence
 # Extract the 2018 incidence values from the interpolated GDB data prepared above
 depression_incidence <- gbdpyr_interp %>%
-  filter(measure == "Incidence" & cause == "Depressive disorders" & year == 2018)
+  filter(measure == "Incidence" & cause == "Depressive disorders" & year == 2018) %>%
+  rename(rate = val_interpolated) %>%
+  mutate(prob = 1 - exp(-rate))
   
 # Prevalence
 # Extract the 2018 prevalence values from the interpolated GDB data prepared above
 depression_prevalence <- gbdpyr_interp %>%
-  filter(measure == "Prevalence" & cause == "Depressive disorders" & year == 2018)
+  filter(measure == "Prevalence" & cause == "Depressive disorders" & year == 2018) %>%
+  rename(rate = val_interpolated) %>%
+  mutate(prob = 1 - exp(-rate))
 
 ```
 
@@ -2684,8 +2688,7 @@ SA2_Melb <- read.csv(here("melbourne/health/original/ABS/SA2_2016_AUST.csv")) %>
 data_melbourne <- mort_disagg %>% 
   bind_rows(cancer_incidence_area, cancer_prevalence_area, 
             cvd_dem_dia_copd_inc, cvd_dem_dia_copd_prev, 
-            depression_incidence %>% mutate(rate = val_interpolated), 
-            depression_prevalence %>% mutate(rate = val_interpolated)) %>%
+            depression_incidence, depression_prevalence) %>%
   mutate(measure=tolower(measure)) %>%
   
   # standardise disease names
@@ -2701,6 +2704,9 @@ data_melbourne <- mort_disagg %>%
     .default = cause
   )) %>%
   mutate(cause = gsub(" ", "_", cause)) %>%
+  
+  # complete age from ageyr where necessary
+  mutate(age = ifelse(is.na(age) & !is.na(ageyr), ageyr, age)) %>%
   
   # filter to Greater Melbourne, where SA2 is available
   filter(sa2_code %in% SA2_Melb$SA2_MAINCODE_2016 | 
@@ -2778,6 +2784,122 @@ prev_melbourne <- data_melbourne %>%
 
 write_csv(prev_melbourne, 
           file = here("melbourne/health/processed/health_transitions_melbourne_prevalence.csv"))
+
+```
+
+# Combine incidence and mortality as required for SILO/MITO
+
+SILO/MITO code requires all-cause mortality and disease incidence, disaggregated by age, sex and SA2 (and no other disaggregation), probability (and not rate), for age 0 to 100.
+
+Combine to meet these requirements, and save
+
+```{r}
+
+# mortality - use 'deaths_age_sa2', which is deaths before disaggregation
+SM_mort <- deaths_age_sa2 %>%
+  
+  # the 'rates' are derived from qx ("the proportion of persons dying between 
+  # exact age x and exact age x+1"), so treat as a probability (same as above)
+  mutate(prob = rate1000 / 1000, # note 'rate' was per 1000 people
+         sex = case_when(
+           sex == "Male" ~ 1,
+           sex == "Female" ~ 2
+         ),
+         cause = "all_cause_mortality",
+         sa2_code = as.numeric(sa2_code)) %>%
+  dplyr::select(SA2_MAIN16 = sa2_code, age, sex, cause, prob)
+
+# incidence - use data_melbourne
+SM_inc_base <- data_melbourne %>%
+  filter(measure == "incidence") %>%
+  filter(!is.na(rate)) %>%  # some non-modelled cancers lack incidence rates or probabilities
+  mutate(sex = case_when(
+           sex == "Male" ~ 1,
+           sex == "Female" ~ 2
+         )) %>%
+  dplyr::select(SA2_MAIN16 = sa2_code, age, sex, cause, prob, socio)
+  
+# some incidence only goes to 95 or 99; where that happens, replicate to 100
+SM_inc_oldage <- SM_inc_base %>%
+  
+  # select oldest age, and keep if < 100
+  group_by(cause) %>%
+  filter(age == max(age)) %>%
+  ungroup() %>%
+  filter(age < 100) %>%
+  
+  # replicate by number of years remaining to 100
+  rowwise() %>%
+  mutate(age = list((age + 1):100)) %>%
+  unnest(age) %>%
+  ungroup()
+
+SM_inc_age <- bind_rows(SM_inc_base, SM_inc_oldage)
+
+# SA2 codes and socio-economic quintiles (note - 4SA2s are industrial areas
+# with no population - West Melbourne, Port Melbourne Industrial, 
+# Moorabbin Airport, Essendon Airport) - these will be given undisaggregated ### median?### values
+SA2_SES <- data_melbourne %>%
+  dplyr::select(sa2_name, sa2_code, socio) %>%
+  filter(sa2_code %in% SA2_Melb$SA2_MAINCODE_2016) %>%
+  distinct() %>%
+  # convert NAs to 0, but only keep where there is no actual socio
+  mutate(socio = ifelse(is.na(socio), 0, socio)) %>%
+  group_by(sa2_code) %>%
+  filter(socio == max(socio)) %>%  # omits all NAs, unless NA (now 0) is the only socio for that SA2
+  ungroup()
+
+missing_SES <- SA2_SES %>%
+  filter(socio == 0) %>%
+  .$sa2_code
+
+# cancers - use mediabn values for the 4 SA2s with no disaggregated values
+# collect cancer values (only cancers have SA2s)
+SM_inc_cancer_SA2 <- SM_inc_age %>%
+  filter(!is.na(SA2_MAIN16))
+
+# median values for SA2s missing SES
+SM_inc_cancer_median <- SM_inc_cancer_SA2 %>%
+  group_by(age, sex, cause) %>%
+  summarise(prob = median(prob)) %>%
+  ungroup() %>%
+  
+  # replicate median values for the missing SA2s
+  rowwise() %>%
+  mutate(SA2_MAIN16 = list(missing_SES)) %>%
+  unnest(SA2_MAIN16) %>%
+  ungroup()
+
+SM_inc_cancer <- bind_rows(SM_inc_cancer_SA2, SM_inc_cancer_median)
+
+# others (except depression) - attribute socio values to all SA2s of that
+# socio level; and use the middle socio level (level 3) for the 4 SA2s with no 
+# socio (which were previously coded as socio = 0)
+SM_inc_non_cancer <- SM_inc_age %>%
+  filter(is.na(SA2_MAIN16) & !is.na(socio)) %>%
+  full_join(SA2_SES %>% mutate(socio = ifelse(socio == 0, 3, socio)),
+            by = "socio", relationship = "many-to-many") %>%
+  mutate(SA2_MAIN16 = sa2_code)
+
+# depression - no disaggregation available, so same value for all SA2s
+SM_inc_depression <- SM_inc_age %>%
+  filter(is.na(SA2_MAIN16) & is.na(socio)) %>%
+  
+  # stretch out for all SA2s
+  rowwise() %>%
+  mutate(SA2_MAIN16 = list(SA2_SES$sa2_code)) %>%
+  unnest(SA2_MAIN16) %>%
+  ungroup()
+
+
+# combine
+SM = bind_rows(SM_mort, SM_inc_cancer, SM_inc_non_cancer, SM_inc_depression) %>%
+  dplyr::select(SA2_MAIN16, age, sex, cause, prob)
+
+# write output
+write_csv(SM, 
+          file = here("melbourne/health/processed/health_transitions_melbourne.csv"))
+
 
 ```
 
