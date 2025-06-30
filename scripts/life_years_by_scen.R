@@ -48,4 +48,14 @@ alive_data |>
   group_by(cycle, agegroup,  scen) |> summarise(alive_n = sum(alive_n))
 
 
-alive_data |> filter(scen != "reference") |> group_by(cycle, scen) |> summarise(alive_n = sum(alive_n)) |> left_join(alive_data |> filter(scen == "reference") |> group_by(cycle, scen) |> summarise(alive_n_ref = sum(alive_n)) |> ungroup() |> dplyr::select(-c(scen))) |> mutate(diff = alive_n - alive_n_ref) |> View()
+alive_data |> 
+  filter(scen != "reference") |> 
+  group_by(cycle, scen) |> 
+  summarise(alive_n = sum(alive_n)) |> 
+  left_join(alive_data |> 
+              filter(scen == "reference") |> 
+              group_by(cycle, scen) |> 
+              summarise(alive_n_ref = sum(alive_n)) |> 
+              ungroup() |> dplyr::select(-c(scen))) |> 
+  mutate(diff = alive_n - alive_n_ref) |> 
+  View()
