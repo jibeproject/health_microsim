@@ -34,7 +34,7 @@ esp2013 <- c(
 # === Data loading function ===
 get_summary <- function(SCEN_NAME, group_vars = NULL, summarise = TRUE) {
   
-  #SCEN_NAME <- "base"
+  # SCEN_NAME <- "base"
   # group_vars = NULL
   
   file_path <- file_path <- if (exists("FILE_PATH_JAVA") && !FILE_PATH_BELEN) {
@@ -61,18 +61,62 @@ get_summary <- function(SCEN_NAME, group_vars = NULL, summarise = TRUE) {
     names(m)[match(year_cols, names(m))] <- new_names
   }
   
+  pop_dir_path <- if (!FILE_PATH_BELEN) {
+    paste0("~/Documents/Tabea/manchester-main/scenOutput/", SCEN_NAME, "/microData")
+  } else {
+    paste0("manchester/health/processed/", SCEN_NAME, "/microdata")
+  }
+
+  # List all CSV files starting with "pp_" in the specified directory
+  pp_csv_files <- list.files(path = pop_dir_path, 
+                          pattern = "^pp_\\d{4}\\.csv$",  # Matches pp_ followed by 4 digits and .csv
+                          full.names = TRUE)
+  
+  # Read and filter each file, then combine into one data frame
+  newborn_data <- lapply(pp_csv_files, function(file) {
+    df <- read.csv(file)|> filter(age == 0)
+  }) |> bind_rows()
+  
+  
+  # List all CSV files starting with "pp_" in the specified directory
+  dd_csv_files <- list.files(path = pop_dir_path, 
+                          pattern = "^dd_\\d{4}\\.csv$",  # Matches pp_ followed by 4 digits and .csv
+                          full.names = TRUE)
+  
+  # Read and filter each file, then combine into one data frame
+  dd_data <- lapply(dd_csv_files, function(file) {
+    df <- read.csv(file)
+  }) |> bind_rows()
+  
+  newborn_data <- newborn_data |> 
+    left_join(dd_data |> 
+                dplyr::select(hhID, zone) |> 
+                rename(hhid = hhID))
+  
+  
+  synth_pop <- newborn_data |>
+    mutate(agegroup = cut(age, c(0, 25, 45, 65, 85, Inf), 
+                          labels = c("0-24", "25-44", "45-64", "65-84", "85+"),
+                          right = FALSE, 
+                          include.lowest = TRUE)) |> 
+    dplyr::select(id, age, agegroup, gender, zone)
+  
+  
   pop_path <- if (!FILE_PATH_BELEN) {
     paste0("~/Documents/Tabea/manchester-main/scenOutput/", SCEN_NAME, "/microData/pp_exposure_2021.csv")
   } else {
     paste0("manchester/health/processed/", SCEN_NAME, "_pp_exposure_RR_2021.csv")
   }
   if (!file.exists(pop_path)) stop("Population exposure file does not exist: ", pop_path)
-  synth_pop <- readr::read_csv(pop_path) |>
+  synth_pop_2021 <- readr::read_csv(pop_path) |>
     mutate(agegroup = cut(age, c(0, 25, 45, 65, 85, Inf), 
                           labels = c("0-24", "25-44", "45-64", "65-84", "85+"),
                           right = FALSE, 
                           include.lowest = TRUE))
-  synth_pop <- synth_pop |> left_join(zones  |> rename(zone = oaID) |> dplyr::select(zone, ladcd, lsoa21cd))
+  
+  synth_pop_2021 <- synth_pop_2021 |> dplyr::select(id, age, agegroup, gender, zone) |> left_join(zones  |> rename(zone = oaID) |> dplyr::select(zone, ladcd, lsoa21cd))
+  
+  synth_pop <- bind_rows(synth_pop, synth_pop_2021)
   
   m <- m |> left_join(synth_pop |> dplyr::select(id, age, agegroup, gender, ladcd, lsoa21cd))
   
@@ -518,7 +562,7 @@ run_age_standardised_rate_by_agegroup <- function(summary_raw, zones) {
                                       gender == 2 ~ "female"))) |>
     dplyr::rename(name=gender)
 
-  df <-bind_rows(df_overall, df_lad, df_age, df_sex)
+  df <- bind_rows(df_overall, df_lad, df_age, df_sex)
 
   return(df)
 }
