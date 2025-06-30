@@ -38,7 +38,7 @@ get_summary <- function(SCEN_NAME, group_vars = NULL, summarise = TRUE) {
   # group_vars = NULL
   
   file_path <- file_path <- if (exists("FILE_PATH_JAVA") && !FILE_PATH_BELEN) {
-    paste0("~/Documents/Tabea/manchester-main/scenOutput/", SCEN_NAME, "/microData/pp_healthDiseaseTracker_2031.csv")
+    paste0("~/Documents/Tabea/manchester-main/scenOutput/", SCEN_NAME, "/microData/pp_healthDiseaseTracker_2051.csv")
   } else if (exists("FILE_PATH_JAVA") && FILE_PATH_BELEN && FILE_PATH_JAVA) {
     paste0("manchester/health/processed/java/", SCEN_NAME, "_pp_healthDiseaseTracker_2031.csv")
   } else {
@@ -101,7 +101,8 @@ get_summary <- function(SCEN_NAME, group_vars = NULL, summarise = TRUE) {
     
     # Forward-fill 'dead' after first appearance
     mutate(
-      dead_seen = cumsum(coalesce(value == "dead", FALSE)) > 0,
+      #dead_seen = cumsum(coalesce(value == "dead", FALSE)) > 0,
+      dead_seen = cumsum(coalesce(grepl("dead|kill", value), FALSE)) > 0,
       value = if_else(dead_seen, "dead", value)
     ) |>
     ungroup() |>
@@ -171,7 +172,7 @@ safer_diag <- process_scenario("safeStreet") |> dplyr::rename(time_safeStreet = 
 both_diag <- process_scenario("both") |> dplyr::rename(time_both = time_to_event)
 
 
-valid_data <- c("base_diag", "green_diag", "safer_diag", "both_diag") |>
+valid_data <- c("base_diag", "both_diag", "safer_diag") |> #, "both_diag") |>
   purrr::keep(exists) |>
   mget(envir = .GlobalEnv) |>
   purrr::keep(~ all(c("id", "disease") %in% names(.x))) |>
@@ -192,9 +193,9 @@ result_wide <- result_wide |>
   left_join(age_sex_lad, by = "id") |>
   mutate(
     time_reference = replace_na(time_reference, 0),
-    diff_both = if_else(is.na(time_both), NA_real_, time_both - time_reference),
+    diff_both = if_else(is.na(time_both), NA_real_, time_both - time_reference),#,
     diff_green = if_else(is.na(time_green), NA_real_, time_green - time_reference),
-    diff_safeStreet = if_else(is.na(time_safeStreet), NA_real_, time_safeStreet - time_reference),
+    diff_safeStreet = if_else(is.na(time_safeStreet), NA_real_, time_safeStreet - time_reference)
   )
 ## To fix, cannot be -1 when not happening because difference can be -1
 
@@ -235,7 +236,7 @@ alive_data_all <- bind_rows(alive_data_overall, alive_data_age, alive_data_lad, 
 
 ## Change number files if you want to keep them for different test runs
 
-saveRDS(alive_data_all, "shiny_data/life_years_overtime_java_1p.RDS")
+saveRDS(alive_data_all, "shiny_data/life_years_overtime_java_5p.RDS")
 
 # # === Alive Accumulated Tab Data ===
 
@@ -280,7 +281,7 @@ alive_acc_lad <- alive_acc_data |>
 alive_acc_all <- bind_rows(alive_acc_overall, alive_acc_age, alive_acc_lad, alive_acc_sex)
 
 
-saveRDS(alive_acc_all, "shiny_data/accumulated_life_years_java_1p.RDS")
+saveRDS(alive_acc_all, "shiny_data/accumulated_life_years_java_5p.RDS")
 
 
 # # === Avoided Disease/Death Tab Data ===
@@ -327,12 +328,12 @@ avoided_lad <- avoided_data |>
 avoided_all <- bind_rows(avoided_overall, avoided_sex, avoided_age, avoided_lad)
 
 # Save
-saveRDS(avoided_all, "shiny_data/avoided_events_java_1p.RDS")
+saveRDS(avoided_all, "shiny_data/avoided_events_java_5p.RDS")
 
 # # === Disease Delay Tab Data ===
 delay_data <- result_wide |>
   filter(time_reference > 0) |>
-  pivot_longer(cols = c(diff_both, diff_green, diff_safeStreet, diff_both), # change to do in code checking if file exists
+  pivot_longer(cols = c(diff_both, diff_safeStreet, diff_green), #diff_safeStreet, diff_both), # change to do in code checking if file exists
                names_to = "scenario", values_to = "delay_cycles") |>
   filter(delay_cycles >= 0) |>
   dplyr::group_by(scenario, disease, ladnm, agegroup, gender) |>
@@ -372,7 +373,7 @@ delay_lad <- delay_data |>
 delay_all <- bind_rows(delay_overall, delay_sex, delay_age, delay_lad)
 
 # Save
-saveRDS(delay_all, "shiny_data/delay_days_java_1p.RDS")
+saveRDS(delay_all, "shiny_data/delay_days_java_5p.RDS")
 
 # # === Age standardized rates ====
 
@@ -536,4 +537,22 @@ std_rates_table <- map2_dfr(
   ~run_age_standardised_rate_by_agegroup(.x, zones)
 )
 
-saveRDS(std_rates_table, "shiny_data/std_rates_tables_java_1p.RDS")
+saveRDS(std_rates_table, "shiny_data/std_rates_tables_java_5p.RDS")
+
+
+calculate_deaths <- function(dataset, scen_name){
+  
+  base_pop <- dataset |> filter(value != "dead", cycle == 1) |> group_by(cycle) |> summarise(n_distinct(id)) |>  pull()
+  deaths <- dataset |> filter(value == "dead") |> group_by(cycle) |> summarise(deaths = n_distinct(id)) |> mutate(new_deaths = deaths - lag(deaths, 1))
+  deaths$new_deaths <- ifelse(is.na(deaths$new_deaths), deaths$deaths, deaths$new_deaths)
+  return(deaths |> mutate(base_pop = base_pop,
+                          unit_death = new_deaths/base_pop,
+                          total_deaths = round(unit_death * 2827285), 
+                          name = scen_name))
+  
+  
+}
+
+deaths <- rbind(calculate_deaths(all_data$base, "reference"), calculate_deaths(all_data$green, "green"),
+                calculate_deaths(all_data$safeStreet, "safeStreet"), 
+                calculate_deaths(all_data$both, "both"))
