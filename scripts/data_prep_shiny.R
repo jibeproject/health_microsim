@@ -7,10 +7,23 @@ suppressPackageStartupMessages({
 })
 
 # === Global Settings ===
-FILE_PATH_BELEN <- FALSE
+FILE_PATH_BELEN <- TRUE
 FILE_PATH_JAVA <- TRUE
-# n.i <- 282727
-# n.c <- 30
+RUN_NAME <- "_5p_300625"
+
+# Scaling factor for results
+
+SCALING <- 20 # for a 5% sample and to be used to multiply results
+
+#For saving files
+data_path_Belen <- TRUE
+
+# Set path based on condition
+base_path <- if (data_path_Belen) {
+  "manchester/health/processed/shiny_data/"
+} else {
+  "shiny_data/"
+}
 
 # === Load zone names ===
 zones <- if (!FILE_PATH_BELEN) {
@@ -21,7 +34,7 @@ zones <- if (!FILE_PATH_BELEN) {
 
 #zones <- zones |> distinct(ladcd, ladnm)
 
-# === European Standard Population (ESP2013) ===
+# === European Standard Population (ESP2013) === Replace with baseline population 
 esp2013 <- c(
   rep(4000, 1), rep(5500, 4),  # 0-4, 5-9, 10-14, 15-19, 20-24
   rep(5500, 2), rep(6000, 2),  # 25-29, 30-34, 35-39, 40-44
@@ -33,14 +46,14 @@ esp2013 <- c(
 
 # === Data loading function ===
 get_summary <- function(SCEN_NAME, group_vars = NULL, summarise = TRUE) {
-  
-  # SCEN_NAME <- "base"
-  # group_vars = NULL
+
+  SCEN_NAME <- "base"
+  group_vars = NULL
   
   file_path <- file_path <- if (exists("FILE_PATH_JAVA") && !FILE_PATH_BELEN) {
     paste0("~/Documents/Tabea/manchester-main/scenOutput/", SCEN_NAME, "/microData/pp_healthDiseaseTracker_2051.csv")
   } else if (exists("FILE_PATH_JAVA") && FILE_PATH_BELEN && FILE_PATH_JAVA) {
-    paste0("manchester/health/processed/java/", SCEN_NAME, "_pp_healthDiseaseTracker_2031.csv")
+    paste0("manchester/health/processed/health_model_outcomes/microData_", SCEN_NAME, RUN_NAME, "/microData/", "pp_healthDiseaseTracker_2051.csv")
   } else {
     paste0("manchester/health/processed/", SCEN_NAME, "_dis_inter_state_trans-n.c-noAPRISK-", n.c, "-n.i-", n.i, "-n.d-19.parquet")
   }
@@ -64,7 +77,7 @@ get_summary <- function(SCEN_NAME, group_vars = NULL, summarise = TRUE) {
   pop_dir_path <- if (!FILE_PATH_BELEN) {
     paste0("~/Documents/Tabea/manchester-main/scenOutput/", SCEN_NAME, "/microData")
   } else {
-    paste0("manchester/health/processed/", SCEN_NAME, "/microdata")
+    paste0("manchester/health/processed/health_model_outcomes/microData_", SCEN_NAME, RUN_NAME, "/microData/")
   }
 
   # List all CSV files starting with "pp_" in the specified directory
@@ -78,7 +91,7 @@ get_summary <- function(SCEN_NAME, group_vars = NULL, summarise = TRUE) {
   }) |> bind_rows()
   
   
-  # List all CSV files starting with "pp_" in the specified directory
+  # List all CSV files starting with "pp_" in the specified directory (to get zones)
   dd_csv_files <- list.files(path = pop_dir_path, 
                           pattern = "^dd_\\d{4}\\.csv$",  # Matches pp_ followed by 4 digits and .csv
                           full.names = TRUE)
@@ -105,7 +118,7 @@ get_summary <- function(SCEN_NAME, group_vars = NULL, summarise = TRUE) {
   pop_path <- if (!FILE_PATH_BELEN) {
     paste0("~/Documents/Tabea/manchester-main/scenOutput/", SCEN_NAME, "/microData/pp_exposure_2021.csv")
   } else {
-    paste0("manchester/health/processed/", SCEN_NAME, "_pp_exposure_RR_2021.csv")
+    paste0("manchester/health/processed/health_model_outcomes/microData_", SCEN_NAME, RUN_NAME, "/microData/pp_exposure_2021.csv")
   }
   if (!file.exists(pop_path)) stop("Population exposure file does not exist: ", pop_path)
   synth_pop_2021 <- readr::read_csv(pop_path) |>
@@ -207,6 +220,7 @@ process_scenario <- function(scen_name) {
       time_to_event = min(cycle_numeric),
       .groups = "drop"
     )
+  return(df)
 }
 
 
@@ -280,7 +294,7 @@ alive_data_all <- bind_rows(alive_data_overall, alive_data_age, alive_data_lad, 
 
 ## Change number files if you want to keep them for different test runs
 
-saveRDS(alive_data_all, "shiny_data/life_years_overtime_java_5p.RDS")
+saveRDS(alive_data_all, paste0(base_path, "/life_years_overtime_java_5p.RDS"))
 
 # # === Alive Accumulated Tab Data ===
 
@@ -325,7 +339,7 @@ alive_acc_lad <- alive_acc_data |>
 alive_acc_all <- bind_rows(alive_acc_overall, alive_acc_age, alive_acc_lad, alive_acc_sex)
 
 
-saveRDS(alive_acc_all, "shiny_data/accumulated_life_years_java_5p.RDS")
+saveRDS(alive_acc_all, paste0(base_path, "/accumulated_life_years_java_5p.RDS"))
 
 
 # # === Avoided Disease/Death Tab Data ===
@@ -372,7 +386,7 @@ avoided_lad <- avoided_data |>
 avoided_all <- bind_rows(avoided_overall, avoided_sex, avoided_age, avoided_lad)
 
 # Save
-saveRDS(avoided_all, "shiny_data/avoided_events_java_5p.RDS")
+saveRDS(avoided_all, paste0(base_path, "/avoided_events_java_5p.RDS"))
 
 # # === Disease Delay Tab Data ===
 delay_data <- result_wide |>
@@ -417,7 +431,7 @@ delay_lad <- delay_data |>
 delay_all <- bind_rows(delay_overall, delay_sex, delay_age, delay_lad)
 
 # Save
-saveRDS(delay_all, "shiny_data/delay_days_java_5p.RDS")
+saveRDS(delay_all, paste0(base_path, "/delay_days_java_5p.RDS"))
 
 # # === Age standardized rates ====
 
@@ -581,7 +595,7 @@ std_rates_table <- map2_dfr(
   ~run_age_standardised_rate_by_agegroup(.x, zones)
 )
 
-saveRDS(std_rates_table, "shiny_data/std_rates_tables_java_5p.RDS")
+saveRDS(std_rates_table, paste0(base_path, "/std_rates_tables_java_5p.RDS"))
 
 
 calculate_deaths <- function(dataset, scen_name){
