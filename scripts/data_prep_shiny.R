@@ -47,8 +47,8 @@ esp2013 <- c(
 # === Data loading function ===
 get_summary <- function(SCEN_NAME, group_vars = NULL, summarise = TRUE) {
 
-  SCEN_NAME <- "base"
-  group_vars = NULL
+  # SCEN_NAME <- "base"
+  # group_vars = NULL
   
   file_path <- file_path <- if (exists("FILE_PATH_JAVA") && !FILE_PATH_BELEN) {
     paste0("~/Documents/Tabea/manchester-main/scenOutput/", SCEN_NAME, "/microData/pp_healthDiseaseTracker_2051.csv")
@@ -261,14 +261,31 @@ result_wide <- result_wide |>
 alive_data <- bind_rows(all_data) |> # life years
   filter(value != "dead") |>
   dplyr::group_by(cycle, scen, ladcd, agegroup, gender) |>
-  dplyr::summarise(alive_n = n_distinct(id), .groups = "drop") |>
+  dplyr::summarise(alive_n = dplyr::n_distinct(id), .groups = "drop") |>
   left_join(zones |> distinct(ladcd, ladnm), by = "ladcd")
+
+### Scale up here
 
 alive_data_overall <- alive_data |>
   dplyr::group_by(cycle, scen) |>
   dplyr::summarise(alive=sum(alive_n)) |>
   dplyr::mutate(type = "overall",
                 name = "overall")
+
+
+alive_data |>
+  filter(scen != "reference") |>
+  group_by(cycle, scen) |>
+  summarise(alive_n = sum(alive_n) * 20) |>
+  left_join(alive_data |>
+              filter(scen == "reference") |>
+              group_by(cycle, scen) |>
+              summarise(alive_n_ref = sum(alive_n) * 20) |>
+              ungroup() |>
+              dplyr::select(-c(scen))) |>
+  mutate(diff = alive_n - alive_n_ref) |>
+  group_by(scen) |>
+  summarise(sum(diff))
 
 alive_data_sex <- alive_data |>
   dplyr::group_by(cycle, scen, gender) |>
