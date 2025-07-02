@@ -7,7 +7,7 @@ suppressPackageStartupMessages({
 })
 
 # === Global Settings ===
-FILE_PATH_BELEN <- TRUE
+FILE_PATH_BELEN <- FALSE
 FILE_PATH_JAVA <- TRUE
 RUN_NAME <- "_5p_300625"
 
@@ -16,7 +16,7 @@ RUN_NAME <- "_5p_300625"
 SCALING <- 20 # for a 5% sample and to be used to multiply results
 
 #For saving files
-data_path_Belen <- TRUE
+data_path_Belen <- FALSE
 
 # Set path based on condition
 base_path <- if (data_path_Belen) {
@@ -46,12 +46,16 @@ esp2013 <- c(
 
 # === Data loading function ===
 get_summary <- function(SCEN_NAME, group_vars = NULL, summarise = TRUE) {
-
-  # SCEN_NAME <- "base"
+  
+  microdata_dir_name <- 'microData_5p_300625'
+  #microdata_dir_name <- 'microData_5p_wo_interaction_010725'
+  
+  # SCEN_NAME <- 'base'
   # group_vars = NULL
+  # summarise = TRUE
   
   file_path <- file_path <- if (exists("FILE_PATH_JAVA") && !FILE_PATH_BELEN) {
-    paste0("~/Documents/Tabea/manchester-main/scenOutput/", SCEN_NAME, "/microData/pp_healthDiseaseTracker_2051.csv")
+    paste0("~/Documents/Tabea/manchester-main/scenOutput/", SCEN_NAME, "/", microdata_dir_name, "/pp_healthDiseaseTracker_2051.csv")
   } else if (exists("FILE_PATH_JAVA") && FILE_PATH_BELEN && FILE_PATH_JAVA) {
     paste0("manchester/health/processed/health_model_outcomes/microData_", SCEN_NAME, RUN_NAME, "/microData/", "pp_healthDiseaseTracker_2051.csv")
   } else {
@@ -75,15 +79,15 @@ get_summary <- function(SCEN_NAME, group_vars = NULL, summarise = TRUE) {
   }
   
   pop_dir_path <- if (!FILE_PATH_BELEN) {
-    paste0("~/Documents/Tabea/manchester-main/scenOutput/", SCEN_NAME, "/microData")
+    paste0("~/Documents/Tabea/manchester-main/scenOutput/", SCEN_NAME, "/", microdata_dir_name)
   } else {
     paste0("manchester/health/processed/health_model_outcomes/microData_", SCEN_NAME, RUN_NAME, "/microData/")
   }
-
+  
   # List all CSV files starting with "pp_" in the specified directory
   pp_csv_files <- list.files(path = pop_dir_path, 
-                          pattern = "^pp_\\d{4}\\.csv$",  # Matches pp_ followed by 4 digits and .csv
-                          full.names = TRUE)
+                             pattern = "^pp_\\d{4}\\.csv$",  # Matches pp_ followed by 4 digits and .csv
+                             full.names = TRUE)
   
   # Read and filter each file, then combine into one data frame
   newborn_data <- lapply(pp_csv_files, function(file) {
@@ -93,8 +97,8 @@ get_summary <- function(SCEN_NAME, group_vars = NULL, summarise = TRUE) {
   
   # List all CSV files starting with "pp_" in the specified directory (to get zones)
   dd_csv_files <- list.files(path = pop_dir_path, 
-                          pattern = "^dd_\\d{4}\\.csv$",  # Matches pp_ followed by 4 digits and .csv
-                          full.names = TRUE)
+                             pattern = "^dd_\\d{4}\\.csv$",  # Matches pp_ followed by 4 digits and .csv
+                             full.names = TRUE)
   
   # Read and filter each file, then combine into one data frame
   dd_data <- lapply(dd_csv_files, function(file) {
@@ -112,11 +116,13 @@ get_summary <- function(SCEN_NAME, group_vars = NULL, summarise = TRUE) {
                           labels = c("0-24", "25-44", "45-64", "65-84", "85+"),
                           right = FALSE, 
                           include.lowest = TRUE)) |> 
-    dplyr::select(id, age, agegroup, gender, zone)
+    dplyr::select(id, age, agegroup, gender, zone) |> 
+    left_join(zones  |> rename(zone = oaID) |> dplyr::select(zone, ladcd, lsoa21cd)) |> 
+    distinct()
   
   
   pop_path <- if (!FILE_PATH_BELEN) {
-    paste0("~/Documents/Tabea/manchester-main/scenOutput/", SCEN_NAME, "/microData/pp_exposure_2021.csv")
+    paste0("~/Documents/Tabea/manchester-main/scenOutput/", SCEN_NAME, "/", microdata_dir_name, "/pp_exposure_2021.csv")
   } else {
     paste0("manchester/health/processed/health_model_outcomes/microData_", SCEN_NAME, RUN_NAME, "/microData/pp_exposure_2021.csv")
   }
@@ -131,7 +137,13 @@ get_summary <- function(SCEN_NAME, group_vars = NULL, summarise = TRUE) {
   
   synth_pop <- bind_rows(synth_pop, synth_pop_2021)
   
-  m <- m |> left_join(synth_pop |> dplyr::select(id, age, agegroup, gender, ladcd, lsoa21cd))
+  m <- m |> left_join(synth_pop |> dplyr::select(id, age, agegroup, gender, ladcd, lsoa21cd)) |> 
+    mutate(
+      across(
+        starts_with("c"),
+        ~ ifelse(str_detect(., "killed"), "dead", .)
+      )
+    )
   
   long_data <- m |>
     pivot_longer(cols = starts_with("c")) |>
