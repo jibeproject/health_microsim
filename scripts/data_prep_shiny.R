@@ -7,7 +7,7 @@ suppressPackageStartupMessages({
 })
 
 # === Global Settings ===
-FILE_PATH_BELEN <- FALSE
+FILE_PATH_BELEN <- TRUE
 FILE_PATH_JAVA <- TRUE
 RUN_NAME <- "_5p_300625"
 
@@ -16,7 +16,7 @@ RUN_NAME <- "_5p_300625"
 SCALING <- 20 # for a 5% sample and to be used to multiply results
 
 #For saving files
-data_path_Belen <- FALSE
+data_path_Belen <- TRUE
 
 # Set path based on condition
 base_path <- if (data_path_Belen) {
