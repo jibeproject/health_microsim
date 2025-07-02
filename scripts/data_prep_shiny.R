@@ -137,13 +137,14 @@ get_summary <- function(SCEN_NAME, group_vars = NULL, summarise = TRUE) {
   
   synth_pop <- bind_rows(synth_pop, synth_pop_2021)
   
-  m <- m |> left_join(synth_pop |> dplyr::select(id, age, agegroup, gender, ladcd, lsoa21cd)) |> 
+  m <- m |>  dplyr::filter(c1 !="dead") |> 
+    left_join(synth_pop |> dplyr::select(id, age, agegroup, gender, ladcd, lsoa21cd)) |> 
     mutate(
       across(
         starts_with("c"),
         ~ ifelse(str_detect(., "killed"), "dead", .)
       )
-    )
+    ) 
   
   long_data <- m |>
     pivot_longer(cols = starts_with("c")) |>
