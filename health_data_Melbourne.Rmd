@@ -2892,9 +2892,15 @@ SM_inc_depression <- SM_inc_age %>%
   ungroup()
 
 
-# combine
-SM = bind_rows(SM_mort, SM_inc_cancer, SM_inc_non_cancer, SM_inc_depression) %>%
-  dplyr::select(SA2_MAIN16, age, sex, cause, prob)
+# combine and adjust causes to match SILO/MITO expected names (see
+# silo/extensions/health/src/main/java/de/tum/bgu/msm/health/disease/Diseases.java)
+SM <-  bind_rows(SM_mort, SM_inc_cancer, SM_inc_non_cancer, SM_inc_depression) %>%
+  dplyr::select(SA2_MAIN16, age, sex, cause, prob) %>%
+  mutate(cause = case_when(
+    cause == "all_cancers"          ~ "all_cause_cancer",
+    cause == "head_and_neck_cancer" ~ "head_neck_cancer",
+    TRUE                           ~ cause
+  ))
 
 # write output
 write_csv(SM, 
