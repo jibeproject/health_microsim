@@ -165,7 +165,7 @@ get_summary <- function(SCEN_NAME, group_vars = NULL, summarise = TRUE) {
     mutate(
       birth_cycle = suppressWarnings(min(cycle[!is.na(value)], na.rm = TRUE))
     ) |>
-    filter(cycle >= birth_cycle) |>
+    # filter(cycle >= birth_cycle) |>
     
     # Forward-fill 'dead' after first appearance
     mutate(
@@ -190,7 +190,7 @@ get_summary <- function(SCEN_NAME, group_vars = NULL, summarise = TRUE) {
         "diabetes", "stroke", "depression", "ischemic_heart_disease",
         "all_cause_dementia", "parkinson", "dead"
       )
-    )
+    ) |> distinct()
   
   
   if (!is.null(group_vars) && summarise && length(group_vars) > 0) {
@@ -203,7 +203,7 @@ get_summary <- function(SCEN_NAME, group_vars = NULL, summarise = TRUE) {
   return(long_data)
 }
 
-# # === Load preprocessed data ===
+## === Load preprocessed data ===
 all_data <- list(
   base = get_summary("base", summarise = FALSE) |> mutate(scen = "reference"),
   green = get_summary("green", summarise = FALSE) |> mutate(scen = "green"),
@@ -211,16 +211,11 @@ all_data <- list(
   both = get_summary("both", summarise = FALSE) |> mutate(scen = "both")
 )
 
-## Save for checking
-
-# Save each dataframe in the list as a separate parquet file
-# walk2(all_data, names(all_data), ~ write_parquet(.x, paste0("manchester/health/processed/", .y, "_long_data.parquet")))
-
-# # === Prepare time delay data ===
+## === Prepare time delay data ===
 
 process_scenario <- function(scen_name) {
   # scen_name <- "base"
-  df <- get_summary(scen_name) |>
+  df <- all_data[[scen_name]] |>
     mutate(
       scen = scen_name,
       cycle_numeric = as.numeric(str_remove(cycle, "^c"))
@@ -266,7 +261,6 @@ result_wide <- result_wide |>
     diff_green = if_else(is.na(time_green), NA_real_, time_green - time_reference),
     diff_safeStreet = if_else(is.na(time_safeStreet), NA_real_, time_safeStreet - time_reference)
   )
-## To fix, cannot be -1 when not happening because difference can be -1
 
 # # === Alive Over Time Tab Data ===
 alive_data <- bind_rows(all_data) |> # life years
@@ -465,14 +459,7 @@ saveRDS(delay_all, paste0(base_path, "/delay_days_java_5p.RDS"))
 
 population_df <- bind_rows(all_data) |>
   filter(cycle %in% c(0, 10, 30)) |>
-  mutate(agegroup = cut(
-    age_cycle,
-    c(0, 25, 45, 65, 85, Inf),
-    labels = c("0-24", "25-44", "45-64", "65-84", "85+"),
-    right = FALSE,
-    include.lowest = TRUE
-  )) |>
-  group_by(scen, ladcd, gender, agegroup, cycle) |>
+ group_by(scen, ladcd, gender, agegroup_cycle, cycle) |>
   summarise(population = n_distinct(id), .groups = "drop")
 
 
@@ -480,7 +467,7 @@ population_df <- bind_rows(all_data) |>
 ## Check population structure overall over time (time 0, 10, 20) by age and gender
 
 population_check <- population_df |>
-  group_by(scen, gender, agegroup, cycle) |>
+  group_by(scen, gender, agegroup_cycle, cycle) |>
   summarise(population_total = sum(population)) |>
   mutate(cycle=as.factor(cycle))
 
@@ -490,7 +477,7 @@ plot_pop <- ggplot(population_check) +
   geom_col(position = "dodge") +
   scale_fill_brewer(palette = "Set1") +  # or use another palette or scale_fill_manual()
   theme_minimal() +
-  facet_wrap(~ agegroup)
+  facet_wrap(~ agegroup_cycle)
 
 ggplotly(plot_pop)
 
