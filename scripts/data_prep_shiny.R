@@ -62,7 +62,7 @@ get_summary <- function(SCEN_NAME, group_vars = NULL, summarise = TRUE) {
   
   ## Condition to open parquet and csv files
   if (grepl("\\.csv$", file_path)) {
-    m <- readr::read_csv(file_path)
+    m <- readr::read_csv(file_path) # |> filter(id == 2827301)
   } else {
     m <- arrow::open_dataset(file_path) |> collect()
   }
@@ -106,6 +106,7 @@ get_summary <- function(SCEN_NAME, group_vars = NULL, summarise = TRUE) {
   newborn_data <- newborn_data |> 
     left_join(dd_data |> 
                 dplyr::select(hhID, zone) |> 
+                distinct(hhID, .keep_all = T) |> 
                 rename(hhid = hhID))
   
   
@@ -116,7 +117,8 @@ get_summary <- function(SCEN_NAME, group_vars = NULL, summarise = TRUE) {
                           include.lowest = TRUE)) |> 
     dplyr::select(id, age, agegroup, gender, zone) |> 
     left_join(zones  |> rename(zone = oaID) |> dplyr::select(zone, ladcd, lsoa21cd)) |> 
-    distinct()
+    distinct() |> 
+    mutate(new_born = TRUE)
   
   
   pop_path <- if (!FILE_PATH_BELEN) {
@@ -129,14 +131,15 @@ get_summary <- function(SCEN_NAME, group_vars = NULL, summarise = TRUE) {
     mutate(agegroup = cut(age, c(0, 25, 45, 65, 85, Inf), 
                           labels = c("0-24", "25-44", "45-64", "65-84", "85+"),
                           right = FALSE, 
-                          include.lowest = TRUE))
+                          include.lowest = TRUE)) |> 
+    mutate(new_born = FALSE)
   
-  synth_pop_2021 <- synth_pop_2021 |> dplyr::select(id, age, agegroup, gender, zone) |> left_join(zones  |> rename(zone = oaID) |> dplyr::select(zone, ladcd, lsoa21cd))
+  synth_pop_2021 <- synth_pop_2021 |> dplyr::select(id, age, agegroup, gender, zone, new_born) |> left_join(zones  |> rename(zone = oaID) |> dplyr::select(zone, ladcd, lsoa21cd))
   
   synth_pop <- bind_rows(synth_pop, synth_pop_2021)
   
   m <- m |>  dplyr::filter(c1 !="dead") |> 
-    left_join(synth_pop |> dplyr::select(id, age, agegroup, gender, ladcd, lsoa21cd)) |> 
+    left_join(synth_pop |> dplyr::select(id, age, agegroup, gender, ladcd, lsoa21cd, new_born)) |> 
     mutate(
       across(
         starts_with("c"),
@@ -159,29 +162,52 @@ get_summary <- function(SCEN_NAME, group_vars = NULL, summarise = TRUE) {
     ) |>
     select(-unpacked) |>
     arrange(id, cycle) |>
+    distinct() |>
     
-    # Remove rows before first non-NA value (i.e. pre-birth) 
-    group_by(id) |>
+    group_by(id) %>%
+    arrange(cycle) %>%
     mutate(
-      birth_cycle = suppressWarnings(min(cycle[!is.na(value)], na.rm = TRUE))
-    ) |>
-    # filter(cycle >= birth_cycle) |>
-    
-    # Forward-fill 'dead' after first appearance
+      age_cycle = case_when(
+        is.na(value) ~ NA_real_,
+        value == "dead" ~ NA_real_,             # NEW: dead → NA
+        !new_born ~ age + cycle,                # non-newborn → age + cycle
+        TRUE ~ NA_real_                         # newborn → handled next
+      )
+    ) %>%
     mutate(
-      #dead_seen = cumsum(coalesce(value == "dead", FALSE)) > 0,
-      dead_seen = cumsum(coalesce(grepl("dead|kill", value), FALSE)) > 0,
-      value = if_else(dead_seen, "dead", value)
-    ) |>
-    ungroup() |>
-    
-    # Create cycle age_cycle and agegroup_cycle
-    
+      age_cycle = {
+        ac <- age_cycle
+        n <- length(ac)
+        
+        newborn_rows <- which(new_born & !is.na(value))
+        
+        if (length(newborn_rows) > 0) {
+          first <- newborn_rows[1]
+          ac[first] <- 0
+          
+          if (first < n) {
+            for (i in (first + 1):n) {
+              if (!is.na(value[i])) {
+                ac[i] <- ac[i - 1] + 1
+              } else {
+                ac[i] <- NA_real_
+              }
+            }
+          }
+        }
+        
+        ac
+      }
+    ) %>%
+    ungroup() %>%
     mutate(
-      age_cycle = age + cycle,
-      agegroup_cycle = cut(age_cycle, c(0, 25, 45, 65, 85, Inf), 
-                           labels = c("0-24", "25-44", "45-64", "65-84", "85+"),
-                           right = FALSE, include.lowest = TRUE)
+      agegroup_cycle = cut(
+        age_cycle,
+        breaks = c(0, 25, 45, 65, 85, Inf),
+        labels = c("0-24", "25-44", "45-64", "65-84", "85+"),
+        right = FALSE,
+        include.lowest = TRUE
+      )
     ) |>
     
     # Identify diseases
@@ -190,7 +216,7 @@ get_summary <- function(SCEN_NAME, group_vars = NULL, summarise = TRUE) {
         "diabetes", "stroke", "depression", "ischemic_heart_disease",
         "all_cause_dementia", "parkinson", "dead"
       )
-    ) |> distinct()
+    ) 
   
   
   if (!is.null(group_vars) && summarise && length(group_vars) > 0) {
@@ -203,7 +229,7 @@ get_summary <- function(SCEN_NAME, group_vars = NULL, summarise = TRUE) {
   return(long_data)
 }
 
-## === Load preprocessed data ===
+## === Prepare general data long ===
 all_data <- list(
   base = get_summary("base", summarise = FALSE) |> mutate(scen = "reference"),
   green = get_summary("green", summarise = FALSE) |> mutate(scen = "green"),
@@ -262,14 +288,13 @@ result_wide <- result_wide |>
     diff_safeStreet = if_else(is.na(time_safeStreet), NA_real_, time_safeStreet - time_reference)
   )
 
-# # === Alive Over Time Tab Data ===
+## === Alive Over Time Tab Data ===
+
 alive_data <- bind_rows(all_data) |> # life years
   filter(value != "dead") |>
   dplyr::group_by(cycle, scen, ladcd, agegroup, gender) |>
   dplyr::summarise(alive_n = dplyr::n_distinct(id), .groups = "drop") |>
   left_join(zones |> distinct(ladcd, ladnm), by = "ladcd")
-
-### Scale up here (do do and by scaling factor)
 
 alive_data_overall <- alive_data |>
   dplyr::group_by(cycle, scen) |>
@@ -278,13 +303,13 @@ alive_data_overall <- alive_data |>
                 name = "overall")
 
 ## This is for checking, delete
-alive_data |>
+alive_data_diff <- alive_data |>
   filter(scen != "reference") |>
-  group_by(cycle, scen) |>
+  group_by(scen) |>
   summarise(alive_n = sum(alive_n) * 20) |>
   left_join(alive_data |>
               filter(scen == "reference") |>
-              group_by(cycle, scen) |>
+              group_by(scen) |>
               summarise(alive_n_ref = sum(alive_n) * 20) |>
               ungroup() |>
               dplyr::select(-c(scen))) |>
@@ -458,7 +483,7 @@ saveRDS(delay_all, paste0(base_path, "/delay_days_java_5p.RDS"))
 ## == Population structure ===
 
 population_df <- bind_rows(all_data) |>
-  filter(cycle %in% c(0, 10, 30)) |>
+  filter(cycle %in% c(0, 10, 30), !is.na(value)) |>
  group_by(scen, ladcd, gender, agegroup_cycle, cycle) |>
   summarise(population = n_distinct(id), .groups = "drop")
 
