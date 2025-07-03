@@ -32,8 +32,6 @@ zones <- if (!FILE_PATH_BELEN) {
   read_csv("manchester/health/processed/zoneSystem.csv")
 } 
 
-#zones <- zones |> distinct(ladcd, ladnm)
-
 # === European Standard Population (ESP2013) === Replace with baseline population 
 esp2013 <- c(
   rep(4000, 1), rep(5500, 4),  # 0-4, 5-9, 10-14, 15-19, 20-24
@@ -277,7 +275,7 @@ alive_data <- bind_rows(all_data) |> # life years
   dplyr::summarise(alive_n = dplyr::n_distinct(id), .groups = "drop") |>
   left_join(zones |> distinct(ladcd, ladnm), by = "ladcd")
 
-### Scale up here
+### Scale up here (do do and by scaling factor)
 
 alive_data_overall <- alive_data |>
   dplyr::group_by(cycle, scen) |>
@@ -285,7 +283,7 @@ alive_data_overall <- alive_data |>
   dplyr::mutate(type = "overall",
                 name = "overall")
 
-
+## This is for checking, delete
 alive_data |>
   filter(scen != "reference") |>
   group_by(cycle, scen) |>
@@ -443,7 +441,7 @@ delay_sex <- delay_data |>
   dplyr::mutate(name = case_when(name == 1 ~ "male",
                                  name == 2 ~ "female"))
 
-# # Delay by age group
+# Delay by age group
 delay_age <- delay_data |>
   dplyr::group_by(scenario, disease, agegroup) |>
   dplyr::summarise(delay_days = mean(mean_delay, na.rm = TRUE), .groups = "drop") |>
@@ -463,7 +461,40 @@ delay_all <- bind_rows(delay_overall, delay_sex, delay_age, delay_lad)
 # Save
 saveRDS(delay_all, paste0(base_path, "/delay_days_java_5p.RDS"))
 
-# # === Age standardized rates ====
+## == Population structure ===
+
+population_df <- bind_rows(all_data) |>
+  filter(cycle %in% c(0, 10, 30)) |>
+  mutate(agegroup = cut(
+    age_cycle,
+    c(0, 25, 45, 65, 85, Inf),
+    labels = c("0-24", "25-44", "45-64", "65-84", "85+"),
+    right = FALSE,
+    include.lowest = TRUE
+  )) |>
+  group_by(scen, ladcd, gender, agegroup, cycle) |>
+  summarise(population = n_distinct(id), .groups = "drop")
+
+
+
+## Check population structure overall over time (time 0, 10, 20) by age and gender
+
+population_check <- population_df |>
+  group_by(scen, gender, agegroup, cycle) |>
+  summarise(population_total = sum(population)) |>
+  mutate(cycle=as.factor(cycle))
+
+### to include in shinny, here for checking. 
+plot_pop <- ggplot(population_check) +
+  aes(x = cycle, y = population_total, fill = scen) +
+  geom_col(position = "dodge") +
+  scale_fill_brewer(palette = "Set1") +  # or use another palette or scale_fill_manual()
+  theme_minimal() +
+  facet_wrap(~ agegroup)
+
+ggplotly(plot_pop)
+
+## === Age standardized rates ====
 
 run_age_standardised_rate_by_agegroup <- function(summary_raw, zones) {
 
@@ -480,28 +511,13 @@ run_age_standardised_rate_by_agegroup <- function(summary_raw, zones) {
   ) |> mutate(std_prop = std_pop / sum(std_pop))
 
   target_cycles <- c(0, 10, 20)
-  states <- c("healthy", "diabetes", "stroke", "coronary_heart_disease",
-              "breast_cancer", "colon_cancer", "lung_cancer", "depression", "all_cause_dementia", "dead")
 
 #Prevalence: Person has the disease in the current or any previous cycle.
 
-# #Incidence: Person is diagnosed with the disease in this cycle only, but not in any previous cycle.
-#
-# Old code
-#   df <- summary_raw |> ###  Should separate incidence and prevalence. Incidence new case in year and prevalence case in current and previous year.
-#     dplyr::filter(value %in% states, cycle %in% target_cycles) |> # ASR for a given year
-#     dplyr::mutate(agegroup = cut(age_cycle, c(0, 25, 45, 65, 85, Inf),
-#                                  labels = c("0-24", "25-44", "45-64", "65-84", "85+"),
-#                                  right = FALSE, include.lowest = TRUE)) |>
-#     dplyr::group_by(scen, ladcd, gender, agegroup, cycle) |>
-#     dplyr::summarise(count = n_distinct(value), .groups = "drop",
-#                      population = n_distinct(id)) |> # should be rate per 100,000
-#     left_join(std_pop, by = "agegroup") |>
-#     ungroup()
+#Incidence: Person is diagnosed with the disease in this cycle only, but not in any previous cycle.
 
   # Filter to diseases of interest
   disease_long <- summary_raw |>
-    # filter(value %in% states) |> # comment out for filtering to some diseases
     select(id, cycle, value, age_cycle, scen, ladcd, gender)
 
   # Disease history per person
@@ -509,11 +525,12 @@ run_age_standardised_rate_by_agegroup <- function(summary_raw, zones) {
     arrange(id, value, cycle) |>
     group_by(id, value) |>
     mutate(
-      first_diagnosis = min(cycle, na.rm = TRUE),  # first time disease appeared
-      ever_had = cycle >= first_diagnosis,         # prevalence: ever had up to this cycle
-      incident = cycle == first_diagnosis          # incidence: first time seen
-    ) |>
+      first_diagnosis = min(cycle, na.rm = TRUE),
+      incident = cycle == first_diagnosis & cycle != 0,  # NOT incident if diagnosed at cycle 0
+      ever_had = ifelse(cycle == 0, cycle == first_diagnosis, cycle != first_diagnosis))
+     |>
     ungroup()
+  
 
   # Add age group again
   inc_prev <- inc_prev |>
@@ -527,14 +544,19 @@ run_age_standardised_rate_by_agegroup <- function(summary_raw, zones) {
 
   # Summarise counts
   summary_incprev <- inc_prev |>
-    group_by(scen, ladcd, gender, agegroup, cycle, value) |>
+    mutate(
+      prevalence_flag = case_when(ever_had == TRUE ~ 1, TRUE ~ 0),
+      incidence_flag = case_when(incident == TRUE ~ 1, TRUE ~ 0)
+    ) |>
+    group_by(scen, ladcd, gender, agegroup, cycle, value) |> 
     summarise(
-      prevalence = n_distinct(id[ever_had]),
-      incidence = n_distinct(id[incident]),
+      prevalence = sum(prevalence_flag),
+      incidence = sum(incidence_flag),
       .groups = "drop"
-    )
+    ) 
+  
 
-  # Step 5 (optional): Add total population and rate calculations
+  #  Add total population and rate calculations
   population_df <- summary_raw |>
     filter(cycle %in% target_cycles) |>
     mutate(agegroup = cut(
@@ -548,31 +570,42 @@ run_age_standardised_rate_by_agegroup <- function(summary_raw, zones) {
     summarise(population = n_distinct(id), .groups = "drop")
   
   backup_sum <- summary_incprev
+  
+  ## Check population structure overall over time (time 0, 10, 20) by age and gender
+  
+  population_check <- population_df |>
+    group_by(gender, agegroup, cycle) |>
+    summarise(population_total = sum(population)) |>
+    mutate(cycle=as.factor(cycle))
 
-  ## Ali up to here for age standardised rates
-  summary_incprev <- summary_incprev |>
+  ggplot(population_check) +
+    aes(x = agegroup, y = population_total, fill = cycle) +
+    geom_col(position = "dodge") +
+    scale_fill_brewer(palette = "Set1") +  # or use another palette or scale_fill_manual()
+    theme_minimal() +
+    facet_wrap(vars(gender))
+  
+  
+  
+  
+  # ## Calculate age standardized rates
+  non_standardised_rate <- summary_incprev |>
     left_join(population_df, by = c("scen", "ladcd", "gender", "agegroup", "cycle")) |>
     mutate(
       incidence_rate = (incidence / population),
       prevalence_rate = (prevalence / population)
-    ) |> filter(cycle %in%target_cycles) |>
-    left_join(std_pop) |> 
-    dplyr::mutate(std_rate_inc = incidence_rate*std_prop*100000, 
-                  std_rate_prev = prevalence_rate*std_prop*100000)
-  
-  # browser()
-    #
-    #
-  ### Data with groupings of results for age_std rates (below should be difference for incidence and prevalence)
+    ) |> filter(cycle %in% target_cycles) |>
+    left_join(std_pop)
 
   # overall
-  df_overall <- summary_incprev |>
+  df_overall <- non_standardised_rate |>
     dplyr::group_by(scen, value, cycle) |>
-    dplyr::mutate(std_rate_inc = sum(std_rate_inc, na.rm = T),
-                  std_rate_prev = sum(std_rate_prev, na.rm = T),
+    dplyr::mutate(std_rate_inc = incidence_rate*std_prop*100000,
+                  std_rate_prev =  prevalence_rate*std_prop*100000,
                   type="overall",
                   name = "overall") |> 
     dplyr::select(scen, value, std_rate_inc, std_rate_prev, type, name, cycle)
+  
   # by lad
 
   df_lad <- summary_incprev  |>
@@ -627,6 +660,9 @@ std_rates_table <- map2_dfr(
 
 saveRDS(std_rates_table, paste0(base_path, "/std_rates_tables_java_5p.RDS"))
 
+### Additional for checking 
+
+## Deaths scaled
 
 calculate_deaths <- function(dataset, scen_name){
   
@@ -644,3 +680,56 @@ calculate_deaths <- function(dataset, scen_name){
 deaths <- rbind(calculate_deaths(all_data$base, "reference"), calculate_deaths(all_data$green, "green"),
                 calculate_deaths(all_data$safeStreet, "safeStreet"), 
                 calculate_deaths(all_data$both, "both"))
+
+## Dead by cycle and age group by scenario
+
+calculate_deaths_agegroup <- function(dataset, scen_name){
+  
+  base_pop <- dataset |> filter(value != "dead", cycle == 1) |> group_by(cycle) |> summarise(n_distinct(id)) |>  pull()
+  deaths <- dataset |> filter(value == "dead") |> group_by(cycle, agegroup_cycle) |> summarise(deaths = n_distinct(id)) |> mutate(new_deaths = deaths - lag(deaths, 1))
+  deaths$new_deaths <- ifelse(is.na(deaths$new_deaths), deaths$deaths, deaths$new_deaths)
+  return(deaths |> mutate(base_pop = base_pop,
+                          unit_death = new_deaths/base_pop,
+                          total_deaths = round(unit_death * 2827285), 
+                          name = scen_name))
+  
+  
+}
+
+deaths_agegroup <- rbind(calculate_deaths_agegroup(all_data$base, "reference"), 
+                         calculate_deaths_agegroup(all_data$green, "green"),
+                         calculate_deaths_agegroup(all_data$safeStreet, "safeStreet"), 
+                         calculate_deaths_agegroup(all_data$both, "both"))
+
+
+library(ggplot2)
+library(plotly)
+
+plot <- ggplot(annual_deaths_agegroup) +
+ aes(x = cycle, y = diff, colour = agegroup_cycle) +
+ geom_point() +
+ scale_color_hue(direction = 1) +
+ theme_minimal() +
+ facet_wrap(vars(name))
+
+ggplotly(plot)
+
+## Total difference over cycle by age group
+
+calculate_deaths_agegroup <- function(dataset, scen_name){
+  
+  base_pop <- dataset |> filter(value != "dead", cycle == 1) |> group_by(cycle) |> summarise(n_distinct(id)) |>  pull()
+  deaths <- dataset |> filter(value == "dead") |> group_by(cycle, agegroup_cycle) |> summarise(deaths = n_distinct(id)) |> mutate(new_deaths = deaths - lag(deaths, 1))
+  deaths$new_deaths <- ifelse(is.na(deaths$new_deaths), deaths$deaths, deaths$new_deaths)
+  return(deaths |> mutate(base_pop = base_pop,
+                          unit_death = new_deaths/base_pop,
+                          total_deaths = round(unit_death * 2827285), 
+                          name = scen_name))
+  
+  
+}
+
+deaths_agegroup <- rbind(calculate_deaths_agegroup(all_data$base, "reference"), 
+                         calculate_deaths_agegroup(all_data$green, "green"),
+                         calculate_deaths_agegroup(all_data$safeStreet, "safeStreet"), 
+                         calculate_deaths_agegroup(all_data$both, "both"))
