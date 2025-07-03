@@ -493,6 +493,7 @@ population_df <- bind_rows(all_data) |>
 
 population_check <- population_df |>
   group_by(scen, gender, agegroup_cycle, cycle) |>
+  filter(!is.na(agegroup_cycle)) |>
   summarise(population_total = sum(population)) |>
   mutate(cycle=as.factor(cycle))
 
