@@ -7,7 +7,7 @@ suppressPackageStartupMessages({
 })
 
 # === Global Settings ===
-FILE_PATH_BELEN <- TRUE
+FILE_PATH_BELEN <- FALSE
 FILE_PATH_JAVA <- TRUE
 RUN_NAME <- "_5p_300625"
 
@@ -16,7 +16,7 @@ RUN_NAME <- "_5p_300625"
 SCALING <- 20 # for a 5% sample and to be used to multiply results
 
 #For saving files
-data_path_Belen <- TRUE
+data_path_Belen <- FALSE
 
 # Set path based on condition
 base_path <- if (data_path_Belen) {
@@ -45,6 +45,7 @@ esp2013 <- c(
 # === Data loading function ===
 get_summary <- function(SCEN_NAME, group_vars = NULL, summarise = TRUE) {
   
+  # microdata_dir_name <- 'microData'
   microdata_dir_name <- 'microData_5p_300625'
   #microdata_dir_name <- 'microData_5p_wo_interaction_010725'
   
@@ -117,8 +118,7 @@ get_summary <- function(SCEN_NAME, group_vars = NULL, summarise = TRUE) {
                           include.lowest = TRUE)) |> 
     dplyr::select(id, age, agegroup, gender, zone) |> 
     left_join(zones  |> rename(zone = oaID) |> dplyr::select(zone, ladcd, lsoa21cd)) |> 
-    distinct() |> 
-    mutate(new_born = TRUE)
+    distinct()
   
   
   pop_path <- if (!FILE_PATH_BELEN) {
@@ -131,15 +131,14 @@ get_summary <- function(SCEN_NAME, group_vars = NULL, summarise = TRUE) {
     mutate(agegroup = cut(age, c(0, 25, 45, 65, 85, Inf), 
                           labels = c("0-24", "25-44", "45-64", "65-84", "85+"),
                           right = FALSE, 
-                          include.lowest = TRUE)) |> 
-    mutate(new_born = FALSE)
+                          include.lowest = TRUE))
   
-  synth_pop_2021 <- synth_pop_2021 |> dplyr::select(id, age, agegroup, gender, zone, new_born) |> left_join(zones  |> rename(zone = oaID) |> dplyr::select(zone, ladcd, lsoa21cd))
+  synth_pop_2021 <- synth_pop_2021 |> dplyr::select(id, age, agegroup, gender, zone) |> left_join(zones  |> rename(zone = oaID) |> dplyr::select(zone, ladcd, lsoa21cd))
   
   synth_pop <- bind_rows(synth_pop, synth_pop_2021)
   
   m <- m |>  dplyr::filter(c1 !="dead") |> 
-    left_join(synth_pop |> dplyr::select(id, age, agegroup, gender, ladcd, lsoa21cd, new_born)) |> 
+    left_join(synth_pop |> dplyr::select(id, age, agegroup, gender, ladcd, lsoa21cd)) |> 
     mutate(
       across(
         starts_with("c"),
@@ -157,67 +156,22 @@ get_summary <- function(SCEN_NAME, group_vars = NULL, summarise = TRUE) {
     unnest(unpacked) |>
     mutate(
       value = str_trim(unpacked),
-      value = str_replace_all(value, fixed("parkinson’s_disease"), "parkinson"),
-      value = na_if(value, "null")  # Convert "null" strings to proper NA
+      value = str_replace_all(value, fixed("parkinson’s_disease"), "parkinson")
     ) |>
     select(-unpacked) |>
     arrange(id, cycle) |>
-    distinct() |>
-    
-    group_by(id) %>%
-    arrange(cycle) %>%
+    group_by(id) |>
+    # Forward-fill 'dead' after first appearance
     mutate(
-      age_cycle = case_when(
-        is.na(value) ~ NA_real_,
-        value == "dead" ~ NA_real_,             # NEW: dead → NA
-        !new_born ~ age + cycle,                # non-newborn → age + cycle
-        TRUE ~ NA_real_                         # newborn → handled next
-      )
-    ) %>%
-    mutate(
-      age_cycle = {
-        ac <- age_cycle
-        n <- length(ac)
-        
-        newborn_rows <- which(new_born & !is.na(value))
-        
-        if (length(newborn_rows) > 0) {
-          first <- newborn_rows[1]
-          ac[first] <- 0
-          
-          if (first < n) {
-            for (i in (first + 1):n) {
-              if (!is.na(value[i])) {
-                ac[i] <- ac[i - 1] + 1
-              } else {
-                ac[i] <- NA_real_
-              }
-            }
-          }
-        }
-        
-        ac
-      }
-    ) %>%
-    ungroup() %>%
-    mutate(
-      agegroup_cycle = cut(
-        age_cycle,
-        breaks = c(0, 25, 45, 65, 85, Inf),
-        labels = c("0-24", "25-44", "45-64", "65-84", "85+"),
-        right = FALSE,
-        include.lowest = TRUE
-      )
+      dead_seen = cumsum(coalesce(grepl("dead|kill", value), FALSE)) > 0,
+      value = if_else(dead_seen, "dead", value),
+      age_cycle = ifelse(value != c("null", "dead"), age + cycle - min(cycle[value != "null"]), NA)
     ) |>
-    
-    # Identify diseases
-    mutate(
-      is_disease = value %in% c(
-        "diabetes", "stroke", "depression", "ischemic_heart_disease",
-        "all_cause_dementia", "parkinson", "dead"
-      )
-    ) 
-  
+    ungroup() |> 
+    mutate(agegroup_cycle = cut(age_cycle, c(0, 25, 45, 65, 85, Inf), 
+                                labels = c("0-24", "25-44", "45-64", "65-84", "85+"),
+                                right = FALSE, include.lowest = TRUE)) |> 
+    distinct()
   
   if (!is.null(group_vars) && summarise && length(group_vars) > 0) {
     long_data <- long_data |>
@@ -230,6 +184,7 @@ get_summary <- function(SCEN_NAME, group_vars = NULL, summarise = TRUE) {
 }
 
 ## === Prepare general data long ===
+#base <- get_summary("base", summarise = FALSE) |> mutate(scen = "reference")
 all_data <- list(
   base = get_summary("base", summarise = FALSE) |> mutate(scen = "reference"),
   green = get_summary("green", summarise = FALSE) |> mutate(scen = "green"),
@@ -291,8 +246,8 @@ result_wide <- result_wide |>
 ## === Alive Over Time Tab Data ===
 
 alive_data <- bind_rows(all_data) |> # life years
-  filter(value != "dead") |>
-  dplyr::group_by(cycle, scen, ladcd, agegroup, gender) |>
+  filter(value != "dead", !is.na(age_cycle)) |>
+  dplyr::group_by(cycle, scen, ladcd, agegroup_cycle, gender) |>
   dplyr::summarise(alive_n = dplyr::n_distinct(id), .groups = "drop") |>
   left_join(zones |> distinct(ladcd, ladnm), by = "ladcd")
 
@@ -304,18 +259,9 @@ alive_data_overall <- alive_data |>
 
 ## This is for checking, delete
 alive_data_diff <- alive_data |>
-  filter(scen != "reference") |>
   group_by(scen) |>
-  summarise(alive_n = sum(alive_n) * 20) |>
-  left_join(alive_data |>
-              filter(scen == "reference") |>
-              group_by(scen) |>
-              summarise(alive_n_ref = sum(alive_n) * 20) |>
-              ungroup() |>
-              dplyr::select(-c(scen))) |>
-  mutate(diff = alive_n - alive_n_ref) |>
-  group_by(scen) |>
-  summarise(sum(diff))
+  summarise(alive_n = sum(alive_n) * 20) |> 
+  mutate(diff = alive_n - alive_n[scen == "reference"])
 
 alive_data_sex <- alive_data |>
   dplyr::group_by(cycle, scen, gender) |>
@@ -483,8 +429,8 @@ saveRDS(delay_all, paste0(base_path, "/delay_days_java_5p.RDS"))
 ## == Population structure ===
 
 population_df <- bind_rows(all_data) |>
-  filter(cycle %in% c(0, 10, 30), !is.na(value)) |>
- group_by(scen, ladcd, gender, agegroup_cycle, cycle) |>
+  filter(cycle %in% c(0, 10, 30), !is.na(value), !is.na(age_cycle)) |>
+  group_by(scen, ladcd, gender, agegroup_cycle, cycle) |>
   summarise(population = n_distinct(id), .groups = "drop")
 
 
@@ -510,7 +456,7 @@ ggplotly(plot_pop)
 ## === Age standardized rates ====
 
 run_age_standardised_rate_by_agegroup <- function(summary_raw, zones) {
-
+  
   # summary_raw <- all_data$base
   std_pop <- tibble(
     agegroup = c("0-24", "25-44", "45-64", "65-84", "85+"), # European standard population
@@ -522,17 +468,17 @@ run_age_standardised_rate_by_agegroup <- function(summary_raw, zones) {
       sum(esp2013[18:19])
     )
   ) |> mutate(std_prop = std_pop / sum(std_pop))
-
+  
   target_cycles <- c(0, 10, 20)
-
-#Prevalence: Person has the disease in the current or any previous cycle.
-
-#Incidence: Person is diagnosed with the disease in this cycle only, but not in any previous cycle.
-
+  
+  #Prevalence: Person has the disease in the current or any previous cycle.
+  
+  #Incidence: Person is diagnosed with the disease in this cycle only, but not in any previous cycle.
+  
   # Filter to diseases of interest
   disease_long <- summary_raw |>
     select(id, cycle, value, age_cycle, scen, ladcd, gender)
-
+  
   # Disease history per person
   inc_prev <- disease_long |>
     arrange(id, value, cycle) |>
@@ -541,10 +487,10 @@ run_age_standardised_rate_by_agegroup <- function(summary_raw, zones) {
       first_diagnosis = min(cycle, na.rm = TRUE),
       incident = cycle == first_diagnosis & cycle != 0,  # NOT incident if diagnosed at cycle 0
       ever_had = ifelse(cycle == 0, cycle == first_diagnosis, cycle != first_diagnosis))
-     |>
+  |>
     ungroup()
   
-
+  
   # Add age group again
   inc_prev <- inc_prev |>
     mutate(agegroup = cut(
@@ -554,7 +500,7 @@ run_age_standardised_rate_by_agegroup <- function(summary_raw, zones) {
       right = FALSE,
       include.lowest = TRUE
     ))
-
+  
   # Summarise counts
   summary_incprev <- inc_prev |>
     mutate(
@@ -568,7 +514,7 @@ run_age_standardised_rate_by_agegroup <- function(summary_raw, zones) {
       .groups = "drop"
     ) 
   
-
+  
   #  Add total population and rate calculations
   population_df <- summary_raw |>
     filter(cycle %in% target_cycles) |>
@@ -590,7 +536,7 @@ run_age_standardised_rate_by_agegroup <- function(summary_raw, zones) {
     group_by(gender, agegroup, cycle) |>
     summarise(population_total = sum(population)) |>
     mutate(cycle=as.factor(cycle))
-
+  
   ggplot(population_check) +
     aes(x = agegroup, y = population_total, fill = cycle) +
     geom_col(position = "dodge") +
@@ -609,7 +555,7 @@ run_age_standardised_rate_by_agegroup <- function(summary_raw, zones) {
       prevalence_rate = (prevalence / population)
     ) |> filter(cycle %in% target_cycles) |>
     left_join(std_pop)
-
+  
   # overall
   df_overall <- non_standardised_rate |>
     dplyr::group_by(scen, value, cycle) |>
@@ -620,7 +566,7 @@ run_age_standardised_rate_by_agegroup <- function(summary_raw, zones) {
     dplyr::select(scen, value, std_rate_inc, std_rate_prev, type, name, cycle)
   
   # by lad
-
+  
   df_lad <- summary_incprev  |>
     dplyr::group_by(scen, value, ladcd, cycle) |>
     dplyr::summarise(std_rate_inc = sum(std_rate_inc, na.rm = T),
@@ -629,9 +575,9 @@ run_age_standardised_rate_by_agegroup <- function(summary_raw, zones) {
     left_join(zones |> distinct(ladcd, ladnm)) |>
     dplyr::rename(name=ladnm) |> 
     dplyr::select(scen, value, std_rate_inc, std_rate_prev, ladcd, type, name, cycle)
-
+  
   # by age
-
+  
   df_age <- summary_incprev |>
     dplyr::group_by(scen, value, agegroup, cycle) |>
     dplyr::summarise(std_rate_inc = sum(std_rate_inc, na.rm = T),
@@ -639,9 +585,9 @@ run_age_standardised_rate_by_agegroup <- function(summary_raw, zones) {
     dplyr::mutate(type="age") |> 
     dplyr::rename(name=agegroup)  |> 
     dplyr::select(scen, value, std_rate_inc, std_rate_prev, type, name, cycle)
-
+  
   # by sex
-
+  
   df_sex <- summary_incprev  |>
     dplyr::group_by(scen, value, gender, cycle) |>
     dplyr::summarise(std_rate_inc = sum(std_rate_inc, na.rm = T),
@@ -651,9 +597,9 @@ run_age_standardised_rate_by_agegroup <- function(summary_raw, zones) {
     dplyr::mutate(gender = (case_when(gender == 1 ~ "male",
                                       gender == 2 ~ "female"))) |>
     dplyr::rename(name=gender)
-
+  
   df <- bind_rows(df_overall, df_lad, df_age, df_sex)
-
+  
   return(df)
 }
 
@@ -719,11 +665,11 @@ library(ggplot2)
 library(plotly)
 
 plot <- ggplot(annual_deaths_agegroup) +
- aes(x = cycle, y = diff, colour = agegroup_cycle) +
- geom_point() +
- scale_color_hue(direction = 1) +
- theme_minimal() +
- facet_wrap(vars(name))
+  aes(x = cycle, y = diff, colour = agegroup_cycle) +
+  geom_point() +
+  scale_color_hue(direction = 1) +
+  theme_minimal() +
+  facet_wrap(vars(name))
 
 ggplotly(plot)
 
