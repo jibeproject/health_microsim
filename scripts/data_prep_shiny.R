@@ -182,7 +182,7 @@ get_summary <- function(SCEN_NAME, group_vars = NULL, summarise = TRUE) {
 }
 
 ## === Prepare general data long ===
-base <- get_summary("base", summarise = FALSE) |> mutate(scen = "reference")
+#base <- get_summary("base", summarise = FALSE) |> mutate(scen = "reference")
 all_data <- list(
   base = get_summary("base", summarise = FALSE) |> mutate(scen = "reference"),
   green = get_summary("green", summarise = FALSE) |> mutate(scen = "green"),
