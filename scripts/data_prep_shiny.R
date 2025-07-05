@@ -161,11 +161,9 @@ get_summary <- function(SCEN_NAME, group_vars = NULL, summarise = TRUE) {
     select(-unpacked) |>
     arrange(id, cycle) |>
     group_by(id) |>
-    # Forward-fill 'dead' after first appearance
+    # Forward-fill 'age_cycle' after first appearance of non-null value
     mutate(
-      dead_seen = cumsum(coalesce(grepl("dead|kill", value), FALSE)) > 0,
-      value = if_else(dead_seen, "dead", value),
-      age_cycle = ifelse(value != c("null", "dead"), age + cycle - min(cycle[value != "null"]), NA)
+      age_cycle = ifelse(value != "null", age + cycle - min(cycle[value != "null"]), NA)
     ) |>
     ungroup() |> 
     mutate(agegroup_cycle = cut(age_cycle, c(0, 25, 45, 65, 85, Inf), 
@@ -184,7 +182,7 @@ get_summary <- function(SCEN_NAME, group_vars = NULL, summarise = TRUE) {
 }
 
 ## === Prepare general data long ===
-#base <- get_summary("base", summarise = FALSE) |> mutate(scen = "reference")
+base <- get_summary("base", summarise = FALSE) |> mutate(scen = "reference")
 all_data <- list(
   base = get_summary("base", summarise = FALSE) |> mutate(scen = "reference"),
   green = get_summary("green", summarise = FALSE) |> mutate(scen = "green"),
