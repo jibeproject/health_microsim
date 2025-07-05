@@ -45,7 +45,7 @@ esp2013 <- c(
 # === Data loading function ===
 get_summary <- function(SCEN_NAME, group_vars = NULL, summarise = TRUE) {
   
-  # microdata_dir_name <- 'microData'
+  #microdata_dir_name <- 'microData'
   microdata_dir_name <- 'microData_5p_300625'
   #microdata_dir_name <- 'microData_5p_wo_interaction_010725'
   
@@ -163,9 +163,12 @@ get_summary <- function(SCEN_NAME, group_vars = NULL, summarise = TRUE) {
     group_by(id) |>
     # Forward-fill 'age_cycle' after first appearance of non-null value
     mutate(
-      age_cycle = ifelse(value != "null", age + cycle - min(cycle[value != "null"]), NA)
+      dead_count = cumsum(value == "dead"),
+      age_cycle = ifelse(!value %in% c("null", "dead"), age + cycle - min(cycle[!value %in% c("null", "dead")]), NA)
     ) |>
     ungroup() |> 
+    filter(!(value == "dead" & dead_count > 1)) |> 
+    dplyr::select(-dead_count) |> 
     mutate(agegroup_cycle = cut(age_cycle, c(0, 25, 45, 65, 85, Inf), 
                                 labels = c("0-24", "25-44", "45-64", "65-84", "85+"),
                                 right = FALSE, include.lowest = TRUE)) |> 
@@ -182,7 +185,7 @@ get_summary <- function(SCEN_NAME, group_vars = NULL, summarise = TRUE) {
 }
 
 ## === Prepare general data long ===
-#base <- get_summary("base", summarise = FALSE) |> mutate(scen = "reference")
+# base <- get_summary("base", summarise = FALSE) |> mutate(scen = "reference")
 all_data <- list(
   base = get_summary("base", summarise = FALSE) |> mutate(scen = "reference"),
   green = get_summary("green", summarise = FALSE) |> mutate(scen = "green"),
