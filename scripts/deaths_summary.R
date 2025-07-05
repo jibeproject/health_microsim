@@ -4,7 +4,7 @@ calculate_deaths <- function(dataset, scen_name, scaling_factor = 0.05){
   # base_pop <- dataset |> filter(value != "dead", cycle == 1) |> group_by(cycle) |> summarise(n_distinct(id)) |>  pull()
   #base_pop <- dataset |> filter(value != "dead") |> group_by(cycle) |> summarise(n_distinct(id))
   deaths <- dataset |> 
-    filter(value == "dead") |> #, !is.na(ladcd)) |> 
+    filter(value == "dead", !is.na(age_cycle)) |> #, !is.na(ladcd)) |> 
     group_by(cycle) |> 
     summarise(deaths = n_distinct(id)) |> 
     mutate(new_deaths = deaths - lag(deaths, 1))
@@ -38,6 +38,29 @@ deaths |>
   print()
 
 
+
+calculate_alive <- function(dataset, scen_name, scaling_factor = 0.05){
+  return(dataset |> 
+    filter(value != "dead", !is.na(value)) |> #, !is.na(ladcd)) |> 
+    group_by(cycle) |> 
+    summarise(n_alive = n_distinct(id)) |> 
+    mutate(total_n_alive = n_alive * 1 / scaling_factor, name = scen_name)
+    ) 
+  
+}
+
+n_alive <- rbind(calculate_alive(all_data$base, "reference", scaling_factor = 1), 
+                #calculate_alive(all_data$green, "green"),
+                calculate_alive(all_data$safeStreet, "safeStreet", scaling_factor = 1))#, 
+                #calculate_alive(all_data$both, "both"))
+
+deaths |> 
+  group_by(name) |> 
+  summarise(total_deaths = sum(total_deaths)) |> 
+  mutate(averted_deaths = total_deaths[name == "reference"] - total_deaths) |> 
+  print()
+
+
 annual_deaths <- deaths |>
   filter(name != "reference") |>
   group_by(cycle, name) |>
@@ -46,7 +69,6 @@ annual_deaths <- deaths |>
               filter(name == "reference") |>
               group_by(cycle, name) |>
               summarise(total_deaths_ref = total_deaths) |>
-              ungroup() |>
               dplyr::select(-c(name))) |>
   mutate(diff = total_deaths - total_deaths_ref)
 
@@ -60,7 +82,10 @@ alive_data |>
               summarise(alive_n_ref = sum(alive_n) * 20) |>
               ungroup() |>
               dplyr::select(-c(scen))) |>
-  mutate(diff_alive = alive_n - alive_n_ref) |> left_join(annual_deaths |> rename(scen = name, diff_deaths = diff)) 
+  mutate(diff_alive = alive_n - alive_n_ref) |> 
+  left_join(annual_deaths |> 
+              rename(scen = name, 
+                     diff_deaths = diff)) 
 
 
 calculate_newborns_count <- function(dataset, scen_name, scaling_factor = 0.05) {
@@ -140,6 +165,44 @@ alive |>
   summarise(total_deaths = sum(total_deaths)) |> 
   mutate(n_alive= total_deaths - total_deaths[name == "reference"]) |> 
   print()
+
+all_data_scen <- bind_rows(all_data)
+
+
+alive_diff_ref <- tot_pop |>
+  filter(scen != "reference") |>
+  group_by(cycle, scen) |>
+  reframe(n_alive = n_alive) |>
+  left_join(tot_pop |>
+              filter(scen == "reference") |>
+              group_by(cycle, scen) |>
+              reframe(n_alive_ref = n_alive) |>
+              dplyr::select(-c(scen))) |>
+  mutate(diff_alive = n_alive - n_alive_ref)
+
+alive_diff_ref |> group_by(scen) |> reframe(diff_alive = sum(diff_alive, na.rm = T))
+
+
+
+dead_diff_ref <- tot_pop |>
+  filter(scen != "reference") |>
+  group_by(cycle, scen) |>
+  reframe(new_deaths = new_deaths) |>
+  left_join(tot_pop |>
+              filter(scen == "reference") |>
+              group_by(cycle, scen) |>
+              reframe(new_deaths_ref = new_deaths) |>
+              dplyr::select(-c(scen))) |>
+  mutate(diff_dead = new_deaths - new_deaths_ref)
+
+dead_diff_ref |> group_by(scen) |> reframe(diff_dead = sum(diff_dead, na.rm = T)) |> left_join(
+  alive_diff_ref |> group_by(scen) |> reframe(diff_alive = sum(diff_alive, na.rm = T))
+)
+
+
+
+|>
+  mutate(diff_pop = tot_pop - tot_pop_ref)
 
 
 
