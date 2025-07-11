@@ -160,6 +160,7 @@ get_summary <- function(SCEN_NAME, group_vars = NULL, summarise = TRUE) {
       value = str_replace_all(value, fixed("parkinson’s_disease"), "parkinson")
     ) |>
     dplyr::select(-unpacked) |>
+    filter(value != "null") |>
     arrange(id, cycle) |>
     group_by(id) |>
     # Forward-fill 'age_cycle' after first appearance of non-null value
