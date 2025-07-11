@@ -4,6 +4,7 @@ suppressPackageStartupMessages({
   library(arrow)
   library(DT)
   library(purrr)
+  library(stringr)
 })
 
 # === Global Settings ===
@@ -27,7 +28,7 @@ base_path <- if (data_path_Belen) {
 
 # === Load zone names ===
 zones <- if (!FILE_PATH_BELEN) {
-  read_csv("../../Tabea/manchester-main/input//zoneSystem.csv")
+  read_csv("/home/ali/IdeaProjects/manchester/input/zoneSystem.csv")
 } else {
   read_csv("manchester/health/processed/zoneSystem.csv")
 } 
@@ -45,8 +46,8 @@ esp2013 <- c(
 # === Data loading function ===
 get_summary <- function(SCEN_NAME, group_vars = NULL, summarise = TRUE) {
   
-  #microdata_dir_name <- 'microData'
-  microdata_dir_name <- 'microData_5p_300625'
+  microdata_dir_name <- 'microData'
+  # microdata_dir_name <- 'microData_5p_300625'
   #microdata_dir_name <- 'microData_5p_wo_interaction_010725'
   
   # SCEN_NAME <- 'base'
@@ -54,7 +55,7 @@ get_summary <- function(SCEN_NAME, group_vars = NULL, summarise = TRUE) {
   # summarise = TRUE
   
   file_path <- file_path <- if (exists("FILE_PATH_JAVA") && !FILE_PATH_BELEN) {
-    paste0("~/Documents/Tabea/manchester-main/scenOutput/", SCEN_NAME, "/", microdata_dir_name, "/pp_healthDiseaseTracker_2051.csv")
+    paste0("/media/ali/Expansion/backup_tabea/manchester-main/scenOutput/", SCEN_NAME, "/", microdata_dir_name, "/pp_healthDiseaseTracker_2051.csv")
   } else if (exists("FILE_PATH_JAVA") && FILE_PATH_BELEN && FILE_PATH_JAVA) {
     paste0("manchester/health/processed/health_model_outcomes/microData_", SCEN_NAME, RUN_NAME, "/microData/", "pp_healthDiseaseTracker_2051.csv")
   } else {
@@ -63,9 +64,9 @@ get_summary <- function(SCEN_NAME, group_vars = NULL, summarise = TRUE) {
   
   ## Condition to open parquet and csv files
   if (grepl("\\.csv$", file_path)) {
-    m <- readr::read_csv(file_path) # |> filter(id == 2827301)
+    m <- arrow::open_csv_dataset(file_path) |> to_duckdb() |> collect()# |> filter(id == 2827301)
   } else {
-    m <- arrow::open_dataset(file_path) |> collect()
+    m <- arrow::open_csv_dataset(file_path)
   }
   m$id <- as.numeric(m$id)
   
@@ -78,7 +79,7 @@ get_summary <- function(SCEN_NAME, group_vars = NULL, summarise = TRUE) {
   }
   
   pop_dir_path <- if (!FILE_PATH_BELEN) {
-    paste0("~/Documents/Tabea/manchester-main/scenOutput/", SCEN_NAME, "/", microdata_dir_name)
+    paste0("/media/ali/Expansion/backup_tabea/manchester-main/scenOutput/", SCEN_NAME, "/", microdata_dir_name)
   } else {
     paste0("manchester/health/processed/health_model_outcomes/microData_", SCEN_NAME, RUN_NAME, "/microData/")
   }
@@ -90,18 +91,18 @@ get_summary <- function(SCEN_NAME, group_vars = NULL, summarise = TRUE) {
   
   # Read and filter each file, then combine into one data frame
   newborn_data <- lapply(pp_csv_files, function(file) {
-    df <- read.csv(file)|> filter(age == 0)
+    df <- read_csv(file)|> filter(age == 0)
   }) |> bind_rows()
   
   
-  # List all CSV files starting with "pp_" in the specified directory (to get zones)
+  # List all CSV files starting with "dd_" in the specified directory (to get zones)
   dd_csv_files <- list.files(path = pop_dir_path, 
                              pattern = "^dd_\\d{4}\\.csv$",  # Matches pp_ followed by 4 digits and .csv
                              full.names = TRUE)
   
   # Read and filter each file, then combine into one data frame
   dd_data <- lapply(dd_csv_files, function(file) {
-    df <- read.csv(file)
+    df <- read_csv(file)
   }) |> bind_rows()
   
   newborn_data <- newborn_data |> 
@@ -122,7 +123,7 @@ get_summary <- function(SCEN_NAME, group_vars = NULL, summarise = TRUE) {
   
   
   pop_path <- if (!FILE_PATH_BELEN) {
-    paste0("~/Documents/Tabea/manchester-main/scenOutput/", SCEN_NAME, "/", microdata_dir_name, "/pp_exposure_2021.csv")
+    paste0("/media/ali/Expansion/backup_tabea/manchester-main/scenOutput/", SCEN_NAME, "/", microdata_dir_name, "/pp_exposure_2021.csv")
   } else {
     paste0("manchester/health/processed/health_model_outcomes/microData_", SCEN_NAME, RUN_NAME, "/microData/pp_exposure_2021.csv")
   }
@@ -146,19 +147,19 @@ get_summary <- function(SCEN_NAME, group_vars = NULL, summarise = TRUE) {
       )
     ) 
   
-  long_data <- m |>
+  long_data <- m |> 
     pivot_longer(cols = starts_with("c")) |>
     arrange(id, parse_number(name)) |>
     mutate(
       cycle = as.numeric(str_remove(name, "^c")),
       unpacked = str_split(value, "\\|")
     ) |>
-    unnest(unpacked) |>
+    unnest_longer(unpacked) |>
     mutate(
       value = str_trim(unpacked),
       value = str_replace_all(value, fixed("parkinson’s_disease"), "parkinson")
     ) |>
-    select(-unpacked) |>
+    dplyr::select(-unpacked) |>
     arrange(id, cycle) |>
     group_by(id) |>
     # Forward-fill 'age_cycle' after first appearance of non-null value
@@ -185,7 +186,7 @@ get_summary <- function(SCEN_NAME, group_vars = NULL, summarise = TRUE) {
 }
 
 ## === Prepare general data long ===
-# base <- get_summary("base", summarise = FALSE) |> mutate(scen = "reference")
+#green <- get_summary("both", summarise = FALSE) |> mutate(scen = "green")
 all_data <- list(
   base = get_summary("base", summarise = FALSE) |> mutate(scen = "reference"),
   green = get_summary("green", summarise = FALSE) |> mutate(scen = "green"),
@@ -247,10 +248,9 @@ result_wide <- result_wide |>
 ## === Alive Over Time Tab Data ===
 
 alive_data <- bind_rows(all_data) |> # life years
-  filter(value != "dead", !is.na(age_cycle)) |>
-  dplyr::group_by(cycle, scen, ladcd, agegroup_cycle, gender) |>
-  dplyr::summarise(alive_n = dplyr::n_distinct(id), .groups = "drop") |>
-  left_join(zones |> distinct(ladcd, ladnm), by = "ladcd")
+  filter(!value %in% c("dead", "null"), !is.na(age_cycle)) |>
+  dplyr::group_by(cycle, scen) |>
+  dplyr::summarise(alive_n = dplyr::n_distinct(id), .groups = "drop")
 
 alive_data_overall <- alive_data |>
   dplyr::group_by(cycle, scen) |>
@@ -430,7 +430,7 @@ saveRDS(delay_all, paste0(base_path, "/delay_days_java_5p.RDS"))
 ## == Population structure ===
 
 population_df <- bind_rows(all_data) |>
-  filter(cycle %in% c(0, 10, 30), !is.na(value), !is.na(age_cycle)) |>
+  filter(cycle %in% c(0, 10, 30), (!value %in% c("dead", "null")), !is.na(age_cycle)) |>
   group_by(scen, ladcd, gender, agegroup_cycle, cycle) |>
   summarise(population = n_distinct(id), .groups = "drop")
 
@@ -487,8 +487,7 @@ run_age_standardised_rate_by_agegroup <- function(summary_raw, zones) {
     mutate(
       first_diagnosis = min(cycle, na.rm = TRUE),
       incident = cycle == first_diagnosis & cycle != 0,  # NOT incident if diagnosed at cycle 0
-      ever_had = ifelse(cycle == 0, cycle == first_diagnosis, cycle != first_diagnosis))
-  |>
+      ever_had = ifelse(cycle == 0, cycle == first_diagnosis, cycle != first_diagnosis))  |>
     ungroup()
   
   
