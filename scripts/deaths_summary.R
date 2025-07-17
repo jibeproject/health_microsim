@@ -1,35 +1,33 @@
-calculate_deaths <- function(dataset, scen_name, scaling_factor = 0.05){
+calculate_deaths <- function(dataset, scen_name, scaling_factor = 1){
   # dataset <- all_data$base
   # scen_name <- 'reference'
   # base_pop <- dataset |> filter(value != "dead", cycle == 1) |> group_by(cycle) |> summarise(n_distinct(id)) |>  pull()
   #base_pop <- dataset |> filter(value != "dead") |> group_by(cycle) |> summarise(n_distinct(id))
-  deaths <- dataset |> 
-    filter(value == "dead", !is.na(age_cycle)) |> #, !is.na(ladcd)) |> 
+  return(dataset |> 
+    filter(value == "dead") |> #, !is.na(ladcd)) |> 
     group_by(cycle) |> 
     summarise(deaths = n_distinct(id)) |> 
-    mutate(new_deaths = deaths - lag(deaths, 1))
-  
-  deaths$new_deaths <- 
-    ifelse(is.na(deaths$new_deaths), 
-           deaths$deaths, deaths$new_deaths)
-  return(deaths |> mutate(total_deaths = new_deaths * 1 / scaling_factor, name = scen_name)) 
-  # return(deaths |> left_join(base_pop) |> 
-  #          mutate(unit_death = new_deaths/n_alive, 
-  #                 total_deaths = round(unit_death * 2827285), 
-  #                         name = scen_name))
-  
-  # return(deaths |> mutate(base_pop = base_pop,
-  #                         unit_death = new_deaths/base_pop,
-  #                         total_deaths = round(unit_death * 2827285), 
-  #                         name = scen_name))
-  
-  
+    mutate(total_deaths = deaths * 1 / scaling_factor, name = scen_name)
+  )
 }
 
 deaths <- rbind(calculate_deaths(all_data$base, "reference"), 
                 calculate_deaths(all_data$green, "green"),
                 calculate_deaths(all_data$safeStreet, "safeStreet"), 
                 calculate_deaths(all_data$both, "both"))
+
+deaths <- rbind(calculate_deaths(all_data[[1]], "reference", scaling_factor = 1), 
+                #calculate_deaths(all_data$green, "green"),
+                calculate_deaths(all_data[[2]], "safeStreet", scaling_factor = 1), 
+                calculate_deaths(all_data[[3]], "both", scaling_factor = 1))
+
+
+base_people <- base |> 
+  group_by(cycle) |> 
+  reframe(nb = n_distinct(id[age_cycle == 0 & !value %in% c("dead", "null")]), 
+          nd = n_distinct(id[value == "dead"]), 
+          np=n_distinct(id[!value %in% c("dead", "null")])) |> 
+  pivot_longer(cols = -cycle)
 
 deaths |> 
   group_by(name) |> 

@@ -200,14 +200,9 @@ all_data <- list(
 process_scenario <- function(scen_name) {
   # scen_name <- "base"
   df <- all_data[[scen_name]] |>
-    mutate(
-      scen = scen_name,
-      cycle_numeric = as.numeric(str_remove(cycle, "^c"))
-    ) |>
-    # filter(value != "healthy") |>
     dplyr::group_by(id, disease = value) |>
     dplyr::summarise(
-      time_to_event = min(cycle_numeric),
+      time_to_event = min(cycle),
       .groups = "drop"
     )
   return(df)
@@ -248,10 +243,11 @@ result_wide <- result_wide |>
 
 ## === Alive Over Time Tab Data ===
 
-alive_data <- bind_rows(all_data) |> # life years
-  filter(!value %in% c("dead", "null"), !is.na(age_cycle)) |>
-  dplyr::group_by(cycle, scen) |>
-  dplyr::summarise(alive_n = dplyr::n_distinct(id), .groups = "drop")
+alive_data <- all_data |> # life years
+  filter(!value %in% c("dead"), !is.na(age_cycle)) |>
+  dplyr::group_by(cycle, scen, agegroup_cycle, gender, ladcd) |>
+  dplyr::summarise(alive_n = dplyr::n_distinct(id), .groups = "drop") |> 
+  left_join(zones |> distinct(ladcd, ladnm), by = "ladcd") 
 
 alive_data_overall <- alive_data |>
   dplyr::group_by(cycle, scen) |>
@@ -274,10 +270,10 @@ alive_data_sex <- alive_data |>
                                   name == 2 ~ "female")))
 
 alive_data_age <- alive_data |>
-  dplyr::group_by(cycle, scen, agegroup) |>
+  dplyr::group_by(cycle, scen, agegroup_cycle) |>
   dplyr::summarise(alive=sum(alive_n)) |>
   dplyr::mutate(type = "age") |>
-  dplyr::rename(name=agegroup)
+  dplyr::rename(name=agegroup_cycle)
 
 alive_data_lad <- alive_data |>
   dplyr::group_by(cycle, scen, ladnm) |>
@@ -289,7 +285,7 @@ alive_data_all <- bind_rows(alive_data_overall, alive_data_age, alive_data_lad, 
 
 ## Change number files if you want to keep them for different test runs
 
-saveRDS(alive_data_all, paste0(base_path, "/life_years_overtime_java_5p.RDS"))
+saveRDS(alive_data_all, paste0(base_path, "/life_years_overtime_java.RDS"))
 
 # # === Alive Accumulated Tab Data ===
 
@@ -328,6 +324,7 @@ alive_acc_lad <- alive_acc_data |>
   dplyr::group_by(scen, ladnm) |>
   dplyr::summarise(alive = sum(acc_alive), .groups = "drop") |>
   dplyr::mutate(type = "lad") |>
+  left_join(zones |> distinct(ladcd, ladnm), by = "ladcd") |> 
   dplyr::rename(name = ladnm)
 
 
@@ -430,7 +427,7 @@ saveRDS(delay_all, paste0(base_path, "/delay_days_java_5p.RDS"))
 
 ## == Population structure ===
 
-population_df <- bind_rows(all_data) |>
+population_df <- all_data |>
   filter(cycle %in% c(0, 10, 30), (!value %in% c("dead", "null")), !is.na(age_cycle)) |>
   group_by(scen, ladcd, gender, agegroup_cycle, cycle) |>
   summarise(population = n_distinct(id), .groups = "drop")
@@ -486,7 +483,7 @@ run_age_standardised_rate_by_agegroup <- function(summary_raw, zones) {
     arrange(id, value, cycle) |>
     group_by(id, value) |>
     mutate(
-      first_diagnosis = min(cycle, na.rm = TRUE),
+      first_diagnosis = min(cycle, na.rm = TRUE), #cycle > 0
       incident = cycle == first_diagnosis & cycle != 0,  # NOT incident if diagnosed at cycle 0
       ever_had = ifelse(cycle == 0, cycle == first_diagnosis, cycle != first_diagnosis))  |>
     ungroup()
@@ -508,7 +505,7 @@ run_age_standardised_rate_by_agegroup <- function(summary_raw, zones) {
       prevalence_flag = case_when(ever_had == TRUE ~ 1, TRUE ~ 0),
       incidence_flag = case_when(incident == TRUE ~ 1, TRUE ~ 0)
     ) |>
-    group_by(scen, ladcd, gender, agegroup, cycle, value) |> 
+    group_by(scen, ladcd, cycle, value) |> 
     summarise(
       prevalence = sum(prevalence_flag),
       incidence = sum(incidence_flag),
@@ -517,16 +514,8 @@ run_age_standardised_rate_by_agegroup <- function(summary_raw, zones) {
   
   
   #  Add total population and rate calculations
-  population_df <- summary_raw |>
-    filter(cycle %in% target_cycles) |>
-    mutate(agegroup = cut(
-      age_cycle,
-      c(0, 25, 45, 65, 85, Inf),
-      labels = c("0-24", "25-44", "45-64", "65-84", "85+"),
-      right = FALSE,
-      include.lowest = TRUE
-    )) |>
-    group_by(scen, ladcd, gender, agegroup, cycle) |>
+  population_df <- inc_prev |>
+    group_by(scen, ladcd, cycle) |>
     summarise(population = n_distinct(id), .groups = "drop")
   
   backup_sum <- summary_incprev
