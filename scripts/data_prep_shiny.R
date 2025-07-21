@@ -114,7 +114,7 @@ get_summary <- function(SCEN_NAME, group_vars = NULL, summarise = TRUE) {
   m <- m |> 
     filter(c1 != "dead") |> 
     left_join(synth_pop |> select(id, age, agegroup, gender, ladcd, lsoa21cd)) |> 
-    mutate(across(starts_with("c"), ~ ifelse(str_detect(., "killed"), "dead", .)))
+    mutate(across(starts_with("c"), ~ ifelse(str_detect(., "killed"), "dead", .))) # Ali to update
   
   # Long format and event unpacking
   long_data <- m |> 
@@ -182,6 +182,16 @@ all_data <- bind_rows(all_data)
 # 100% pop without future exposures
 # all_data <- arrow::open_dataset("Y:/HealthImpact/Data/Country/UK/JIBE_health_output_data//all_data.parquet/") |> to_duckdb() #|> collect()
 
+# ------ check ids initial pop (when using sample) ------
+
+# initial_ref_IDs <- all_data |> filter(cycle == 0, scen == "reference") |> distinct(id) |> dplyr::select(id)
+# 
+# initial_both_IDs <- all_data |> filter(cycle == 0, scen == "both") |> distinct(id) |> dplyr::select(id)
+# 
+# anti_join(initial_both_IDs, initial_ref_IDs)|> View()
+# 
+# diff_ids <- all_data |> filter (id %in% (anti_join(initial_both_IDs, initial_ref_IDs) |> dplyr::select(id) |> pull()), scen != "safeStreet") |> distinct(id) |> nrow()
+
 # ----- General data inputs -------
 
 ## People alive per cycle
@@ -193,7 +203,6 @@ people <- all_data |>
   rename(pop = value ) |> collect()
 
 ## Baseline pop reference weights. To use in ASR
-
 
 ref_weights <- people |>
   filter(scen == "reference", cycle == 0) |>
@@ -277,7 +286,7 @@ mean_age_dead <- inc_death %>%
 
 crude_rates_dead <- inc_death %>%
   group_by(agegroup_cycle, gender, cycle, scen) |>
-  filter(cycle != 1) |>
+  filter(cycle > 1) |>
   summarise(n = n(), .groups = "drop") %>%
   ungroup() |>
   left_join(people, by = c("agegroup_cycle", "gender", "scen", "cycle")) |>
@@ -304,12 +313,14 @@ calculate_std_rates <- function(crude_rates, ref_weights, use_esp = FALSE) {
   
   # weights <- ref_weights
   
-  std_rates_dead <- crude_rates %>%
-    left_join(weights, by = c("agegroup_cycle", "gender")) %>%
-    filter(!is.na(weight)) %>%
-    group_by(cycle, scen, gender) %>%
+  std_rates_dead <- crude_rates |>
+    select(-pop) |>
+    left_join(weights |> select(-pop), by = c("agegroup_cycle", "gender")) |>
+    filter(!is.na(weight)) |>
+    mutate(rate_w=crude_rate*weight)  |>
+    group_by(cycle, scen, gender) |>
     summarize(
-      age_std_rate = sum(crude_rate * weight),
+      age_std_rate = sum(rate_w),
       .groups = "drop"
     ) |> ungroup() |>
     select(cycle, scen, age_std_rate, gender)
@@ -417,10 +428,11 @@ people_sum <- people |>
 
 ## Count 
 count_inc <- all_data |> 
-  filter(value !="healthy") |> 
-  group_by(id, value) |>  
-  filter(cycle == min(cycle[cycle > 0])) |> 
+  filter(value %in% c("healthy", "dead", "null")) |> 
+  group_by(id, scen, value) |>  
+  filter(cycle == min(cycle)) |> 
   ungroup() |> 
+  filter(cycle > 0) |> 
   group_by(cycle, scen, value) |> 
   summarise(n = dplyr::n()) |> 
   collect()
