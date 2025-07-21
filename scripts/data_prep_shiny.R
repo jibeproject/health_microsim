@@ -5,22 +5,19 @@ suppressPackageStartupMessages({
   library(DT)
   library(purrr)
   library(stringr)
+  library(esquisse)
+  library(ggplot2)
+  library(plotly)
 })
 
 # === Global Settings ===
-FILE_PATH_BELEN <- FALSE
-FILE_PATH_JAVA <- TRUE
-RUN_NAME <- "_5p_300625"
-
-# Scaling factor for results
+FILE_PATH_BELEN <- TRUE # for location input files
+DATA_PATH_BELEN <- TRUE # for location output files for shiny# Scaling factor for results
 
 SCALING <- 20 # for a 5% sample and to be used to multiply results
 
-#For saving files
-data_path_Belen <- FALSE
-
 # Set path based on condition
-base_path <- if (data_path_Belen) {
+base_path <- if (DATA_PATH_BELEN) {
   "manchester/health/processed/shiny_data/"
 } else {
   "shiny_data/"
@@ -33,84 +30,57 @@ zones <- if (!FILE_PATH_BELEN) {
   read_csv("manchester/health/processed/zoneSystem.csv")
 } 
 
-# === European Standard Population (ESP2013) === Replace with baseline population 
-esp2013 <- c(
-  rep(4000, 1), rep(5500, 4),  # 0-4, 5-9, 10-14, 15-19, 20-24
-  rep(5500, 2), rep(6000, 2),  # 25-29, 30-34, 35-39, 40-44
-  rep(6000, 2), rep(5000, 2),  # 45-49, 50-54, 55-59, 60-64
-  rep(4000, 2), rep(2500, 2),  # 65-69, 70-74, 75-79, 80-84
-  rep(1500, 2)                 # 85-89, 90+
-)
-
-
 # === Data loading function ===
+
 get_summary <- function(SCEN_NAME, group_vars = NULL, summarise = TRUE) {
+  microdata_dir_name <- "microData"
   
-  microdata_dir_name <- 'microData'
-  # microdata_dir_name <- 'microData_5p_300625'
-  #microdata_dir_name <- 'microData_5p_wo_interaction_010725'
+  # SCEN_NAME <- "base"
   
-  # SCEN_NAME <- 'base'
-  # group_vars = NULL
-  # summarise = TRUE
-  
-  file_path <- file_path <- if (exists("FILE_PATH_JAVA") && !FILE_PATH_BELEN) {
-    paste0("/media/ali/Expansion/backup_tabea/manchester-main/scenOutput/", SCEN_NAME, "/", microdata_dir_name, "/pp_healthDiseaseTracker_2051.csv")
-  } else if (exists("FILE_PATH_JAVA") && FILE_PATH_BELEN && FILE_PATH_JAVA) {
-    paste0("manchester/health/processed/health_model_outcomes/microData_", SCEN_NAME, RUN_NAME, "/microData/", "pp_healthDiseaseTracker_2051.csv")
+  # Select correct file path
+  if (exists("FILE_PATH_BELEN") && isTRUE(FILE_PATH_BELEN)) {
+    file_path <- paste0(
+      "manchester/health/processed/health_model_outcomes/",
+      "microData", SCEN_NAME, "/pp_healthDiseaseTracker_2051.csv"
+    )
   } else {
-    paste0("manchester/health/processed/", SCEN_NAME, "_dis_inter_state_trans-n.c-noAPRISK-", n.c, "-n.i-", n.i, "-n.d-19.parquet")
+    file_path <- paste0(
+      "/media/ali/Expansion/backup_tabea/manchester-main/scenOutput/",
+      SCEN_NAME, "/", microdata_dir_name, "/pp_healthDiseaseTracker_2051.csv"
+    )
   }
   
-  ## Condition to open parquet and csv files
+  # Read health tracker file
   if (grepl("\\.csv$", file_path)) {
-    m <- arrow::open_csv_dataset(file_path) |> to_duckdb() |> collect()# |> filter(id == 2827301)
+    m <- arrow::open_csv_dataset(file_path) |> to_duckdb() |> collect()
   } else {
-    m <- arrow::open_csv_dataset(file_path)
+    m <- arrow::open_dataset(file_path)
   }
+  
   m$id <- as.numeric(m$id)
   
-  ## Condition if Java change years for cycles
+  # Rename year columns to c0, c1, ...
+  year_cols <- grep("^20", names(m), value = TRUE)
+  new_names <- paste0("c", seq_along(year_cols) - 1)
+  names(m)[match(year_cols, names(m))] <- new_names
   
-  if (exists("FILE_PATH_JAVA") && FILE_PATH_JAVA) {
-    year_cols <- grep("^20", names(m), value = TRUE)
-    new_names <- paste0("c", seq_along(year_cols) - 1)
-    names(m)[match(year_cols, names(m))] <- new_names
-  }
-  
+  # Load population files
   pop_dir_path <- if (!FILE_PATH_BELEN) {
     paste0("/media/ali/Expansion/backup_tabea/manchester-main/scenOutput/", SCEN_NAME, "/", microdata_dir_name)
   } else {
-    paste0("manchester/health/processed/health_model_outcomes/microData_", SCEN_NAME, RUN_NAME, "/microData/")
+    paste0("manchester/health/processed/health_model_outcomes/microData", SCEN_NAME)
   }
   
-  # List all CSV files starting with "pp_" in the specified directory
-  pp_csv_files <- list.files(path = pop_dir_path, 
-                             pattern = "^pp_\\d{4}\\.csv$",  # Matches pp_ followed by 4 digits and .csv
-                             full.names = TRUE)
-  
-  # Read and filter each file, then combine into one data frame
+  pp_csv_files <- list.files(path = pop_dir_path, pattern = "^pp_\\d{4}\\.csv$", full.names = TRUE)
   newborn_data <- lapply(pp_csv_files, function(file) {
-    df <- read_csv(file)|> filter(age == 0)
+    read_csv(file) |> filter(age == 0)
   }) |> bind_rows()
   
-  
-  # List all CSV files starting with "dd_" in the specified directory (to get zones)
-  dd_csv_files <- list.files(path = pop_dir_path, 
-                             pattern = "^dd_\\d{4}\\.csv$",  # Matches pp_ followed by 4 digits and .csv
-                             full.names = TRUE)
-  
-  # Read and filter each file, then combine into one data frame
-  dd_data <- lapply(dd_csv_files, function(file) {
-    df <- read_csv(file)
-  }) |> bind_rows()
+  dd_csv_files <- list.files(path = pop_dir_path, pattern = "^dd_\\d{4}\\.csv$", full.names = TRUE)
+  dd_data <- lapply(dd_csv_files, read_csv) |> bind_rows()
   
   newborn_data <- newborn_data |> 
-    left_join(dd_data |> 
-                dplyr::select(hhID, zone) |> 
-                distinct(hhID, .keep_all = T) |> 
-                rename(hhid = hhID))
-  
+    left_join(dd_data |> select(hhID, zone) |> distinct(hhID, .keep_all = TRUE) |> rename(hhid = hhID))
   
   synth_pop <- newborn_data |>
     mutate(agegroup = cut(age, c(0, 25, 45, 65, 85, Inf), 
@@ -121,13 +91,15 @@ get_summary <- function(SCEN_NAME, group_vars = NULL, summarise = TRUE) {
     left_join(zones  |> rename(zone = oaID) |> dplyr::select(zone, ladcd, lsoa21cd)) |> 
     distinct()
   
-  
+  # Exposure population
   pop_path <- if (!FILE_PATH_BELEN) {
     paste0("/media/ali/Expansion/backup_tabea/manchester-main/scenOutput/", SCEN_NAME, "/", microdata_dir_name, "/pp_exposure_2021.csv")
   } else {
-    paste0("manchester/health/processed/health_model_outcomes/microData_", SCEN_NAME, RUN_NAME, "/microData/pp_exposure_2021.csv")
+    paste0("manchester/health/processed/health_model_outcomes/microData", SCEN_NAME, "/pp_exposure_2021.csv")
   }
+  
   if (!file.exists(pop_path)) stop("Population exposure file does not exist: ", pop_path)
+  
   synth_pop_2021 <- readr::read_csv(pop_path) |>
     mutate(agegroup = cut(age, c(0, 25, 45, 65, 85, Inf), 
                           labels = c("0-24", "25-44", "45-64", "65-84", "85+"),
@@ -138,15 +110,13 @@ get_summary <- function(SCEN_NAME, group_vars = NULL, summarise = TRUE) {
   
   synth_pop <- bind_rows(synth_pop, synth_pop_2021)
   
-  m <- m |>  dplyr::filter(c1 !="dead") |> 
-    left_join(synth_pop |> dplyr::select(id, age, agegroup, gender, ladcd, lsoa21cd)) |> 
-    mutate(
-      across(
-        starts_with("c"),
-        ~ ifelse(str_detect(., "killed"), "dead", .)
-      )
-    ) 
+  # Filter out early dead and merge population info
+  m <- m |> 
+    filter(c1 != "dead") |> 
+    left_join(synth_pop |> select(id, age, agegroup, gender, ladcd, lsoa21cd)) |> 
+    mutate(across(starts_with("c"), ~ ifelse(str_detect(., "killed"), "dead", .)))
   
+  # Long format and event unpacking
   long_data <- m |> 
     pivot_longer(cols = starts_with("c")) |>
     arrange(id, parse_number(name)) |>
@@ -171,9 +141,16 @@ get_summary <- function(SCEN_NAME, group_vars = NULL, summarise = TRUE) {
     ungroup() |> 
     filter(!(value == "dead" & dead_count > 1)) |> 
     dplyr::select(-dead_count) |> 
-    mutate(agegroup_cycle = cut(age_cycle, c(0, 25, 45, 65, 85, Inf), 
-                                labels = c("0-24", "25-44", "45-64", "65-84", "85+"),
-                                right = FALSE, include.lowest = TRUE)) |> 
+    mutate(agegroup_cycle = cut(
+      age_cycle,
+      breaks = c(seq(0, 85, by = 5), Inf),  # 0,5,10,...,85,Inf
+      labels = c(
+        paste(seq(0, 80, by = 5), seq(4, 84, by = 5), sep = "-"),
+        "85+"
+      ),
+      right = FALSE,
+      include.lowest = TRUE
+    )) |> 
     distinct()
   
   if (!is.null(group_vars) && summarise && length(group_vars) > 0) {
@@ -186,14 +163,388 @@ get_summary <- function(SCEN_NAME, group_vars = NULL, summarise = TRUE) {
   return(long_data)
 }
 
+
 ## === Prepare general data long ===
-#green <- get_summary("both", summarise = FALSE) |> mutate(scen = "green")
 all_data <- list(
-  base = get_summary("base", summarise = FALSE) |> mutate(scen = "reference"),
-  green = get_summary("green", summarise = FALSE) |> mutate(scen = "green"),
-  safeStreet = get_summary("safeStreet", summarise = FALSE) |> mutate(scen = "safeStreet"),
-  both = get_summary("both", summarise = FALSE) |> mutate(scen = "both")
+  base = get_summary("Base", summarise = FALSE) |> mutate(scen = "reference"),
+  # green = get_summary("green", summarise = FALSE) |> mutate(scen = "green"),
+  safeStreet = get_summary("SafeStreet", summarise = FALSE) |> mutate(scen = "safeStreet"),
+  both = get_summary("Both", summarise = FALSE) |> mutate(scen = "both")
 )
+
+
+### When working with 100% we need to add collect() at the end of each script below and also check how the data
+### format is for above
+
+# 5% sample with future exposures
+all_data <- bind_rows(all_data) 
+
+# 100% pop without future exposures
+# all_data <- arrow::open_dataset("Y:/HealthImpact/Data/Country/UK/JIBE_health_output_data//all_data.parquet/") |> to_duckdb() #|> collect()
+
+# ----- General data inputs -------
+
+## People alive per cycle
+
+people <- all_data |> 
+  group_by(agegroup_cycle, gender, cycle, scen) |> 
+  summarise(pop = n_distinct(id[!value %in% c("dead", "null")])) |> 
+  pivot_longer(cols = pop) |> 
+  rename(pop = value ) |> collect()
+
+## Baseline pop reference weights. To use in ASR
+
+
+ref_weights <- people |>
+  filter(scen == "reference", cycle == 0) |>
+  group_by(agegroup_cycle, gender) |>
+  summarise(pop = sum(pop, na.rm = TRUE), .groups = "drop") |>
+  ungroup() |>
+  group_by(gender) |> 
+  mutate(total_pop =  sum(pop),
+        weight = pop / total_pop) |>
+  select(agegroup_cycle, gender, weight, pop, total_pop)
+
+ggplot(ref_weights) +
+  aes(x = agegroup_cycle, y = weight) +
+  geom_col(fill = "#112446") +
+  labs(title = "Population weights ref population") +
+  facet_wrap(~gender) +
+  theme_minimal()
+
+
+## European population weights
+esp_5yr <- tibble::tibble(
+  agegroup_cycle = factor(
+    c(paste(seq(0, 80, by = 5), seq(4, 84, by = 5), sep = "-"), "85+"),
+    levels = c(paste(seq(0, 80, by = 5), seq(4, 84, by = 5), sep = "-"), "85+"),
+    ordered = FALSE
+  ),
+  weight = c(
+    5000, 5500, 5500, 6000, 6000, 6500,
+    7000, 7000, 6500, 6000, 5000, 4000,
+    3000, 2000, 1000, 500, 250, 225
+  )
+)
+
+
+esp_5yr <- esp_5yr %>%
+  mutate(weight = weight / sum(weight))
+
+esp_5yr_gendered <- esp_5yr %>%
+  crossing(gender = c(1, 2))  # 1 = male, 2 = female
+
+ggplot(esp_5yr_gendered) +
+  aes(x = agegroup_cycle, y = weight) +
+  geom_col(fill = "#112446") +
+  labs(title = "Population weights ref population") +
+  facet_wrap(~gender) +
+  theme_minimal()
+
+# ----- Dead incidence data ----
+
+inc_death <- all_data |> 
+  group_by(id, scen) |> 
+  mutate(age_cycle = max(age_cycle[value != "dead"], na.rm = TRUE) + 1) |> 
+  filter(value == "dead") |>
+  mutate(agegroup_cycle = cut(
+    age_cycle,
+    breaks = c(seq(0, 85, by = 5), Inf),  # 0,5,10,...,85,Inf
+    labels = c(
+      paste(seq(0, 80, by = 5), seq(4, 84, by = 5), sep = "-"),
+      "85+"
+    ),
+    right = FALSE,
+    include.lowest = TRUE
+  )) |> ungroup()
+
+
+## 1) Average age at dead
+mean_age_dead <- inc_death %>%
+  count(age_cycle, name = "weight") %>%
+  right_join(inc_death, by = "age_cycle") %>%
+  group_by(scen) %>%
+  summarize(
+    mean_age_cycle = weighted.mean(age_cycle, weight, na.rm = TRUE),
+    .groups = "drop"
+  ) |>
+  ungroup()
+
+
+## 2) Age standardized mortality rate per 100,000 people
+
+# Calculate crude incidence rates per 100,000
+
+crude_rates_dead <- inc_death %>%
+  group_by(agegroup_cycle, gender, cycle, scen) |>
+  filter(cycle != 1) |>
+  summarise(n = n(), .groups = "drop") %>%
+  ungroup() |>
+  left_join(people, by = c("agegroup_cycle", "gender", "scen", "cycle")) |>
+  mutate(crude_rate = if_else(pop > 0, n / pop * 100000, NA_real_)) %>%
+  filter(!is.na(crude_rate))
+
+ggplotly(ggplot(crude_rates_dead) +
+           aes(x = agegroup_cycle, y = crude_rate, fill = gender) +
+           geom_col() +
+           scale_fill_gradient() +
+           theme_minimal() +
+           facet_wrap(vars(cycle))
+)
+
+# Functions to use either European or baseline population derived weights. 
+
+calculate_std_rates <- function(crude_rates, ref_weights, use_esp = FALSE) {
+  
+  if (use_esp) {
+    weights <- esp_5yr_gendered  # Fixed European standard weights
+  } else {
+    weights <- ref_weights  # baseline weights
+  }
+  
+  # weights <- ref_weights
+  
+  std_rates_dead <- crude_rates %>%
+    left_join(weights, by = c("agegroup_cycle", "gender")) %>%
+    filter(!is.na(weight)) %>%
+    group_by(cycle, scen, gender) %>%
+    summarize(
+      age_std_rate = sum(crude_rate * weight),
+      .groups = "drop"
+    ) |> ungroup() |>
+    select(cycle, scen, age_std_rate, gender)
+  
+  return(std_rates_dead)
+}
+
+
+### Note belen@ not all age groups have ASR due to no dead observed (e.g. 5-9, 10-14, 25-29)
+# Use baseline population weights
+std_rates_ref <- calculate_std_rates(crude_rates_dead, ref_weights) 
+
+# Use European standardised population
+std_rates_esp <- calculate_std_rates(crude_rates_dead, ref_weights, use_esp = TRUE)
+
+## Plot (change rates used with base population or european population)
+
+ggplotly(ggplot(std_rates_ref) +
+  aes(x = cycle, y = age_std_rate, colour = scen) +
+  geom_smooth(se=FALSE) +
+  scale_color_hue(direction = 1) +
+    facet_wrap(~gender) +
+  theme_minimal())
+
+## 3) Difference number of deaths
+
+dead_diff <- inc_death %>%
+  group_by(agegroup_cycle, gender, cycle, scen) %>%
+  summarise(n = n(), .groups = "drop") %>%
+  left_join(
+    inc_death %>%
+      filter(scen == "reference") %>%
+      group_by(agegroup_cycle, gender, cycle) %>%
+      summarise(n_reference = n(), .groups = "drop"),
+    by = c("agegroup_cycle", "gender", "cycle")
+  ) %>%
+  mutate(
+    n_reference = coalesce(n_reference, 0),   # replace NA with 0
+    difference = n - n_reference
+  )
+
+## Metric overall (dead postpone)
+dead_diff_acc <- dead_diff |>
+                  group_by(scen) |>
+                  summarise(sum(difference))
+
+# ----- Healthy years ----
+
+healthy_total_cycle <- all_data |>
+  filter(value == "healthy") |>
+  group_by(scen, cycle) |>
+  summarise(healthy_years = n_distinct(id), .groups = "drop")
+
+
+healthy_total_cycle_diff <- healthy_total_cycle %>%
+  left_join(
+    healthy_total_cycle %>%
+      filter(scen == "reference") %>%
+      rename(reference_healthy_years = healthy_years) %>%
+      select(cycle, reference_healthy_years),
+    by = "cycle"
+  ) %>%
+  mutate(
+    healthy_years_difference = healthy_years - reference_healthy_years,
+    percent_difference = 100 * healthy_years_difference / reference_healthy_years
+  )
+
+sum_healthy_years <- healthy_total_cycle_diff |> 
+                  group_by(scen) |>
+                  summarise(sum(healthy_years_difference))
+
+# ----- Life years to do ------
+
+life_years_cycle <- all_data |>
+  filter(value != "dead") |>
+  group_by(scen, cycle) |>
+  summarise(life_years = n_distinct(id), .groups = "drop")
+
+
+life_years_cycle_diff <- life_years_cycle %>%
+  left_join(
+    life_years_cycle %>%
+      filter(scen == "reference") %>%
+      rename(reference_life_years = life_years) %>%
+      select(cycle, reference_life_years),
+    by = "cycle"
+  ) %>%
+  mutate(
+    life_years_difference = life_years - reference_life_years,
+    percent_difference = 100 * life_years_difference / reference_life_years
+  )
+
+sum_life_years <- life_years_cycle_diff |> 
+  group_by(scen) |>
+  summarise(sum(life_years_difference))
+
+#### test alternative with people
+### Same result as calculation above
+people_sum <- people |>
+              group_by(scen) |>
+              summarise(sum(pop))
+
+
+# ----- Incidence diseases -----
+
+## Count 
+count_inc <- all_data |> 
+  filter(value !="healthy") |> 
+  group_by(id, value) |>  
+  filter(cycle == min(cycle[cycle > 0])) |> 
+  ungroup() |> 
+  group_by(cycle, scen, value) |> 
+  summarise(n = dplyr::n()) |> 
+  collect()
+
+
+## Count difference by scenario
+
+# Summarise counts by scenario and value
+count_inc_summary <- count_inc |>
+  filter(cycle < 10) |> ## remove testing
+  group_by(scen, value) |>
+  summarise(total = sum(n), .groups = "drop")
+
+# Extract reference totals
+reference_totals <- count_inc_summary |>
+  filter(scen == "reference") |>
+  rename(ref_total = total) |>
+  select(value, ref_total)
+
+# Join and calculate difference
+count_inc_diff <- count_inc_summary |>
+  left_join(reference_totals, by = "value") |>
+  mutate(
+    total_diff = total - ref_total,
+    percent_diff = 100 * total_diff / ref_total
+  )
+
+
+## Average age of onset
+
+## tO DO 
+## Age standardised rate (work in progress)
+
+### ALI's incidence code
+inc_age_gender <- all_data |>
+  filter(!value %in% c("null", "dead", "healthy")) |> 
+  group_by(id, value) |>
+  filter(cycle == min(cycle[cycle > 0])) |>
+  ungroup() |>
+  group_by(agegroup_cycle, gender, cycle, scen, value) |>
+  summarise(n = dplyr::n()) |> 
+  collect()
+
+inc_age_gender_uc <- inc_age_gender |> 
+  left_join(people |> dplyr::select(-name)) |> 
+  mutate(crude_rate = n/pop * 10^5)
+
+inc_age_w <- inc_age_gender_uc |> 
+  left_join(ref_weights, by = c("agegroup_cycle", "gender")) |> 
+  mutate(weighted_rate = crude_rate * weight) |> 
+  group_by(cycle, scen, value) |>
+  reframe(age_std_rate = sum(weighted_rate, na.rm = TRUE)) |> 
+  ungroup()
+
+ggplotly((inc_age_w %>%
+            filter(cycle >= 2L & cycle <= 30L) %>%
+            filter(!(value %in% c("bladder_cancer", "endometrial_cancer", 
+                                  "esophageal_cancer", "gastric_cardia_cancer", "liver_cancer", "myeloid_leukemia", "myeloma", "severely_injured_bike", 
+                                  "severely_injured_car", "severely_injured_walk"))) %>%
+            ggplot() +
+            aes(x = cycle, y = age_std_rate, colour = scen) +
+            geom_smooth(se=FALSE) +
+            scale_color_hue(direction = 1) +
+            theme_minimal() +
+            facet_wrap(vars(value), scales = "free_y")
+))
+
+
+
+
+############################ TO HERE
+ ####
+
+
+
+calculate_std_rates_inc <- function(crude_rates, ref_weights, use_esp = FALSE) {
+  
+  if (use_esp) {
+    weights <- esp_5yr_gendered  # Fixed European standard weights
+  } else {
+    weights <- ref_weights       # Baseline scenario weights
+  }
+  
+  std_rates_inc <- crude_rates %>%
+    left_join(weights, by = c("agegroup_cycle", "gender")) %>%
+    filter(!is.na(weight)) %>%
+    group_by(cycle, scen, value) %>%
+    summarize(
+      age_std_rate = sum(crude_rate * weight),
+      .groups = "drop"
+    )
+  
+  return(std_rates_inc)
+}
+
+# Using reference weights (baseline population)
+std_rates_inc_ref <- calculate_std_rates_inc(crude_rates = inc_age_gender_uc, ref_weights = ref_weights, use_esp = FALSE)
+
+# Using European standard population
+std_rates_inc_esp <- calculate_std_rates_inc(crude_rates = inc_age_gender_uc, ref_weights = ref_weights, use_esp = TRUE)
+
+## Graph
+
+ggplotly(std_rates_inc_ref %>%
+  filter(cycle >= 1L & cycle <= 30L) %>%
+  filter(value %in% c("all_cause_dementia", 
+                      "breast_cancer", "colon_cancer", "copd", "coronary_heart_disease", "depression", "diabetes", "lung_cancer", 
+                      "parkinson", "stroke")) %>%
+  ggplot() +
+  aes(x = cycle, y = age_std_rate, colour = scen) +
+  geom_smooth(se = FALSE) +
+  scale_color_hue(direction = 1) +
+  theme_minimal() +
+  facet_wrap(vars(value), scales = "free_y"))
+
+
+###
+
+count_inc_ali <- count_inc |> 
+  left_join(people |> filter(name == "np") |> 
+              rename(pop = value)) |> 
+  mutate(per_capita_count = n/pop, 
+         per_100k = per_capita_count * 10^5)
+## Average age of onset
 
 ## === Prepare time delay data ===
 
