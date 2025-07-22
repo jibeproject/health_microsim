@@ -428,7 +428,7 @@ people_sum <- people |>
 
 ## Count 
 count_inc <- all_data |> 
-  filter(value %in% c("healthy", "dead", "null")) |> 
+  filter(!value %in% c("healthy", "dead", "null")) |> 
   group_by(id, scen, value) |>  
   filter(cycle == min(cycle)) |> 
   ungroup() |> 
@@ -442,7 +442,7 @@ count_inc <- all_data |>
 
 # Summarise counts by scenario and value
 count_inc_summary <- count_inc |>
-  filter(cycle < 10) |> ## remove testing
+ # filter(cycle < 10) |> ## remove testing
   group_by(scen, value) |>
   summarise(total = sum(n), .groups = "drop")
 
@@ -467,11 +467,12 @@ count_inc_diff <- count_inc_summary |>
 ## Age standardised rate (work in progress)
 
 ### ALI's incidence code
-inc_age_gender <- all_data |>
-  filter(!value %in% c("null", "dead", "healthy")) |> 
-  group_by(id, value) |>
-  filter(cycle == min(cycle[cycle > 0])) |>
-  ungroup() |>
+inc_age_gender <- all_data |> 
+  filter(!value %in% c("healthy", "dead", "null")) |> 
+  group_by(id, scen, value) |>  
+  filter(cycle == min(cycle)) |> 
+  ungroup() |> 
+  filter(cycle > 0) |> 
   group_by(agegroup_cycle, gender, cycle, scen, value) |>
   summarise(n = dplyr::n()) |> 
   collect()
