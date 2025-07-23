@@ -11,8 +11,8 @@ suppressPackageStartupMessages({
 })
 
 # === Global Settings ===
-FILE_PATH_BELEN <- TRUE # for location input files
-DATA_PATH_BELEN <- TRUE # for location output files for shiny# Scaling factor for results
+FILE_PATH_BELEN <- FALSE # for location input files
+DATA_PATH_BELEN <- FALSE # for location output files for shiny# Scaling factor for results
 
 SCALING <- 20 # for a 5% sample and to be used to multiply results
 
@@ -110,11 +110,12 @@ get_summary <- function(SCEN_NAME, group_vars = NULL, summarise = TRUE) {
   
   synth_pop <- bind_rows(synth_pop, synth_pop_2021)
   
-  # Filter out early dead and merge population info
+  # # Filter out early dead and merge population info
   m <- m |> 
-    filter(c1 != "dead") |> 
-    left_join(synth_pop |> select(id, age, agegroup, gender, ladcd, lsoa21cd)) |> 
-    mutate(across(starts_with("c"), ~ ifelse(str_detect(., "killed"), "dead", .))) # Ali to update
+    filter(!grepl("dead", c1)) |> 
+    left_join(synth_pop |> dplyr::select(id, age, agegroup, gender, ladcd, lsoa21cd)) 
+  #|> 
+  #   mutate(across(starts_with("c"), ~ ifelse(str_detect(., "killed"), "dead", .))) # Ali to update
   
   # Long format and event unpacking
   long_data <- m |> 
@@ -135,11 +136,11 @@ get_summary <- function(SCEN_NAME, group_vars = NULL, summarise = TRUE) {
     group_by(id) |>
     # Forward-fill 'age_cycle' after first appearance of non-null value
     mutate(
-      dead_count = cumsum(value == "dead"),
-      age_cycle = ifelse(!value %in% c("null", "dead"), age + cycle - min(cycle[!value %in% c("null", "dead")]), NA)
+      dead_count = cumsum(grepl("dead", value)),
+      age_cycle = ifelse(!value %in% c("null"), age + cycle - min(cycle[! value %in% c("null")]), NA)
     ) |>
     ungroup() |> 
-    filter(!(value == "dead" & dead_count > 1)) |> 
+    filter(!(grepl("dead", value) & dead_count > 1)) |>
     dplyr::select(-dead_count) |> 
     mutate(agegroup_cycle = cut(
       age_cycle,
@@ -154,11 +155,12 @@ get_summary <- function(SCEN_NAME, group_vars = NULL, summarise = TRUE) {
     distinct()
   
   if (!is.null(group_vars) && summarise && length(group_vars) > 0) {
-    long_data <- long_data |>
-      group_by(across(all_of(group_vars))) |>
-      summarise(count = dplyr::n(), .groups = "drop") |>
-      mutate(freq = round(count / sum(count) * 100, 1))
+  long_data <- long_data |>
+    group_by(across(all_of(group_vars))) |>
+    summarise(count = dplyr::n(), .groups = "drop") |>
+    mutate(freq = round(count / sum(count) * 100, 1))
   }
+  
   
   return(long_data)
 }
@@ -166,7 +168,7 @@ get_summary <- function(SCEN_NAME, group_vars = NULL, summarise = TRUE) {
 
 ## === Prepare general data long ===
 all_data <- list(
-  base = get_summary("Base", summarise = FALSE) |> mutate(scen = "reference"),
+  base = get_summary("base", summarise = FALSE) |> mutate(scen = "reference"),
   # green = get_summary("green", summarise = FALSE) |> mutate(scen = "green"),
   safeStreet = get_summary("SafeStreet", summarise = FALSE) |> mutate(scen = "safeStreet"),
   both = get_summary("Both", summarise = FALSE) |> mutate(scen = "both")
@@ -197,29 +199,30 @@ all_data <- bind_rows(all_data)
 ## People alive per cycle
 
 people <- all_data |> 
-  group_by(agegroup_cycle, gender, cycle, scen) |> 
-  summarise(pop = n_distinct(id[!value %in% c("dead", "null")])) |> 
+  group_by(agegroup_cycle, cycle, scen) |> 
+  #to_duckdb() |> 
+  summarise(pop = n_distinct(id[!grepl("dead|null", value)])) |> 
   pivot_longer(cols = pop) |> 
-  rename(pop = value ) |> collect()
+  rename(pop = value ) |> 
+  collect()
 
 ## Baseline pop reference weights. To use in ASR
 
 ref_weights <- people |>
-  filter(scen == "reference", cycle == 0) |>
-  group_by(agegroup_cycle, gender) |>
+  filter(scen == "reference", cycle == 1) |>
+  group_by(agegroup_cycle) |>
   summarise(pop = sum(pop, na.rm = TRUE), .groups = "drop") |>
   ungroup() |>
-  group_by(gender) |> 
   mutate(total_pop =  sum(pop),
-        weight = pop / total_pop) |>
-  select(agegroup_cycle, gender, weight, pop, total_pop)
+         weight = pop / total_pop) |>
+  dplyr::select(agegroup_cycle, weight, pop, total_pop)
 
 ggplot(ref_weights) +
   aes(x = agegroup_cycle, y = weight) +
   geom_col(fill = "#112446") +
   labs(title = "Population weights ref population") +
-  facet_wrap(~gender) +
-  theme_minimal()
+  #facet_wrap(~gender) +
+  theme(axis.text.x = element_text(angle = 90L))
 
 
 ## European population weights
@@ -241,31 +244,23 @@ esp_5yr <- esp_5yr %>%
   mutate(weight = weight / sum(weight))
 
 esp_5yr_gendered <- esp_5yr %>%
-  crossing(gender = c(1, 2))  # 1 = male, 2 = female
+  crossing(gender = c(1, 2)) #|> # 1 = male, 2 = female
+  #mutate(weight = weight / 2) 
 
 ggplot(esp_5yr_gendered) +
   aes(x = agegroup_cycle, y = weight) +
   geom_col(fill = "#112446") +
   labs(title = "Population weights ref population") +
   facet_wrap(~gender) +
-  theme_minimal()
+  theme(axis.text.x = element_text(angle = 90L))
 
 # ----- Dead incidence data ----
 
 inc_death <- all_data |> 
-  group_by(id, scen) |> 
-  mutate(age_cycle = max(age_cycle[value != "dead"], na.rm = TRUE) + 1) |> 
-  filter(value == "dead") |>
-  mutate(agegroup_cycle = cut(
-    age_cycle,
-    breaks = c(seq(0, 85, by = 5), Inf),  # 0,5,10,...,85,Inf
-    labels = c(
-      paste(seq(0, 80, by = 5), seq(4, 84, by = 5), sep = "-"),
-      "85+"
-    ),
-    right = FALSE,
-    include.lowest = TRUE
-  )) |> ungroup()
+  #group_by(id, scen) |> 
+  filter(grepl("dead", value)) |>
+  ungroup() |> 
+  collect()
 
 
 ## 1) Average age at dead
@@ -285,45 +280,50 @@ mean_age_dead <- inc_death %>%
 # Calculate crude incidence rates per 100,000
 
 crude_rates_dead <- inc_death %>%
-  group_by(agegroup_cycle, gender, cycle, scen) |>
+  group_by(agegroup_cycle, cycle, scen) |>
   filter(cycle > 1) |>
   summarise(n = n(), .groups = "drop") %>%
   ungroup() |>
-  left_join(people, by = c("agegroup_cycle", "gender", "scen", "cycle")) |>
+  left_join(people, by = c("agegroup_cycle", "scen", "cycle")) |>
+  ungroup() |> 
+  group_by(agegroup_cycle, cycle, scen) |> 
+  reframe(n = sum(n), pop = sum(pop)) |> 
   mutate(crude_rate = if_else(pop > 0, n / pop * 100000, NA_real_)) %>%
   filter(!is.na(crude_rate))
 
 ggplotly(ggplot(crude_rates_dead) +
-           aes(x = agegroup_cycle, y = crude_rate, fill = gender) +
-           geom_col() +
+           aes(x = agegroup_cycle, y = crude_rate) +
+           geom_col(position = "dodge2") +
            scale_fill_gradient() +
            theme_minimal() +
+           theme(axis.text.x = element_text(angle = 90L)) +
            facet_wrap(vars(cycle))
 )
+
 
 # Functions to use either European or baseline population derived weights. 
 
 calculate_std_rates <- function(crude_rates, ref_weights, use_esp = FALSE) {
   
+  #crude_rates <- crude_rates_dead, ref_weights
+  #use_esp <- F
   if (use_esp) {
-    weights <- esp_5yr_gendered  # Fixed European standard weights
+    weights <- esp_5yr  # Fixed European standard weights
   } else {
     weights <- ref_weights  # baseline weights
   }
   
-  # weights <- ref_weights
-  
   std_rates_dead <- crude_rates |>
-    select(-pop) |>
-    left_join(weights |> select(-pop), by = c("agegroup_cycle", "gender")) |>
+    dplyr::select(-dplyr::any_of("pop")) |>
+    left_join(weights |> dplyr::select(-dplyr::any_of("pop")) |> 
+                group_by(agegroup_cycle) |> reframe(weight = sum(weight)), by = c("agegroup_cycle")) |>
     filter(!is.na(weight)) |>
     mutate(rate_w=crude_rate*weight)  |>
-    group_by(cycle, scen, gender) |>
+    group_by(cycle, scen) |>
     summarize(
       age_std_rate = sum(rate_w),
       .groups = "drop"
-    ) |> ungroup() |>
-    select(cycle, scen, age_std_rate, gender)
+    ) |> ungroup()
   
   return(std_rates_dead)
 }
@@ -339,11 +339,20 @@ std_rates_esp <- calculate_std_rates(crude_rates_dead, ref_weights, use_esp = TR
 ## Plot (change rates used with base population or european population)
 
 ggplotly(ggplot(std_rates_ref) +
-  aes(x = cycle, y = age_std_rate, colour = scen) +
-  geom_smooth(se=FALSE) +
-  scale_color_hue(direction = 1) +
-    facet_wrap(~gender) +
-  theme_minimal())
+           aes(x = cycle, y = age_std_rate, colour = scen) +
+           geom_smooth(se=FALSE) +
+           labs(title = "Age standardised death rate using reference population") +
+           scale_color_hue(direction = 1) +
+           #facet_wrap(~gender) +
+           theme_minimal())
+
+ggplotly(ggplot(std_rates_esp) +
+           aes(x = cycle, y = age_std_rate, colour = scen) +
+           geom_smooth(se=FALSE) +
+           scale_color_hue(direction = 1) +
+           labs(title = "Age standardised death rate using European population") +
+           #facet_wrap(~gender) +
+           theme_minimal())
 
 ## 3) Difference number of deaths
 
@@ -364,8 +373,8 @@ dead_diff <- inc_death %>%
 
 ## Metric overall (dead postpone)
 dead_diff_acc <- dead_diff |>
-                  group_by(scen) |>
-                  summarise(sum(difference))
+  group_by(scen) |>
+  summarise(sum(difference))
 
 # ----- Healthy years ----
 
@@ -389,13 +398,13 @@ healthy_total_cycle_diff <- healthy_total_cycle %>%
   )
 
 sum_healthy_years <- healthy_total_cycle_diff |> 
-                  group_by(scen) |>
-                  summarise(sum(healthy_years_difference))
+  group_by(scen) |>
+  summarise(sum(healthy_years_difference))
 
 # ----- Life years to do ------
 
 life_years_cycle <- all_data |>
-  filter(value != "dead") |>
+  filter(!grepl("dead", value)) |>
   group_by(scen, cycle) |>
   summarise(life_years = n_distinct(id), .groups = "drop")
 
@@ -420,29 +429,38 @@ sum_life_years <- life_years_cycle_diff |>
 #### test alternative with people
 ### Same result as calculation above
 people_sum <- people |>
-              group_by(scen) |>
-              summarise(sum(pop))
+  group_by(scen) |>
+  summarise(sum(pop))
 
 
 # ----- Incidence diseases -----
 
 ## Count 
 count_inc <- all_data |> 
-  filter(!value %in% c("healthy", "dead", "null")) |> 
-  group_by(id, scen, value) |>  
+  filter(!grepl("dead|healthy|null", value)) |> 
+  group_by(id, scen, value) |> 
+  # to_duckdb() |> 
   filter(cycle == min(cycle)) |> 
   ungroup() |> 
   filter(cycle > 0) |> 
-  group_by(cycle, scen, value) |> 
+  group_by(agegroup_cycle, gender, cycle, scen, value) |> 
   summarise(n = dplyr::n()) |> 
   collect()
+
+ggplot(count_inc) +
+  aes(x = cycle, y = n, colour = scen) +
+  geom_line() +
+  scale_color_hue(direction = 1) +
+  theme_minimal() +
+  facet_wrap(vars(value), scales = "free_y")
+
 
 
 ## Count difference by scenario
 
 # Summarise counts by scenario and value
 count_inc_summary <- count_inc |>
- # filter(cycle < 10) |> ## remove testing
+  filter(cycle < 10) |> ## remove testing
   group_by(scen, value) |>
   summarise(total = sum(n), .groups = "drop")
 
@@ -468,7 +486,7 @@ count_inc_diff <- count_inc_summary |>
 
 ### ALI's incidence code
 inc_age_gender <- all_data |> 
-  filter(!value %in% c("healthy", "dead", "null")) |> 
+  filter(!(grepl("healthy|dead|null", value))) |> 
   group_by(id, scen, value) |>  
   filter(cycle == min(cycle)) |> 
   ungroup() |> 
@@ -505,7 +523,20 @@ ggplotly((inc_age_w %>%
 
 
 ############################ TO HERE
- ####
+####
+
+
+crude_rates_dead <- inc_death %>%
+  group_by(agegroup_cycle, cycle, scen) |>
+  filter(cycle > 1) |>
+  summarise(n = n(), .groups = "drop") %>%
+  ungroup() |>
+  left_join(people, by = c("agegroup_cycle", "scen", "cycle")) |>
+  ungroup() |> 
+  group_by(agegroup_cycle, cycle, scen) |> 
+  reframe(n = sum(n), pop = sum(pop)) |> 
+  mutate(crude_rate = if_else(pop > 0, n / pop * 100000, NA_real_)) %>%
+  filter(!is.na(crude_rate))
 
 
 
@@ -538,16 +569,16 @@ std_rates_inc_esp <- calculate_std_rates_inc(crude_rates = inc_age_gender_uc, re
 ## Graph
 
 ggplotly(std_rates_inc_ref %>%
-  filter(cycle >= 1L & cycle <= 30L) %>%
-  filter(value %in% c("all_cause_dementia", 
-                      "breast_cancer", "colon_cancer", "copd", "coronary_heart_disease", "depression", "diabetes", "lung_cancer", 
-                      "parkinson", "stroke")) %>%
-  ggplot() +
-  aes(x = cycle, y = age_std_rate, colour = scen) +
-  geom_smooth(se = FALSE) +
-  scale_color_hue(direction = 1) +
-  theme_minimal() +
-  facet_wrap(vars(value), scales = "free_y"))
+           filter(cycle >= 1L & cycle <= 30L) %>%
+           filter(value %in% c("all_cause_dementia", 
+                               "breast_cancer", "colon_cancer", "copd", "coronary_heart_disease", "depression", "diabetes", "lung_cancer", 
+                               "parkinson", "stroke")) %>%
+           ggplot() +
+           aes(x = cycle, y = age_std_rate, colour = scen) +
+           geom_smooth(se = FALSE) +
+           scale_color_hue(direction = 1) +
+           theme_minimal() +
+           facet_wrap(vars(value), scales = "free_y"))
 
 
 ###
