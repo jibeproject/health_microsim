@@ -128,6 +128,8 @@ suppressPackageStartupMessages({
 
 all_data <- arrow::open_dataset("temp/base_210725_w_exp") |> collect()
 
+all_data <- arrow::open_dataset("Y:/HealthImpact/Data/Country/UK/JIBE_health_output_data/base_20p_10yrs_w_fixed_hd_250725.parquet") |> collect()
+
 people <- all_data |> 
   group_by(agegroup_cycle, gender, cycle, scen) |> 
   summarise(pop = n_distinct(id[!grepl("dead|null", value)])) |> 
@@ -168,7 +170,7 @@ std_rates_dead <- crude_rates_dead |>
   left_join(ref_weights |> dplyr::select(-dplyr::any_of("pop")), by = c("gender", "agegroup_cycle")) |>
   filter(!is.na(weight)) |>
   mutate(rate_w=crude_rate*weight)  |>
-  group_by(cycle, scen) |>
+  group_by(cycle, scen, gender) |> # and gender? (BELEN)
   summarize(
     age_std_rate = sum(rate_w),
     .groups = "drop"
@@ -179,6 +181,7 @@ ggplotly(ggplot(std_rates_dead) +
            geom_smooth(se=FALSE) +
            labs(title = "Age standardised death rate using reference population") +
            scale_color_hue(direction = 1) +
+           facet_wrap(~ gender) +
            theme_minimal())
 
 

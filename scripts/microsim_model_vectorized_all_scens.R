@@ -5,7 +5,7 @@ library(future.apply)
 # For directory/file structure
 library(here)
 # For DR PA 
-library(drpa)
+# library(drpa)
 # For fast reading/processing
 library(arrow)
 library(tictoc)
@@ -14,7 +14,7 @@ library(data.table)  # For faster data operations
 library(stringi)     # For faster string operations
 
 # Boolean variable for dir/file paths
-FILE_PATH_BELEN <- FALSE
+FILE_PATH_BELEN <- TRUE
 FILE_PATH_HPC <- FALSE
 
 options(future.globals.maxSize = +Inf)
@@ -26,15 +26,15 @@ plan("future::multisession")
 #}
 
 # Set sample_pro to be greater than zero
-sample_prop <- 0.001
+sample_prop <- 0.01
 
 # Number of cycles/years the simulation works
-n.c <- 1
+n.c <- 2
 
 # Define DISEASE RISK to incorporate disease interaction
-DISEASE_RISK <- FALSE
+DISEASE_RISK <- TRUE
 
-for (scen in c("base", "safestreet", "green", "both"))
+for (scen in c("base")) #for (scen in c("base", "safestreet", "green", "both"))
 {
   # scen <- 'base'
   # For reproducibility across scenarios, set it inside the loop
@@ -87,7 +87,7 @@ for (scen in c("base", "safestreet", "green", "both"))
   synth_pop <- synth_pop |> collect()
   
   # Remove all but PA RRs
-  synth_pop <- synth_pop |> dplyr::select(-c(contains("ndvi") | contains("noise") | contains("pm") | contains("no2"))) 
+  # synth_pop <- synth_pop |> dplyr::select(-c(contains("ndvi") | contains("noise") | contains("pm") | contains("no2"))) 
   
   # Rename parkinson's disease to parkinson
   colnames(synth_pop) <- gsub("parkinson's_disease", "parkinson", colnames(synth_pop))
@@ -138,7 +138,7 @@ for (scen in c("base", "safestreet", "green", "both"))
     
   } else {
     # Option 3: Manchester path (default if FILE_PATH_BELEN is TRUE and FILE_PATH_HPC is FALSE)
-    prev <- read_csv(here(paste0("manchester/health/processed/", SCEN_SHORT_NAME, "_prevalence_id.csv")))
+    prev <- read_csv(here(paste0("manchester/health/processed/", SCEN_SHORT_NAME, "_prevalence_id.csv"))) ## TO CHANGE with latest
   }
   
   
@@ -159,7 +159,7 @@ for (scen in c("base", "safestreet", "green", "both"))
     
   } else {
     # Option 3: Manchester path (default if FILE_PATH_BELEN is TRUE and FILE_PATH_HPC is FALSE)
-    zones <- read_csv(here(paste0("manchester/health/processed/", SCEN_SHORT_NAME, "zoneSystem.csv")))
+    zones <- read_csv(here(paste0("manchester/health/processed/zoneSystem.csv")))
   }
   
   
@@ -270,7 +270,7 @@ for (scen in c("base", "safestreet", "green", "both"))
               dimnames = list(paste0("id", 1:n.i, sep = ""),
                               paste0("c", 0:n.c, sep = "")))
   
-  prev$diseases <- gsub("copd","", as.character(prev$diseases))
+  # prev$diseases <- gsub("copd","", as.character(prev$diseases)) # not sure why we are removing copd
   prev$diseases <- trimws(prev$diseases)
   
   
@@ -408,8 +408,8 @@ for (scen in c("base", "safestreet", "green", "both"))
     setDT(hd)
     
     # Create keys for fast lookups
-    if ("location_code" %in% names(hd)) {
-      hd[, lookup_key := paste(age, sex, cause, location_code, measure, sep = "|")]
+    if ("lsoa21cd" %in% names(hd)) {
+      hd[, lookup_key := paste(age, sex, cause, lsoa21cd, measure, sep = "|")]
     } else {
       hd[, lookup_key := paste(age, sex, cause, measure, sep = "|")]
     }
@@ -448,7 +448,7 @@ for (scen in c("base", "safestreet", "green", "both"))
         if (dis == "all_cause_mortality") {
           location_col <- "lsoa21cd"
         } else {
-          location_col <- "ladcd"
+          location_col <- "lsoa21cd" ## Updated data columns now matching java
         }
         
         lookup_keys <- paste(current_age,
