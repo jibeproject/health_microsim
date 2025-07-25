@@ -213,7 +213,7 @@ count_inc_wp <- all_data |>
 
 
 crude_rates_inc <- count_inc_wp |> 
-  group_by(agegroup_cycle, gender, cycle, scen, value) |> 
+  group_by(agegroup_cycle, gender, cycle, scen, value) |> # grouping by gender here so below too
   reframe(n = sum(n), pop = sum(pop)) |> 
   mutate(crude_rate = if_else(pop > 0, n / pop * 100000, NA_real_)) |> 
   filter(!is.na(crude_rate))
@@ -224,14 +224,16 @@ std_rates_inc <- crude_rates_inc |>
   left_join(ref_weights |> dplyr::select(-dplyr::any_of("pop")), by = c("gender", "agegroup_cycle")) |>
   filter(!is.na(weight)) |>
   mutate(rate_w=crude_rate*weight)  |>
-  group_by(cycle, value, scen) |>
+  group_by(cycle, value, scen, gender) |>
   summarize(
     age_std_rate = sum(rate_w),
     .groups = "drop"
   ) |> ungroup()
 
+std_rates_inc$gender <- as.factor(std_rates_inc$gender)
+
 ggplotly(ggplot(std_rates_inc) +
-           aes(x = cycle, y = age_std_rate, colour = value, group =  scen) +
+           aes(x = cycle, y = age_std_rate, colour =  gender) +
            geom_smooth(se = FALSE) +
            scale_color_hue(direction = 1) +
            labs(title = "reference (10 years)")+
