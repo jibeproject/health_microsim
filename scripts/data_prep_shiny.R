@@ -46,7 +46,7 @@ get_summary <- function(SCEN_NAME, group_vars = NULL, summarise = TRUE) {
   } else {
     file_path <- paste0(
       "/media/ali/Expansion/backup_tabea/manchester-main/scenOutput/",
-      SCEN_NAME, "/", microdata_dir_name, "/pp_healthDiseaseTracker_2051.csv"
+      SCEN_NAME, "/", microdata_dir_name, "/pp_healthDiseaseTracker_2031.csv"
     )
   }
   
@@ -113,6 +113,14 @@ get_summary <- function(SCEN_NAME, group_vars = NULL, summarise = TRUE) {
   # # Filter out early dead and merge population info
   m <- m |> 
     filter(!grepl("dead", c1)) |> 
+    mutate(across(
+      everything(),
+      ~ ifelse(
+        str_detect(., "dead"),
+        str_extract(., "\\bdead[^|,;]*"),
+        .
+      )
+    )) |> 
     left_join(synth_pop |> dplyr::select(id, age, agegroup, gender, ladcd, lsoa21cd)) 
   #|> 
   #   mutate(across(starts_with("c"), ~ ifelse(str_detect(., "killed"), "dead", .))) # Ali to update
