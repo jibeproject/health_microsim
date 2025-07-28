@@ -126,9 +126,9 @@ suppressPackageStartupMessages({
 
 
 
-all_data <- arrow::open_dataset("temp/base_210725_w_exp") |> collect()
+all_data <- arrow::open_dataset("temp/base_20p_10yrs_w_fixed_hd_250725.parquet") |> collect()
 
-all_data <- arrow::open_dataset("Y:/HealthImpact/Data/Country/UK/JIBE_health_output_data/base_20p_10yrs_w_fixed_hd_250725.parquet") |> collect()
+#all_data <- arrow::open_dataset("Y:/HealthImpact/Data/Country/UK/JIBE_health_output_data/base_20p_10yrs_w_fixed_hd_250725.parquet") |> collect()
 
 people <- all_data |> 
   group_by(agegroup_cycle, gender, cycle, scen) |> 
@@ -240,4 +240,21 @@ ggplotly(ggplot(std_rates_inc) +
            theme_minimal() +
            facet_wrap(vars(value), scales = "free_y")
 )
+
+ggplotly(ggplot(std_rates_inc |> filter(gender == 1)) +
+           aes(x = cycle, y = age_std_rate, colour = scen) +
+           geom_smooth(se = F) + labs(title = "Age standardised incidence rate for men") +
+           scale_color_hue(direction = 1) +
+           theme_minimal() +
+           facet_wrap(vars(value), scales = "free_y"))
+
+
+ggplotly(ggplot(std_rates_inc |> filter(gender == 2)) +
+           aes(x = cycle, y = age_std_rate, colour = scen) +
+           geom_smooth(se = F) + labs(title = "Age standardised incidence rate for women") +
+           scale_color_hue(direction = 1) +
+           theme_minimal() +
+           facet_wrap(vars(value), scales = "free_y"))
+
+
 
