@@ -46,7 +46,7 @@ get_summary <- function(SCEN_NAME, group_vars = NULL, summarise = TRUE) {
   } else {
     file_path <- paste0(
       "/media/ali/Expansion/backup_tabea/manchester-main/scenOutput/",
-      SCEN_NAME, "/", microdata_dir_name, "/pp_healthDiseaseTracker_2031.csv"
+      SCEN_NAME, "/", microdata_dir_name, "/pp_healthDiseaseTracker_2051.csv"
     )
   }
   
@@ -178,8 +178,8 @@ get_summary <- function(SCEN_NAME, group_vars = NULL, summarise = TRUE) {
 all_data <- list(
   base = get_summary("base", summarise = FALSE) |> mutate(scen = "reference"),
   # green = get_summary("green", summarise = FALSE) |> mutate(scen = "green"),
-  safeStreet = get_summary("SafeStreet", summarise = FALSE) |> mutate(scen = "safeStreet"),
-  both = get_summary("Both", summarise = FALSE) |> mutate(scen = "both")
+  #safeStreet = get_summary("SafeStreet", summarise = FALSE) |> mutate(scen = "safeStreet"),
+  both = get_summary("both", summarise = FALSE) |> mutate(scen = "both")
 )
 
 
