@@ -32,10 +32,14 @@ zones <- if (!FILE_PATH_BELEN) {
 
 # === Data loading function ===
 
-get_summary <- function(SCEN_NAME, group_vars = NULL, summarise = TRUE) {
-  microdata_dir_name <- "microData"
+get_summary <- function(SCEN_NAME, final_year = 2051, group_vars = NULL, summarise = TRUE, microdata_dir_name = "microdata") {
+  #microdata_dir_name <- "microData"
   
   # SCEN_NAME <- "base"
+  
+  print(microdata_dir_name)
+  
+  #browser()
   
   # Select correct file path
   if (exists("FILE_PATH_BELEN") && isTRUE(FILE_PATH_BELEN)) {
@@ -46,7 +50,7 @@ get_summary <- function(SCEN_NAME, group_vars = NULL, summarise = TRUE) {
   } else {
     file_path <- paste0(
       "/media/ali/Expansion/backup_tabea/manchester-main/scenOutput/",
-      SCEN_NAME, "/", microdata_dir_name, "/pp_healthDiseaseTracker_2051.csv"
+      SCEN_NAME, "/", microdata_dir_name, "/pp_healthDiseaseTracker_", final_year, ".csv"
     )
   }
   
