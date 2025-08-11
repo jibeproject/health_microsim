@@ -8,13 +8,15 @@ suppressPackageStartupMessages({
   library(esquisse)
   library(ggplot2)
   library(plotly)
+  library(readr)
+  library(rlang)
 })
 
 # === Global Settings ===
-FILE_PATH_BELEN <- FALSE # for location input files
-DATA_PATH_BELEN <- FALSE # for location output files for shiny# Scaling factor for results
+FILE_PATH_BELEN <- TRUE # for location input files
+DATA_PATH_BELEN <- TRUE # for location output files for shiny# Scaling factor for results
 
-SCALING <- 20 # for a 5% sample and to be used to multiply results
+SCALING <- 5 # change depending on sample size
 
 # Set path based on condition
 base_path <- if (DATA_PATH_BELEN) {
@@ -181,49 +183,32 @@ all_data <- list(
 # 5% sample with future exposures
 all_data <- bind_rows(all_data) 
 
-# 100% pop without future exposures
-# all_data <- arrow::open_dataset("Y:/HealthImpact/Data/Country/UK/JIBE_health_output_data//all_data.parquet/") |> to_duckdb() #|> collect()
+## 20% sample for 10 years and reference only
+all_data <- arrow::open_dataset("Y:/HealthImpact/Data/Country/UK/JIBE_health_output_data/base_depression_remission_5_yrs_updated_hd_040825_060825.parquet") |> collect()
 
-# ------ check ids initial pop (when using sample) ------
-
-# initial_ref_IDs <- all_data |> filter(cycle == 0, scen == "reference") |> distinct(id) |> dplyr::select(id)
-# 
-# initial_both_IDs <- all_data |> filter(cycle == 0, scen == "both") |> distinct(id) |> dplyr::select(id)
-# 
-# anti_join(initial_both_IDs, initial_ref_IDs)|> View()
-# 
-# diff_ids <- all_data |> filter (id %in% (anti_join(initial_both_IDs, initial_ref_IDs) |> dplyr::select(id) |> pull()), scen != "safeStreet") |> distinct(id) |> nrow()
 
 # ----- General data inputs -------
 
 ## People alive per cycle
 
 people <- all_data |> 
-  group_by(agegroup_cycle, cycle, scen) |> 
+  group_by(agegroup_cycle, cycle, scen, ladcd, gender) |> 
   #to_duckdb() |> 
   summarise(pop = n_distinct(id[!grepl("dead|null", value)])) |> 
   pivot_longer(cols = pop) |> 
   rename(pop = value ) |> 
+  left_join(zones |> select(ladcd, ladnm) |> distinct(), join_by(ladcd)) |>
   collect()
 
-## Baseline pop reference weights. To use in ASR
-
-ref_weights <- people |>
-  filter(scen == "reference", cycle == 1) |>
-  group_by(agegroup_cycle) |>
-  summarise(pop = sum(pop, na.rm = TRUE), .groups = "drop") |>
-  ungroup() |>
-  mutate(total_pop =  sum(pop),
-         weight = pop / total_pop) |>
-  dplyr::select(agegroup_cycle, weight, pop, total_pop)
-
-ggplot(ref_weights) +
-  aes(x = agegroup_cycle, y = weight) +
-  geom_col(fill = "#112446") +
-  labs(title = "Population weights ref population") +
-  #facet_wrap(~gender) +
-  theme(axis.text.x = element_text(angle = 90L))
-
+weights <- people %>%
+  filter(scen == "reference", cycle == 0) %>%
+  group_by(agegroup_cycle) %>%
+  summarise(pop = sum(pop), .groups = "drop") %>%
+  mutate(
+    total_pop = sum(pop),
+    weight = pop / total_pop
+  ) %>%
+  select(agegroup_cycle, weight)
 
 ## European population weights
 esp_5yr <- tibble::tibble(
@@ -243,16 +228,34 @@ esp_5yr <- tibble::tibble(
 esp_5yr <- esp_5yr %>%
   mutate(weight = weight / sum(weight))
 
-esp_5yr_gendered <- esp_5yr %>%
-  crossing(gender = c(1, 2)) #|> # 1 = male, 2 = female
-  #mutate(weight = weight / 2) 
 
-ggplot(esp_5yr_gendered) +
+ggplot(weights) +
   aes(x = agegroup_cycle, y = weight) +
   geom_col(fill = "#112446") +
   labs(title = "Population weights ref population") +
-  facet_wrap(~gender) +
   theme(axis.text.x = element_text(angle = 90L))
+
+## Age structure over time
+
+weights_time <- people |>
+  filter(scen == "reference") |> 
+  group_by(agegroup_cycle, cycle) |>
+  summarise(pop = sum(pop), .groups = "drop") |>
+  mutate(
+    total_pop = sum(pop),
+    weight = pop / total_pop
+  ) |>
+  select(agegroup_cycle, cycle, weight)
+
+pop <- ggplot(weights_time |> filter(cycle %in% c(1, 5, 10))) +
+  aes(x = agegroup_cycle, y = weight, fill = factor(cycle)) +
+  geom_col(position = position_dodge()) +
+  scale_fill_viridis_d(name = "Cycle") +  # nicer palette, optional
+  theme_minimal() +
+  labs(x = "Age Group", y = "Weight")
+
+ggplotly(pop)
+
 
 # ----- Dead incidence data ----
 
@@ -260,6 +263,7 @@ inc_death <- all_data |>
   #group_by(id, scen) |> 
   filter(grepl("dead", value)) |>
   ungroup() |> 
+  left_join(zones |> select(ladcd, ladnm) |> distinct(), join_by(ladcd)) |>
   collect()
 
 
@@ -274,87 +278,7 @@ mean_age_dead <- inc_death %>%
   ) |>
   ungroup()
 
-
-## 2) Age standardized mortality rate per 100,000 people
-
-# Calculate crude incidence rates per 100,000
-
-crude_rates_dead <- inc_death %>%
-  group_by(agegroup_cycle, cycle, scen) |>
-  filter(cycle > 1) |>
-  summarise(n = n(), .groups = "drop") %>%
-  ungroup() |>
-  left_join(people, by = c("agegroup_cycle", "scen", "cycle")) |>
-  ungroup() |> 
-  group_by(agegroup_cycle, cycle, scen) |> 
-  reframe(n = sum(n), pop = sum(pop)) |> 
-  mutate(crude_rate = if_else(pop > 0, n / pop * 100000, NA_real_)) %>%
-  filter(!is.na(crude_rate))
-
-ggplotly(ggplot(crude_rates_dead) +
-           aes(x = agegroup_cycle, y = crude_rate) +
-           geom_col(position = "dodge2") +
-           scale_fill_gradient() +
-           theme_minimal() +
-           theme(axis.text.x = element_text(angle = 90L)) +
-           facet_wrap(vars(cycle))
-)
-
-
-# Functions to use either European or baseline population derived weights. 
-
-calculate_std_rates <- function(crude_rates, ref_weights, use_esp = FALSE) {
-  
-  #crude_rates <- crude_rates_dead, ref_weights
-  #use_esp <- F
-  if (use_esp) {
-    weights <- esp_5yr  # Fixed European standard weights
-  } else {
-    weights <- ref_weights  # baseline weights
-  }
-  
-  std_rates_dead <- crude_rates |>
-    dplyr::select(-dplyr::any_of("pop")) |>
-    left_join(weights |> dplyr::select(-dplyr::any_of("pop")) |> 
-                group_by(agegroup_cycle) |> reframe(weight = sum(weight)), by = c("agegroup_cycle")) |>
-    filter(!is.na(weight)) |>
-    mutate(rate_w=crude_rate*weight)  |>
-    group_by(cycle, scen) |>
-    summarize(
-      age_std_rate = sum(rate_w),
-      .groups = "drop"
-    ) |> ungroup()
-  
-  return(std_rates_dead)
-}
-
-
-### Note belen@ not all age groups have ASR due to no dead observed (e.g. 5-9, 10-14, 25-29)
-# Use baseline population weights
-std_rates_ref <- calculate_std_rates(crude_rates_dead, ref_weights) 
-
-# Use European standardised population
-std_rates_esp <- calculate_std_rates(crude_rates_dead, ref_weights, use_esp = TRUE)
-
-## Plot (change rates used with base population or european population)
-
-ggplotly(ggplot(std_rates_ref) +
-           aes(x = cycle, y = age_std_rate, colour = scen) +
-           geom_smooth(se=FALSE) +
-           labs(title = "Age standardised death rate using reference population") +
-           scale_color_hue(direction = 1) +
-           #facet_wrap(~gender) +
-           theme_minimal())
-
-ggplotly(ggplot(std_rates_esp) +
-           aes(x = cycle, y = age_std_rate, colour = scen) +
-           geom_smooth(se=FALSE) +
-           scale_color_hue(direction = 1) +
-           labs(title = "Age standardised death rate using European population") +
-           #facet_wrap(~gender) +
-           theme_minimal())
-
-## 3) Difference number of deaths
+## 2) Difference number of deaths
 
 dead_diff <- inc_death %>%
   group_by(agegroup_cycle, gender, cycle, scen) %>%
@@ -375,6 +299,65 @@ dead_diff <- inc_death %>%
 dead_diff_acc <- dead_diff |>
   group_by(scen) |>
   summarise(sum(difference))
+
+# 3) trajectories of those who survive in scenarios (what diseases do they develop)
+
+# Define death states
+death_values <- c("dead", "dead_car", "dead_bike", "dead_walk")
+
+# ----  Identify death cycles per ID per scenario ----
+death_cycles <- all_data %>%
+  filter(value %in% death_values) %>%
+  group_by(id, scen) %>%
+  summarise(death_cycle = min(cycle), .groups = "drop")
+
+# ---- Find IDs who are dead in "reference" but alive in "both" ---- NA means does not die in 30 years period
+death_compare <- death_cycles %>%
+  pivot_wider(names_from = scen, values_from = death_cycle, names_prefix = "death_")
+
+# IDs of interest
+alive_in_both_dead_in_ref <- death_compare %>%
+  filter(!is.na(death_reference),        # died in reference
+         is.na(death_both)) %>%          # never died in both
+  pull(id)
+
+# ---- Extract disease onsets (non-death values) in "both" ----
+disease_onsets <- all_data %>%
+  filter(scen == "both", 
+         !(value %in% death_values),     # exclude deaths
+         !(value %in% c("healthy", "null"))) %>%  # optional: exclude healthy/null
+  group_by(id, value) %>%
+  summarise(onset_cycle_both = min(cycle), .groups = "drop") %>%
+  filter(id %in% alive_in_both_dead_in_ref)
+
+# ---- Combine with death info for reference ----
+final_summary <- disease_onsets %>%
+  left_join(death_cycles %>% filter(scen == "reference"), by = "id") %>%
+  rename(death_cycle_reference = death_cycle) %>%
+  filter(onset_cycle_both > death_cycle_reference)
+
+# ---- Add age, age group, and sex at onset cycle ----
+final_summary <- final_summary %>%
+  left_join(
+    all_data %>% 
+      select(id, cycle, age_cycle, agegroup_cycle, gender) %>% 
+      distinct(), 
+    by = c("id" = "id", "onset_cycle_both" = "cycle")
+  )
+# ---- Summarise data ----
+
+# Summarize by disease and sex
+summary_by_disease_sex <- final_summary %>%
+  group_by(value, gender) %>%
+  summarise(n_people = n_distinct(id), .groups = "drop") %>%
+  arrange(value, desc(n_people))
+
+# By disease & age group
+summary_by_disease_age <- final_summary %>%
+  group_by(value, agegroup_cycle) %>%
+  summarise(n_people = n_distinct(id), .groups = "drop") %>%
+  arrange(value, agegroup_cycle)
+
 
 # ----- Healthy years ----
 
@@ -401,7 +384,7 @@ sum_healthy_years <- healthy_total_cycle_diff |>
   group_by(scen) |>
   summarise(sum(healthy_years_difference))
 
-# ----- Life years to do ------
+# ----- Life years ------
 
 life_years_cycle <- all_data |>
   filter(!grepl("dead", value)) |>
@@ -437,7 +420,8 @@ people_sum <- people |>
 
 ## Count 
 count_inc <- all_data |> 
-  filter(!grepl("dead|healthy|null", value)) |> 
+  filter(!grepl("dead|healthy|null", value)) |>
+         # age_cycle < 80) |> ## testing limiting age groups
   group_by(id, scen, value) |> 
   # to_duckdb() |> 
   filter(cycle == min(cycle)) |> 
@@ -447,9 +431,10 @@ count_inc <- all_data |>
   summarise(n = dplyr::n()) |> 
   collect()
 
+### fix plot with groupin
 ggplot(count_inc) +
   aes(x = cycle, y = n, colour = scen) +
-  geom_line() +
+  geom_smooth(se = FALSE) +
   scale_color_hue(direction = 1) +
   theme_minimal() +
   facet_wrap(vars(value), scales = "free_y")
@@ -460,7 +445,7 @@ ggplot(count_inc) +
 
 # Summarise counts by scenario and value
 count_inc_summary <- count_inc |>
-  filter(cycle < 10) |> ## remove testing
+  # filter(cycle < 20) |> ## remove testing
   group_by(scen, value) |>
   summarise(total = sum(n), .groups = "drop")
 
@@ -479,46 +464,414 @@ count_inc_diff <- count_inc_summary |>
   )
 
 
-## Average age of onset
+## Average age onset diseases
 
-## tO DO 
-## Age standardised rate (work in progress)
 
-### ALI's incidence code
-inc_age_gender <- all_data |> 
-  filter(!(grepl("healthy|dead|null", value))) |> 
+
+## Incidence
+
+incidence_all <- all_data |> 
+  filter(!grepl("dead|healthy|null|depression", value)) |>
   group_by(id, scen, value) |>  
   filter(cycle == min(cycle)) |> 
   ungroup() |> 
-  filter(cycle > 0) |> 
-  group_by(agegroup_cycle, gender, cycle, scen, value) |>
-  summarise(n = dplyr::n()) |> 
-  collect()
+  left_join(zones |> select(ladcd, ladnm) |> distinct(), join_by(ladcd))
 
-inc_age_gender_uc <- inc_age_gender |> 
-  left_join(people |> dplyr::select(-name)) |> 
-  mutate(crude_rate = n/pop * 10^5)
 
-inc_age_w <- inc_age_gender_uc |> 
-  left_join(ref_weights, by = c("agegroup_cycle", "gender")) |> 
-  mutate(weighted_rate = crude_rate * weight) |> 
-  group_by(cycle, scen, value) |>
-  reframe(age_std_rate = sum(weighted_rate, na.rm = TRUE)) |> 
+incidence_depression <- all_data |>
+  filter(value == "depression") |>
+  arrange(id, scen) |>
+  group_by(id, scen) |>
+  mutate(
+    prev_value = lag(value),
+    is_new_depression = case_when(
+      is.na(prev_value) ~ TRUE,                 # first record
+      prev_value != "depression" ~ TRUE,        # new episode if previous is not depression
+      TRUE ~ FALSE                              # otherwise not new
+    )
+  ) |>
+  filter(is_new_depression) |>               # keep only new depression episodes
+  ungroup() |>
+  left_join(zones %>% select(ladcd, ladnm) %>% distinct(), join_by(ladcd))
+
+incidence <- bind_rows(incidence_all, incidence_depression) |>
+  bind_rows(inc_death) |>
+  mutate(
+    value = if_else(grepl("dead", value), "dead", value),
+    agegroup_cycle = cut(
+      age_cycle,
+      breaks = c(seq(0, 100, by = 5), Inf),  # now covers 100+
+      labels = c(
+        paste(seq(0, 95, by = 5), seq(4, 99, by = 5), sep = "-"),
+        "100+"
+      ),
+      right = FALSE,
+      include.lowest = TRUE
+    )
+  )
+
+
+
+
+
+
+mean_age_disease <- incidence |>
+  group_by(scen, value) |>
+  summarize(
+    mean_age_cycle = mean(age_cycle, na.rm = TRUE),
+    .groups = "drop")
+  # ) |>
+  # ungroup() |> 
+  # pivot_wider(names_from = scen, 
+  #             values_from = mean_age_cycle) |>
+  # mutate(diff_days = (both - reference) *365)
+
+
+### Age standardised rates deads and diseases (TO DO, ADD option to group by cycle)
+
+### Add age ASR
+
+
+
+library(dplyr)
+
+calc_asr <- function(data_cases, cause, people, ref_weights, group_var = NULL) {
+  # Base grouping for crude age-specific rates
+  base_groups <- c("agegroup_cycle", "scen", "cycle") ## how to group by cycles (e.g. 1 to 5)
+  group_vars <- if (!is.null(group_var)) c(base_groups, group_var) else base_groups
+  
+  # data_cases <- incidence
+  # cause <-  "all_cause_mortality"
+  
+  # 1. Crude counts
+  crude_counts <- data_cases %>%
+    filter(value == cause) %>% 
+    group_by(across(all_of(group_vars))) %>%
+    summarise(n = n(), .groups = "drop")
+  
+  # 2. Population counts
+  pop_counts <- people %>%
+    group_by(across(all_of(group_vars))) %>%
+    summarise(pop = sum(pop, na.rm = TRUE), .groups = "drop")
+  
+  # 3. Crude rates
+  crude_rates <- crude_counts %>%
+    left_join(pop_counts, by = group_vars) %>%
+    mutate(crude_rate = if_else(pop > 0, n / pop * 1e5, NA_real_)) %>%
+    filter(!is.na(crude_rate))
+  
+  # 4. Join reference weights (no LAD in weights — join only by age & gender if present)
+  join_vars <- intersect(names(ref_weights), c("agegroup_cycle", "gender"))
+  std_rates <- crude_rates %>%
+    left_join(ref_weights, by = join_vars) %>%
+    filter(!is.na(weight)) %>%
+    mutate(rate_w = crude_rate * weight)
+  
+  # 5. Final ASR (aggregate)
+  summary_groups <- c("cycle", "scen")
+  if (!is.null(group_var)) summary_groups <- c(summary_groups, group_var)
+  
+  std_rates_summary <- std_rates %>%
+    group_by(across(all_of(summary_groups))) %>%
+    summarise(age_std_rate = sum(rate_w), .groups = "drop")
+  
+  return(list(std_rates_summary, crude_rates))
+}
+
+# Population with LAD and gender
+
+lads <- zones |> distinct(ladnm, ladcd)
+people <- all_data |> 
+  mutate(
+    value = if_else(grepl("dead", value), "dead", value),
+    agegroup_cycle = cut(
+      age_cycle,
+      breaks = c(seq(0, 100, by = 5), Inf),  # now covers 100+
+      labels = c(
+        paste(seq(0, 95, by = 5), seq(4, 99, by = 5), sep = "-"),
+        "100+"
+      ),
+      right = FALSE,
+      include.lowest = TRUE
+    )
+  ) |> 
+  group_by(agegroup_cycle, gender, cycle, scen, ladcd) %>% 
+  summarise(pop = n_distinct(id[!grepl("dead|null", value)]), .groups = "drop") |>
+   left_join(lads) |>
   ungroup()
 
-ggplotly((inc_age_w %>%
-            filter(cycle >= 2L & cycle <= 30L) %>%
-            filter(!(value %in% c("bladder_cancer", "endometrial_cancer", 
-                                  "esophageal_cancer", "gastric_cardia_cancer", "liver_cancer", "myeloid_leukemia", "myeloma", "severely_injured_bike", 
-                                  "severely_injured_car", "severely_injured_walk"))) %>%
-            ggplot() +
-            aes(x = cycle, y = age_std_rate, colour = scen) +
-            geom_smooth(se=FALSE) +
-            scale_color_hue(direction = 1) +
-            theme_minimal() +
-            facet_wrap(vars(value), scales = "free_y")
-))
+# Overall reference weights (for all breakdowns)
+ref_weights_overall <- people %>%
+  filter(scen == "reference", cycle == 0) %>%
+  ungroup() %>%
+  group_by(agegroup_cycle) %>%
+  summarise(pop = sum(pop), .groups = "drop") %>%
+  mutate(total_pop = sum(pop), weight = pop / total_pop) %>%
+  select(agegroup_cycle, weight)
 
+ref_weights_gender <- people |>
+  filter(scen == "reference", cycle == 0) |>
+  group_by(agegroup_cycle, gender) |>
+  summarise(pop = sum(pop), .groups = "drop") |>
+  group_by(gender) |>
+  mutate(total_pop = sum(pop),
+         weight    = pop / total_pop) |>
+  ungroup() |>
+  select(agegroup_cycle, gender, weight)
+
+# 1. Overall
+overall_asr <- calc_asr(incidence, "dead", people, ref_weights_overall)
+
+# 2. Gender
+gender_asr <- calc_asr(incidence, "dead", people, ref_weights_gender, group_var = "gender")
+
+# 3. LAD
+lad_asr <- calc_asr(incidence, "dead", people, ref_weights_overall, group_var = "ladcd")
+
+# 4. LAD × Gender
+lad_gender_asr <- calc_asr(all_data, "dead", people, ref_weights_gender, group_var = c("ladcd", "gender"))
+
+
+lads <- zones |> distinct(ladnm, ladcd)
+
+
+## Compare with input data
+
+transitions <- read_csv("Y:/HealthImpact/Data/Country/UK/JIBE_health_input_data/health_transitions_manchester_07082025.csv")
+
+# transitions <- read_csv("manchester/health/processed/health_transitions_manchester_raw.csv")
+
+mortality_input <- transitions |> ### Try again with lsoa life table
+  filter(cause == "all_cause_mortality") |>
+  mutate(agegroup_cycle = cut(
+    age,
+    breaks = c(seq(0, 100, by = 5), Inf),  # now covers 100+
+    labels = c(
+      paste(seq(0, 95, by = 5), seq(4, 99, by = 5), sep = "-"),
+      "100+"
+    ),
+    right = FALSE,
+    include.lowest = TRUE
+  )) |>
+  group_by(agegroup_cycle, sex) |>
+  summarise(number = sum(rate), 
+            rate = mean(rate))
+
+
+people <- readr::read_csv("manchester/health/processed/popYear.csv") |>
+  dplyr::filter(year == 2021) |>
+  tidyr::pivot_longer(
+    cols = c(men, women),
+    names_to  = "sex",
+    values_to = "population"
+  ) |>
+  dplyr::mutate(
+    # make sex align with mortality_input
+    sex = dplyr::recode(sex, men = "male", women = "female"),
+    sex = as.character(sex),
+    agegroup_cycle = cut(
+      age,
+      breaks = c(seq(0, 100, by = 5), Inf),
+      labels = c(paste(seq(0, 95, by = 5), seq(4, 99, by = 5), sep = "-"), "100+"),
+      right = FALSE,
+      include.lowest = TRUE
+    )
+  ) |>
+  dplyr::group_by(agegroup_cycle, sex) |>
+  dplyr::summarise(pop = sum(population), .groups = "drop")
+
+mortality_input_manch <- mortality_input |>
+  dplyr::mutate(
+    sex = dplyr::case_when(
+      sex == 1 ~ "male",
+      sex == 2 ~ "female"
+    ),
+    sex = as.character(sex)
+  ) |>
+  dplyr::left_join(people, by = c("agegroup_cycle", "sex")) |>
+  dplyr::mutate(
+    dead = rate * pop,
+    crude_rate_100 = dead / pop * 100000
+  ) |>
+  # join weights ONLY on the columns that exist there
+  dplyr::left_join(ref_weights_overall, by = c("agegroup_cycle")) |>
+  dplyr::mutate(weighted_rate = crude_rate_100 * weight)
+
+
+
+ref_weights_overall <- people %>%
+  group_by(agegroup_cycle) %>%
+  summarise(pop = sum(pop), .groups = "drop") %>%
+  mutate(total_pop = sum(pop), weight = pop / total_pop) %>%
+  select(agegroup_cycle, weight)
+
+options(scipen = 999)
+
+
+
+
+## For comparison with modelled ASRs 
+ASR_gender <- mortality_input_manch %>%
+  group_by(sex) %>% ## check grouping makes sense
+  summarise(ASR = sum(weighted_rate, na.rm = TRUE), .groups = "drop")
+
+## Crude rates 
+
+gender_crude <- gender_asr[[2]] %>% 
+  select(agegroup_cycle, gender, crude_rate, cycle) %>%
+  left_join(
+    mortality_input,
+    join_by(agegroup_cycle == agegroup, gender == sex)
+  ) %>%
+  select(agegroup_cycle, gender, crude_rate, rate_100, cycle.x) %>%
+  pivot_longer(
+    cols = c(crude_rate, rate_100), 
+    names_to = "type", 
+    values_to = "rate"
+  ) |> ungroup()
+
+
+crude_plot <- ggplot(gender_crude) +
+  aes(x = agegroup_cycle, y = rate, fill = type) +
+  geom_col(position = "dodge") +
+  scale_fill_hue(direction = 1) +
+  theme_minimal() +
+  facet_wrap(cycle.x~gender)
+
+ggplotly(crude_plot)
+                    
+gender_crude <- gender_crude %>%
+  distinct() |>
+  pivot_wider(names_from = type, values_from = rate) %>%
+  mutate(ratio = if_else(
+    is.nan(rate_100 / crude_rate) | is.infinite(rate_100 / crude_rate),
+    0,
+    rate_100 / crude_rate
+  ))
+
+ratio_high <- gender_crude |> group_by(agegroup_cycle) |>
+              summarise(mean=mean(ratio), 
+                        median = median(ratio))
+
+
+############
+
+## Prevalence (to do)
+prevalence <- all_data |>
+  filter(!value %in% c("healthy", "dead")) |>
+  group_by(agegroup_cycle,  scen, value, cycle) |>  ## add agegroup cycle and gender
+  summarise(n = n(), .groups = "drop") |>
+  ungroup()
+
+pop_counts <- people |>
+  # filter(cycle > 1) |> 
+  group_by(agegroup_cycle, cycle) |>
+  summarise(pop = sum(pop, na.rm = TRUE), .groups = "drop")
+
+# Join counts and population, calculate crude rates
+## Adding variables to check population at risk and crude inc numbers
+crude_rates_prev <- prevalence |>
+  left_join(pop_counts, by = c("agegroup_cycle", "cycle")) |>
+  mutate(crude_rate = if_else(pop > 0, n / pop * 100000, NA_real_)) |>
+  filter(!is.na(crude_rate)) |> 
+  mutate(pop_risk= pop - n)
+
+## Transitions (take average by age, sex, cause)
+
+breaks <- c(seq(0, 85, by = 5), Inf)
+labels <- c(
+  "0-4", "5-9", "10-14", "15-19", "20-24", "25-29", 
+  "30-34", "35-39", "40-44", "45-49", "50-54", "55-59", 
+  "60-64", "65-69", "70-74", "75-79", "80-84", "85+"
+)
+
+transitions_ave <- transitions |> 
+mutate(agegroup_cycle = cut(
+             age,
+             breaks = breaks,
+             labels = labels,
+             right = FALSE,    # left-closed intervals: 0-4 includes 0, excludes 5
+             include.lowest = TRUE
+           )) |>
+  group_by(agegroup_cycle, cause, measure) |>
+  summarise(rate = mean(rate))
+  
+
+test <- crude_rates_prev |> 
+  left_join(transitions_ave, join_by(agegroup_cycle, value == cause)) |>
+  mutate(inc = pop_risk*rate) |>
+  mutate(crude_rate_ave=inc/pop*100000)
+
+
+### Graph shows re calculated crude rates from data
+
+ggplotly(test %>%
+ filter(scen %in% "reference") %>%
+ filter(value %in% "depression") %>%
+ ggplot() +
+ aes(x = cycle, y = crude_rate_ave) +
+ geom_point(colour = "#112446") +
+ theme_minimal() +
+ facet_wrap(vars(agegroup_cycle)))
+
+
+test_at_risk <- test |> filter(value == "depression") |> filter(agegroup_cycle == "40-44")
+
+### Prevalence over time (cumulative incidence-every cycle the number of people with the disease)
+
+crude_rates_prev %>%
+  filter(value %in% c("all_cause_dementia", "breast_cancer", "colon_cancer", "copd", 
+                      "coronary_heart_disease", "depression", "diabetes", "lung_cancer", "parkinson", "stroke")) %>%
+  ggplot() +
+  aes(x = cycle, y = crude_rate, colour = agegroup_cycle) +
+  geom_smooth(se = FALSE) +
+  scale_color_hue(direction = 1) +
+  theme_minimal() +
+  facet_wrap(vars(value), scales = "free_y")
+
+## Age standardised rates prevalence
+
+ref_weights <- people %>%
+  filter(scen == "reference", cycle == 0) %>%
+  group_by(agegroup_cycle) %>%
+  summarise(pop = sum(pop), .groups = "drop") %>%
+  mutate(
+    total_pop = sum(pop),
+    weight = pop / total_pop
+  ) %>%
+  select(agegroup_cycle, weight)
+
+
+# Join weights by age only (no gender or ladcd in weights)
+std_rates_prev <- crude_rates_prev |>
+  left_join(ref_weights, by = "agegroup_cycle") |>
+  filter(!is.na(weight)) |>
+  mutate(rate_w = crude_rate * weight) |> 
+  group_by(scen, value, cycle) |>
+  summarise(age_std_rate = sum(rate_w), .groups = "drop")
+
+# Test std rates for inc with back env calculation-drops for depression but no so rapidly
+
+std_rates_inc <- test |>
+  left_join(ref_weights, by = "agegroup_cycle") |>
+  filter(!is.na(weight)) |>
+  mutate(rate_w = crude_rate_ave * weight) |> ## test back of env crude rates
+  group_by(scen, value, cycle) |> #remove cycle for average
+  summarise(age_std_rate = sum(rate_w), .groups = "drop") |>
+  filter(value == "depression") |>
+  group_by(value, scen) |>
+  summarise(ave=mean(age_std_rate))
+
+ggplotly(ggplot(std_rates_prev) +
+ aes(x = cycle, y = age_std_rate) +
+ geom_smooth(se=FALSE) +
+ theme_minimal() +
+ facet_wrap(vars(scen)))
+
+### TO DO: compare rates in model and for back of the env adjustments to adjust rates. 
+### Just replace in the model adjusting for LAD difference in the raw data ASR so we assume same adjustment all
+
+### Derive population at risk for each cause
 
 
 
