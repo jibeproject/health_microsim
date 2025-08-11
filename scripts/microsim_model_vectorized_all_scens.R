@@ -19,12 +19,6 @@ FILE_PATH_HPC <- FALSE
 
 options(future.globals.maxSize = +Inf)
 
-#if (.Platform$OS.type == "windows"){
-plan("future::multisession")
-#}else{
-#  plan("future::multicore")
-#}
-
 # Set sample_pro to be greater than zero
 sample_prop <- 0.01
 
@@ -39,29 +33,12 @@ for (scen in c("base")) #for (scen in c("base", "safestreet", "green", "both"))
   # scen <- 'base'
   # For reproducibility across scenarios, set it inside the loop
   set.seed(2)
-  
-  # scen <- "base"
-  # Define name of the scenario
+
   SCEN_SHORT_NAME <- scen
   
   dir_path <- scen
   if (scen == "base")
     dir_path <- 'reference'
-  
-  
-  # Data ----
-  ## Synthetic population file with exposures and physical activity
-  
-  # if (!FILE_PATH_BELEN){
-  #   # synth_pop <- arrow::open_dataset(here(paste0("jibe health/resultsUrbanTransitions/reference/03_exposure_and_rr/pp_rr_all_years.parquet")))
-  #   #synth_pop <- arrow::open_dataset(here(paste0("jibe health/resultsUrbanTransitions/", dir_path, "/03_exposure_and_rr/pp_rr_all_years_reduced.parquet"))) |> to_duckdb()
-  #   synth_pop <- read_csv(here(paste0("jibe health/", SCEN_SHORT_NAME, "_pp_exposure_RR_2021.csv")))
-  #   #synth_pop <- synth_pop |> dplyr::select(id, gender_2021, age_2021, starts_with("rr_"), lsoa21cd, ladcd) |> 
-  #    #rename(gender = gender_2021, age = age_2021)
-  #   
-  # }else{
-  #   synth_pop <- read_csv(here(paste0("manchester/health/processed/", SCEN_SHORT_NAME, "_pp_exposure_RR_2021.csv")))
-  # }
   
   
   if (FILE_PATH_HPC) {
@@ -95,14 +72,6 @@ for (scen in c("base")) #for (scen in c("base", "safestreet", "green", "both"))
   # Rename head_neck_cancer to head_and_neck_cancer
   colnames(synth_pop) <- gsub("head_neck_cancer", "head_and_neck_cancer", colnames(synth_pop))
   
-  ## Health transitions
-  # if (!FILE_PATH_BELEN){
-  #   hd <- read_csv(here("jibe health/health_transitions_manchester.csv"))
-  # }else{
-  #   hd <- read_csv(here("manchester/health/processed/health_transitions_manchester.csv"))
-  # }
-  
-  
   if (FILE_PATH_HPC) {
     # Option 1: HPC path
     hd <- read_csv(here(paste0("health_data/health_transitions_manchester.csv")))
@@ -119,14 +88,6 @@ for (scen in c("base")) #for (scen in c("base", "safestreet", "green", "both"))
   
   hd[hd$cause == "head_neck_cancer",]$cause <- "head_and_neck_cancer"
   
-  # Read prevalence dataset
-  # if (!FILE_PATH_BELEN){
-  #   <- <- read_csv(here(paste0("jibe health/", SCEN_SHORT_NAME, "_prevalence_id.csv")))
-  # }else{
-  #   prev <- read_csv(here(paste0("manchester/health/processed/", SCEN_SHORT_NAME, "_prevalence_id.csv")))
-  # }
-  
-  
   
   if (FILE_PATH_HPC) {
     # Option 1: HPC path
@@ -142,13 +103,6 @@ for (scen in c("base")) #for (scen in c("base", "safestreet", "green", "both"))
   }
   
   
-  # Read zones dataset
-  # if (!FILE_PATH_BELEN){
-  #   zones <- read_csv(here("jibe health/zoneSystem.csv"))
-  # }else{
-  #   zones <- read_csv(here("manchester/health/processed/zoneSystem.csv"))
-  # }
-  
   if (FILE_PATH_HPC) {
     # Option 1: HPC path
     zones <- read_csv(here(paste0("health_data/zoneSystem.csv")))
@@ -162,16 +116,6 @@ for (scen in c("base")) #for (scen in c("base", "safestreet", "green", "both"))
     zones <- read_csv(here(paste0("manchester/health/processed/zoneSystem.csv")))
   }
   
-  
-  
-  
-  # # Read risk factor
-  # if (!FILE_PATH_BELEN){
-  #   disease_risks <<- read_csv("jibe health/mod_disease_risks.csv")
-  # }else{
-  #   disease_risks <<- read_csv("health/mod_disease_risks.csv")
-  # }
-  
   if (FILE_PATH_HPC) {
     # Option 1: HPC path
     disease_risks <<- read_csv("health_data/mod_disease_risks.csv")
@@ -184,9 +128,6 @@ for (scen in c("base")) #for (scen in c("base", "safestreet", "green", "both"))
     # Option 3: Manchester path (default if FILE_PATH_BELEN is TRUE and FILE_PATH_HPC is FALSE)
     disease_risks <<- read_csv(here("health/mod_disease_risks.csv"))
   }
-  
-  
-  
   
   if (sample_prop > 0){
     synth_pop <- synth_pop  |> 
@@ -257,12 +198,7 @@ for (scen in c("base")) #for (scen in c("base", "safestreet", "green", "both"))
   names(synth_pop) <- str_replace(names(synth_pop), "^all_path_|pm_|ap_|pa_|PHYSICAL_ACTIVITY_|AIR_POLLUTION_", "")
   
   synth_pop <- synth_pop |> tibble::rowid_to_column("rowname")
-  
-  # synth_pop_wprob <- synth_pop_wprob |>
-  #   rename(
-  #     "parkinson" = "parkinson's_disease"
-  #   )
-  
+
   
   # Matrix to save current states
   # with dimensions: (rows: number of individuals, cols: number of classes (or years) + 1 (for the 0th year))
@@ -301,54 +237,6 @@ for (scen in c("base")) #for (scen in c("base", "safestreet", "green", "both"))
     
     rr_index <- 1
     
-    # if (cause == "coronary_heart_disease")
-    # 
-    # rr_diabetes <- df %>%
-    #   filter(risk_factor == "diabetes",
-    #          outcome == "all_cause_mortality",
-    #          age_range == "40 to 70",
-    #          sex == "female") %>%
-    #   pull(relative_risk)
-    # 
-    # rr_all_cause_dementia <- df %>%
-    #   filter(risk_factor == "all_cause_dementia",
-    #          outcome == "all_cause_mortality",
-    #          age_range == "40 to 70",
-    #          sex == "female") %>%
-    #   pull(relative_risk)
-    # 
-    # rr_stroke <- df %>%
-    #   filter(risk_factor == "stroke",
-    #          outcome == "all_cause_mortality",
-    #          age_range == "40 to 70",
-    #          sex == "female") %>%
-    #   pull(relative_risk)
-    # 
-    # rr_coronary_heart_disease <- df %>%
-    #   filter(risk_factor == "coronary_heart_disease",
-    #          outcome == "all_cause_mortality",
-    #          age_range == "40 to 70",
-    #          sex == "female") %>%
-    #   pull(relative_risk)
-    # 
-    # rr_depression <- df %>%
-    #   filter(risk_factor == "depression",
-    #          outcome == "all_cause_mortality",
-    #          age_range == "40 to 70",
-    #          sex == "female") %>%
-    #   pull(relative_risk)
-    
-    # if (cause == "coronary_heart_disease"){
-    #   browser()
-    # }
-    
-    #rr_index <- round(cycle/5)
-    
-    #print(paste(cycle, rr_index))
-    
-    # if (cause == "copd")
-    #   browser()
-    # print(cause)
     # Calculate disease probability
     dis_rate <- as.numeric(sapply(rd[, cause], function(x) strsplit(x, ",")[[1]][rr_index]) |> as.numeric() 
                            * ind_spec_rate * cause_risk)
@@ -665,22 +553,11 @@ for (scen in c("base")) #for (scen in c("base", "safestreet", "green", "both"))
                      geom_point() +
                      geom_line() +
                      labs(title = paste(SCEN_SHORT_NAME, "Disease count over time"), x = "years", y = "count (n) "))
-
-
-  # # # Save the diagram
-  # ggsave(paste0("diagrams/state_trans-n.c-",n.c, "-n.i-", n.i, "-n.d-", length(diseases), ".png"), height = 5, width = 10, units = "in", dpi = 600, scale = 1)
-  # #
-
+  
 
   df <- as.data.frame(m)
   df$id <- rownames(m)
 
-  ### Also save state transitions as a CSV
-  # if (!FILE_PATH_BELEN){
-  #   arrow::write_dataset(df, paste0("data/", SCEN_SHORT_NAME, "_dis_inter_state_trans-n.c-",n.c, "-n.i-", n.i, "-n.d-", length(diseases), ".parquet"))
-  # }else{
-  #   arrow::write_dataset(df, paste0("manchester/health/processed/", SCEN_SHORT_NAME, "_dis_inter_state_trans-n.c-",n.c, "-n.i-", n.i, "-n.d-", length(diseases), ".parquet"))
-  # }
 
   if (FILE_PATH_HPC) {
     # Option 1: HPC path
