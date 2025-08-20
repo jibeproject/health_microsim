@@ -27,7 +27,7 @@ base_path <- if (DATA_PATH_BELEN) {
 
 # === Load zone names ===
 zones <- if (!FILE_PATH_BELEN) {
-  read_csv("/home/ali/IdeaProjects/manchester/input/zoneSystem.csv")
+  read_csv("/media/ali/Expansion/backup_tabea/manchester-main/input/zoneSystem.csv")
 } else {
   read_csv("manchester/health/processed/zoneSystem.csv")
 } 
@@ -395,6 +395,32 @@ healthy_total_cycle_diff <- healthy_total_cycle %>%
 sum_healthy_years <- healthy_total_cycle_diff |> 
   group_by(scen) |>
   summarise(sum(healthy_years_difference))
+
+
+dead_total_cycle <- all_data |>
+  filter(grepl("dead", value)) |>
+  group_by(scen, cycle) |>
+  summarise(dead = n_distinct(id), .groups = "drop")
+
+
+dead_total_cycle_diff <- dead_total_cycle %>%
+  left_join(
+    dead_total_cycle %>%
+      filter(scen == "reference") %>%
+      rename(reference_dead = dead) %>%
+      select(cycle, reference_dead),
+    by = "cycle"
+  ) %>%
+  mutate(
+    dead_difference = dead - reference_dead,
+    percent_difference = 100 * dead_difference / reference_dead
+  )
+
+sum_dead <- dead_total_cycle_diff |> 
+  group_by(scen) |>
+  summarise(sum(dead_difference))
+
+
 
 # ----- Life years ------
 
