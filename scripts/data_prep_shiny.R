@@ -13,8 +13,8 @@ suppressPackageStartupMessages({
 })
 
 # === Global Settings ===
-FILE_PATH_BELEN <- TRUE # for location input files
-DATA_PATH_BELEN <- TRUE # for location output files for shiny# Scaling factor for results
+FILE_PATH_BELEN <- FALSE # for location input files
+DATA_PATH_BELEN <- FALSE # for location output files for shiny# Scaling factor for results
 
 SCALING <- 5 # change depending on sample size
 
@@ -183,8 +183,8 @@ get_summary <- function(SCEN_NAME, final_year = 2051, group_vars = NULL, summari
 ## === Prepare general data long ===
 all_data <- list(
   base = get_summary("base", summarise = FALSE) |> mutate(scen = "reference"),
-  # green = get_summary("green", summarise = FALSE) |> mutate(scen = "green"),
-  #safeStreet = get_summary("SafeStreet", summarise = FALSE) |> mutate(scen = "safeStreet"),
+  green = get_summary("green", summarise = FALSE) |> mutate(scen = "green"),
+  safeStreet = get_summary("safeStreet", summarise = FALSE) |> mutate(scen = "safeStreet"),
   both = get_summary("both", summarise = FALSE) |> mutate(scen = "both")
 )
 
