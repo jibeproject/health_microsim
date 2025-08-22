@@ -118,7 +118,7 @@ get_summary <- function(SCEN_NAME, final_year = 2051, group_vars = NULL, summari
   
   # # Filter out early dead and merge population info
   m <- m |> 
-    filter(!grepl("dead", c1)) |> 
+    #filter(!grepl("dead", c1)) |> 
     mutate(across(
       everything(),
       ~ ifelse(
@@ -399,7 +399,7 @@ sum_healthy_years <- healthy_total_cycle_diff |>
 
 dead_total_cycle <- all_data |>
   filter(grepl("dead", value)) |>
-  group_by(scen, cycle) |>
+  group_by(scen, cycle, agegroup_cycle) |>
   summarise(dead = n_distinct(id), .groups = "drop")
 
 
@@ -408,8 +408,8 @@ dead_total_cycle_diff <- dead_total_cycle %>%
     dead_total_cycle %>%
       filter(scen == "reference") %>%
       rename(reference_dead = dead) %>%
-      select(cycle, reference_dead),
-    by = "cycle"
+      select(cycle, agegroup_cycle, reference_dead),
+    by = c("cycle", "agegroup_cycle")
   ) %>%
   mutate(
     dead_difference = dead - reference_dead,
