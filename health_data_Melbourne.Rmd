@@ -49,6 +49,8 @@ library(knitr)
 library(jsonlite)
 library(kableExtra)
 library(gt)
+library(rjson)
+library(ggforce)
 library(here) # to get files from the current working directory
 
 # set root directory one level up from currentdirectory
