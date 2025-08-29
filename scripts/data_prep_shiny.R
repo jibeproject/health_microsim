@@ -35,8 +35,9 @@ zones <- if (!FILE_PATH_BELEN) {
 # === Data loading function ===
 
 get_summary <- function(SCEN_NAME, final_year = 2051, group_vars = NULL, summarise = TRUE, microdata_dir_name = "microdata") {
-  #microdata_dir_name <- "microData"
-  
+  # final_year <- 2022
+  # microdata_dir_name <- "microData"
+  # 
   # SCEN_NAME <- "base"
   
   print(microdata_dir_name)
@@ -99,7 +100,8 @@ get_summary <- function(SCEN_NAME, final_year = 2051, group_vars = NULL, summari
   
   # Exposure population
   pop_path <- if (!FILE_PATH_BELEN) {
-    paste0("/media/ali/Expansion/backup_tabea/manchester-main/scenOutput/", SCEN_NAME, "/", microdata_dir_name, "/pp_exposure_2021.csv")
+    paste0("/media/ali/Expansion/backup_tabea/manchester-main/input/health/pp_exposure_2021_base_140725.csv")
+    #paste0("/media/ali/Expansion/backup_tabea/manchester-main/scenOutput/", SCEN_NAME, "/", microdata_dir_name, "/pp_exposure_2021.csv")
   } else {
     paste0("manchester/health/processed/health_model_outcomes/microData", SCEN_NAME, "/pp_exposure_2021.csv")
   }
@@ -182,10 +184,10 @@ get_summary <- function(SCEN_NAME, final_year = 2051, group_vars = NULL, summari
 
 ## === Prepare general data long ===
 all_data <- list(
-  base = get_summary("base", summarise = FALSE) |> mutate(scen = "reference"),
-  green = get_summary("green", summarise = FALSE) |> mutate(scen = "green"),
-  safeStreet = get_summary("safeStreet", summarise = FALSE) |> mutate(scen = "safeStreet"),
-  both = get_summary("both", summarise = FALSE) |> mutate(scen = "both")
+  base = get_summary("base", summarise = FALSE, final_year = 2051) |> mutate(scen = "reference"),
+  green = get_summary("green", summarise = FALSE, final_year = 2051) |> mutate(scen = "green"),
+  safeStreet = get_summary("safeStreet", summarise = FALSE, final_year = 2051) |> mutate(scen = "safeStreet"),
+  both = get_summary("both", summarise = FALSE, final_year = 2051) |> mutate(scen = "both")
 )
 
 
