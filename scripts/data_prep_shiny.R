@@ -34,7 +34,12 @@ zones <- if (!FILE_PATH_BELEN) {
 
 # === Data loading function ===
 
-get_summary <- function(SCEN_NAME, final_year = 2051, group_vars = NULL, summarise = TRUE, microdata_dir_name = "microdata") {
+get_summary <- function(SCEN_NAME, 
+                        final_year = 2051, 
+                        microdata_dir_name = "microdata", 
+                        manchester_folder = "", 
+                        group_vars = NULL, 
+                        summarise = TRUE) {
   # final_year <- 2022
   # microdata_dir_name <- "microData"
   # 
@@ -44,18 +49,11 @@ get_summary <- function(SCEN_NAME, final_year = 2051, group_vars = NULL, summari
   
   #browser()
   
-  # Select correct file path
-  if (exists("FILE_PATH_BELEN") && isTRUE(FILE_PATH_BELEN)) {
-    file_path <- paste0(
-      "manchester/health/processed/health_model_outcomes/",
-      "microData", SCEN_NAME, "/pp_healthDiseaseTracker_2051.csv"
-    )
-  } else {
-    file_path <- paste0(
-      "/media/ali/Expansion/backup_tabea/manchester-main/scenOutput/",
-      SCEN_NAME, "/", microdata_dir_name, "/pp_healthDiseaseTracker_", final_year, ".csv"
-    )
-  }
+  file_path <- paste0(
+    manchester_folder, "scenOutput/",
+    SCEN_NAME, "/", microdata_dir_name, "/pp_healthDiseaseTracker_", final_year, ".csv"
+  )
+  
   
   # Read health tracker file
   if (grepl("\\.csv$", file_path)) {
@@ -72,12 +70,8 @@ get_summary <- function(SCEN_NAME, final_year = 2051, group_vars = NULL, summari
   names(m)[match(year_cols, names(m))] <- new_names
   
   # Load population files
-  pop_dir_path <- if (!FILE_PATH_BELEN) {
-    paste0("/media/ali/Expansion/backup_tabea/manchester-main/scenOutput/", SCEN_NAME, "/", microdata_dir_name)
-  } else {
-    paste0("manchester/health/processed/health_model_outcomes/microData", SCEN_NAME)
-  }
-  
+  pop_dir_path <- paste0(manchester_folder, "scenOutput/", SCEN_NAME, "/", microdata_dir_name)
+
   pp_csv_files <- list.files(path = pop_dir_path, pattern = "^pp_\\d{4}\\.csv$", full.names = TRUE)
   newborn_data <- lapply(pp_csv_files, function(file) {
     read_csv(file) |> filter(age == 0)
@@ -99,12 +93,7 @@ get_summary <- function(SCEN_NAME, final_year = 2051, group_vars = NULL, summari
     distinct()
   
   # Exposure population
-  pop_path <- if (!FILE_PATH_BELEN) {
-    paste0("/media/ali/Expansion/backup_tabea/manchester-main/input/health/pp_exposure_2021_base_140725.csv")
-    #paste0("/media/ali/Expansion/backup_tabea/manchester-main/scenOutput/", SCEN_NAME, "/", microdata_dir_name, "/pp_exposure_2021.csv")
-  } else {
-    paste0("manchester/health/processed/health_model_outcomes/microData", SCEN_NAME, "/pp_exposure_2021.csv")
-  }
+  pop_path <- paste0(manchester_folder, "input/health/pp_exposure_2021_base_140725.csv")
   
   if (!file.exists(pop_path)) stop("Population exposure file does not exist: ", pop_path)
   
@@ -114,13 +103,16 @@ get_summary <- function(SCEN_NAME, final_year = 2051, group_vars = NULL, summari
                           right = FALSE, 
                           include.lowest = TRUE))
   
-  synth_pop_2021 <- synth_pop_2021 |> dplyr::select(id, age, agegroup, gender, zone) |> left_join(zones  |> rename(zone = oaID) |> dplyr::select(zone, ladcd, lsoa21cd))
+  synth_pop_2021 <- synth_pop_2021 |> 
+    dplyr::select(id, age, agegroup, gender, zone) |> 
+    left_join(zones  |> 
+                rename(zone = oaID) |> 
+                dplyr::select(zone, ladcd, lsoa21cd))
   
   synth_pop <- bind_rows(synth_pop, synth_pop_2021)
   
   # # Filter out early dead and merge population info
   m <- m |> 
-    #filter(!grepl("dead", c1)) |> 
     mutate(across(
       everything(),
       ~ ifelse(
@@ -181,13 +173,22 @@ get_summary <- function(SCEN_NAME, final_year = 2051, group_vars = NULL, summari
   return(long_data)
 }
 
+## Do set three of the most important parameters
+## they are: 1) final_year (the year when simulation ends)
+## 2) microdata_dir_name (name of the microdata folder)
+## 3) manchester_folder (path to the root of manchester input data folder)
+## example call for the function is: base = get_summary("base", summarise = FALSE, 
+## final_year = 2022, 
+## microdata_dir_name = "microData", 
+## manchester_folder = "/media/ali/Expansion/backup_tabea/manchester-main")
+manchester_folder = "/media/ali/Expansion/backup_tabea/manchester-main/"
 
 ## === Prepare general data long ===
 all_data <- list(
-  base = get_summary("base", summarise = FALSE, final_year = 2051) |> mutate(scen = "reference"),
-  green = get_summary("green", summarise = FALSE, final_year = 2051) |> mutate(scen = "green"),
-  safeStreet = get_summary("safeStreet", summarise = FALSE, final_year = 2051) |> mutate(scen = "safeStreet"),
-  both = get_summary("both", summarise = FALSE, final_year = 2051) |> mutate(scen = "both")
+  base = get_summary("base", summarise = FALSE, final_year = 2022, manchester_folder = manchester_folder) |> mutate(scen = "reference"),
+  green = get_summary("green", summarise = FALSE, final_year = 2022, manchester_folder = manchester_folder) |> mutate(scen = "green"),
+  safeStreet = get_summary("safeStreet", summarise = FALSE, final_year = 2022, manchester_folder = manchester_folder) |> mutate(scen = "safeStreet"),
+  both = get_summary("both", summarise = FALSE, final_year = 2022, manchester_folder = manchester_folder) |> mutate(scen = "both")
 )
 
 
