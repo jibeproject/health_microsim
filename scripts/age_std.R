@@ -158,7 +158,7 @@ inc_death <- all_data |>
   collect()
 
 crude_rates_dead <- inc_death |>
-  filter(cycle > 1) |>
+  filter(cycle > 0) |>
   group_by(agegroup_cycle, gender, cycle, scen) |>
   summarise(n = dplyr::n(), .groups = "drop") |>
   ungroup() |>
