@@ -179,17 +179,17 @@ if (file.exists(precomp_path) && !REBUILD_CACHE) {
   # ---- Death counts ----
   inc_death <- incidence |> filter(value %in% death_values)
   deaths_overall_raw <- inc_death |> group_by(scen, cycle) |>
-    summarise(value = n(), .groups = "drop")
+    summarise(value = dplyr::n(), .groups = "drop")
   deaths_gender_raw  <- inc_death |> group_by(scen, cycle, gender) |>
-    summarise(value = n(), .groups = "drop")
+    summarise(value = dplyr::n(), .groups = "drop")
   deaths_lad_raw     <- inc_death |> group_by(scen, cycle, ladnm) |>
-    summarise(value = n(), .groups = "drop")
+    summarise(value = dplyr::n(), .groups = "drop")
   
   # ---- Disease counts (all causes combined) ----
   diseases_all_cycle <- incidence |>
     filter(!value %in% c("dead","healthy","null")) |>
     group_by(scen, cycle) |>
-    summarise(value = n(), .groups = "drop")
+    summarise(value = dplyr::n(), .groups = "drop")
   
   # ---- Differences vs reference ----
   deaths_overall <- diff_vs_reference(deaths_overall_raw)
@@ -199,11 +199,11 @@ if (file.exists(precomp_path) && !REBUILD_CACHE) {
   diseases_overall <- diff_vs_reference(diseases_all_cycle)
   diseases_gender  <- incidence |>
     filter(!value %in% c("dead","healthy","null")) |>
-    group_by(scen, cycle, gender) |> summarise(value = n(), .groups = "drop") |>
+    group_by(scen, cycle, gender) |> summarise(value = dplyr::n(), .groups = "drop") |>
     diff_vs_reference(by = "gender")
   diseases_lad     <- incidence |>
     filter(!value %in% c("dead","healthy","null")) |>
-    group_by(scen, cycle, ladnm) |> summarise(value = n(), .groups = "drop") |>
+    group_by(scen, cycle, ladnm) |> summarise(value = dplyr::n(), .groups = "drop") |>
     diff_vs_reference(by = "ladnm")
   
   healthy_overall  <- healthy_total_cycle |> diff_vs_reference()
@@ -280,7 +280,7 @@ if (file.exists(precomp_path) && !REBUILD_CACHE) {
       crude_counts <- data_cases |>
         filter(value == cause, cycle >= min_cycle) |>
         group_by(across(all_of(all_group_cols))) |>
-        summarise(cases = n(), .groups = "drop")
+        summarise(cases = dplyr::n(), .groups = "drop")
       pop_counts <- people |>
         filter(cycle >= min_cycle) |>
         group_by(across(all_of(all_group_cols))) |>
