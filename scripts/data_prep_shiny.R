@@ -182,13 +182,14 @@ get_summary <- function(SCEN_NAME,
 ## microdata_dir_name = "microData", 
 ## manchester_folder = "/media/ali/Expansion/backup_tabea/manchester-main")
 manchester_folder = "/media/ali/Expansion/backup_tabea/manchester-main/"
+fyear <- 2032
 
 ## === Prepare general data long ===
 all_data <- list(
-  base = get_summary("base", summarise = FALSE, final_year = 2022, manchester_folder = manchester_folder) |> mutate(scen = "reference"),
-  green = get_summary("green", summarise = FALSE, final_year = 2022, manchester_folder = manchester_folder) |> mutate(scen = "green"),
-  safeStreet = get_summary("safeStreet", summarise = FALSE, final_year = 2022, manchester_folder = manchester_folder) |> mutate(scen = "safeStreet"),
-  both = get_summary("both", summarise = FALSE, final_year = 2022, manchester_folder = manchester_folder) |> mutate(scen = "both")
+  base = get_summary("base", summarise = FALSE, final_year = fyear, manchester_folder = manchester_folder) |> mutate(scen = "reference"),
+  #green = get_summary("green", summarise = FALSE, final_year = fyear, manchester_folder = manchester_folder) |> mutate(scen = "green"),
+  safeStreet = get_summary("safeStreet", summarise = FALSE, final_year = fyear, manchester_folder = manchester_folder) |> mutate(scen = "safeStreet"),
+  #both = get_summary("both", summarise = FALSE, final_year = fyear, manchester_folder = manchester_folder) |> mutate(scen = "both")
 )
 
 
