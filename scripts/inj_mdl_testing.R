@@ -14,7 +14,7 @@ agp <- agp |>
   ))
 
 add_agroup <- function(df){
-  return(base |> 
+  return(df |> 
            mutate(
              age_group = as.character(cut(
                age,
