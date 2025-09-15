@@ -42,8 +42,9 @@ calc_wshare <- function(df, agp, scen = "base"){
     mutate(injuryRiskWalk = severeFatalInjuryWalk * RR * cf,
            fRiskWalk = severeFatalInjuryWalk * RR * cf * percent_killed)
   print(scen)
-  print(paste("Casualties: ", sum(df$injuryRiskWalk)))
-  print(paste("Fatalities: ", sum(df$fRiskWalk)))
+  print(paste("Casualties: ", round(sum(df$injuryRiskWalk), 2)))
+  print(paste("Fatalities: ", round(sum(df$fRiskWalk), 2)))
+  print(paste("Injuries: ", round(sum(df$injuryRiskWalk) - sum(df$fRiskWalk), 2)))
 }
 
 base <- add_agroup(base)
