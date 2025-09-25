@@ -16,10 +16,11 @@ suppressPackageStartupMessages({
   library(purrr)
   library(here)
   library(qs)
+  library(DT)
 })
 
 # ------------------- Paths (edit these if needed) -------------------
-DATA_PATH  <- "../temp/all_data_200825.parquet" #all_data_230825.parquet"
+DATA_PATH  <- "../temp/all_data_20p_080925.parquet" #all_data_230825.parquet"
 ZONES_CSV  <- "/media/ali/Expansion/backup_tabea/manchester-main/input/zoneSystem.csv"
 
 # Local cache folder (relative to app)
@@ -32,6 +33,7 @@ if (!dir.exists(DATA_DIR))
 # - Or just delete files in ./data
 REBUILD_CACHE       <- identical(Sys.getenv("REBUILD_CACHE"), "1") # 0 if no change in data
 USE_ALL_DATA_CACHE  <- TRUE   # cache the big parquet as RDS for faster reloads
+
 
 # Scaling for 20% samples (used in summary tables only)
 if (!exists("SCALING")) SCALING <- 5L
@@ -187,8 +189,9 @@ if (file.exists(precomp_path) && !REBUILD_CACHE) {
   
   # ---- Disease counts (all causes combined) ----
   diseases_all_cycle <- incidence |>
-    filter(!value %in% c("dead","healthy","null")) |>
-    group_by(scen, cycle) |>
+    filter(!grepl("dead|healthy|null", value)) |> 
+    rename(cause = value) |> 
+    group_by(cause, scen, cycle) |>
     summarise(value = dplyr::n(), .groups = "drop")
   
   # ---- Differences vs reference ----
@@ -196,15 +199,17 @@ if (file.exists(precomp_path) && !REBUILD_CACHE) {
   deaths_gender  <- diff_vs_reference(deaths_gender_raw, by = "gender")
   deaths_lad     <- diff_vs_reference(deaths_lad_raw,   by = "ladnm")
   
-  diseases_overall <- diff_vs_reference(diseases_all_cycle)
+  diseases_overall <- diff_vs_reference(diseases_all_cycle, by = "cause")
   diseases_gender  <- incidence |>
     filter(!value %in% c("dead","healthy","null")) |>
-    group_by(scen, cycle, gender) |> summarise(value = dplyr::n(), .groups = "drop") |>
-    diff_vs_reference(by = "gender")
+    rename(cause = value) |> 
+    group_by(cause, scen, cycle, gender) |> summarise(value = dplyr::n(), .groups = "drop") |>
+    diff_vs_reference(by = c("gender", "cause"))
   diseases_lad     <- incidence |>
     filter(!value %in% c("dead","healthy","null")) |>
-    group_by(scen, cycle, ladnm) |> summarise(value = dplyr::n(), .groups = "drop") |>
-    diff_vs_reference(by = "ladnm")
+    rename(cause = value) |> 
+    group_by(cause, scen, cycle, ladnm) |> summarise(value = dplyr::n(), .groups = "drop") |>
+    diff_vs_reference(by = c("ladnm", "cause"))
   
   healthy_overall  <- healthy_total_cycle |> diff_vs_reference()
   healthy_gender   <- all_data |> filter(value == "healthy") |>
@@ -451,17 +456,21 @@ ui <- fluidPage(
       tags$hr(),
       tabsetPanel(
         id = "control_tabs", type = "pills",
-        tabPanel("Population",
+        conditionalPanel(
+          condition = "input.main_tabs == 'Population'",
+          h2("Population"),
                  selectizeInput("pop_cycles", "Cycles to show (bars):",
                                 choices = pop_cycles, selected = c(2,10,MAX_CYCLE), multiple = TRUE),
                  radioButtons("pop_style", "Bar style:", c("Stacked"="stack","Side-by-side"="dodge"),
                               inline = TRUE),
                  checkboxInput("pop_share", "Show shares (else counts)", value = TRUE)
         ),
-        tabPanel("Differences",
+        conditionalPanel(
+          condition = "input.main_tabs == 'Differences vs reference'",
+          h2("Differences"),
                  selectInput("metric_kind", "Metric:", choices = c(
-                   "Deaths postponed (Δ deaths)"     = "deaths",
                    "Diseases postponed (Δ diseases)" = "diseases",
+                   "Deaths postponed (Δ deaths)"     = "deaths",
                    "Δ Healthy years"                 = "healthy",
                    "Δ Life years"                    = "life"
                  )),
@@ -470,20 +479,24 @@ ui <- fluidPage(
                              value = MIN_CYCLE, step = 1),
                  checkboxInput("diff_cumulative", "Cumulative over cycles", value = TRUE)
         ),
-        tabPanel("Average ages",
+        conditionalPanel(
+          condition = "input.main_tabs == 'Average ages'",
+          h2("Average ages"),
                  selectInput("avg_kind", "Average age of:", choices = c("Death"="death","Disease onset"="onset")),
                  uiOutput("avg_cause_ui")
         ),
-        tabPanel("ASR",
+        conditionalPanel(
+          condition = "input.main_tabs == 'ASR'",
+          h2("ASR"),
                  selectInput("asr_mode", "ASR view:",
                              choices = c("Average 1-30 (bars)"="avg","Over time (smoothed)"="trend")),
                  selectizeInput("asr_causes", "Causes:", choices = all_causes_asr,
                                 selected = c("coronary_heart_disease","stroke","healthy_years"),
-                                multiple = TRUE),
-                 conditionalPanel(
-                   "input.view_level == 'LAD' && input.asr_mode == 'avg'",
-                   numericInput("lad_topn", "Top N LADs:", min = 5, max = 50, value = 25, step = 1)
-                 )
+                                multiple = TRUE)#,
+                 # conditionalPanel(
+                 #   "input.view_level == 'LAD' && input.asr_mode == 'avg'",
+                 #   numericInput("lad_topn", "Top N LADs:", min = 5, max = 50, value = 25, step = 1)
+                 # )
         )
       ),
       tags$hr(),
@@ -504,7 +517,7 @@ ui <- fluidPage(
           conditionalPanel("!input.use_plotly", plotOutput("plot_diff", height = 520)),
           tags$hr(),
           h5("Summary (cumulative at latest cycle, or sum if non-cumulative)"),
-          tableOutput("table_diff_summary")
+          DT::dataTableOutput("table_diff_summary")
         ),
         tabPanel("Average ages", tableOutput("table_avg")),
         tabPanel(
@@ -592,7 +605,11 @@ server <- function(input, output, session) {
                    diseases = list(Overall=diseases_overall,Gender=diseases_gender,LAD=diseases_lad,label="Δ Diseases"),
                    healthy  = list(Overall=healthy_overall, Gender=healthy_gender, LAD=healthy_lad,label="Δ Healthy years"),
                    life     = list(Overall=lifey_overall,   Gender=lifey_gender,   LAD=lifey_lad,  label="Δ Life years"))
-    base <- pick[[view]]; by <- switch(view, Overall=character(0), Gender="gender", LAD="ladnm")
+    base <- pick[[view]]
+    if (input$metric_kind == "diseases")
+      by <- switch(view, Overall="cause", Gender=c("cause", "gender"), LAD=c("cause", "ladnm"))
+    else
+      by <- switch(view, Overall=character(0), Gender="gender", LAD="ladnm")
     df <- base |> filter(cycle >= minc, scen %in% scen_keep); grp <- c("scen", by)
     df |> group_by(across(all_of(c(grp, "cycle")))) |>
       summarise(diff = sum(diff, na.rm = TRUE), .groups = "drop") |>
@@ -605,6 +622,10 @@ server <- function(input, output, session) {
   build_diff_plot <- reactive({
     d <- diff_long(); req(nrow(d) > 0)
     ylab <- if (isTRUE(input$diff_cumulative)) "Cumulative Δ vs reference" else "Δ vs reference"
+    
+    #browser()
+    
+    
     ttl  <- d$metric[1]
     if ("gender" %in% names(d)) {
       ggplot(d, aes(x = cycle, y = y, colour = scen, linetype = gender)) +
@@ -627,12 +648,60 @@ server <- function(input, output, session) {
   output$plot_diff   <- renderPlot({ build_diff_plot() })
   output$plot_diffly <- renderPlotly({ ggplotly(build_diff_plot(), tooltip = c("x","y","colour","linetype")) })
   
-  output$table_diff_summary <- renderTable({
-    d <- diff_long(); req(nrow(d) > 0)
-    by <- if ("gender" %in% names(d)) "gender" else if ("ladnm" %in% names(d)) "ladnm" else character(0)
+  # output$table_diff_summary <- renderTable({
+  #   d <- diff_long(); req(nrow(d) > 0)
+  #   by <- if ("gender" %in% names(d)) c("cause", "gender") else if ("ladnm" %in% names(d)) c("cause", "ladnm") else "cause"
+  #   metric_lab <- unique(d$metric)[1]
+  #   if (isTRUE(input$diff_cumulative)) {
+  #     d |> group_by(across(all_of(c("scen", by)))) |>
+  #       slice_max(order_by = cycle, n = 1, with_ties = FALSE) |>
+  #       ungroup() |>
+  #       transmute(
+  #         metric = metric_lab, scen,
+  #         !!!(if (length(by)) rlang::syms(by) else NULL),
+  #         final_cycle = cycle,
+  #         cumulative_value = y,
+  #         cumulative_value_scaled = y * SCALING
+  #       ) |> arrange(scen, across(all_of(by)))
+  #   } else {
+  #     d |> group_by(across(all_of(c("scen", by)))) |>
+  #       summarise(final_cycle = max(cycle, na.rm = TRUE),
+  #                 cumulative_value = sum(diff, na.rm = TRUE), .groups = "drop") |>
+  #       mutate(metric = metric_lab, cumulative_value_scaled = cumulative_value * SCALING, .before = 1) |>
+  #       arrange(scen, across(all_of(by)))
+  #   }
+  #   
+  # })
+  
+  output$table_diff_summary <- DT::renderDT({
+    d <- diff_long()
+    req(nrow(d) > 0)
+    
+    by <- if ("gender" %in% names(d)) {
+      if ("cause" %in% names(d)) {
+        c("cause", "gender")
+      } else {
+        "gender"
+      }
+    }
+    else if ("ladnm" %in% names(d)) {
+      if ("cause" %in% names(d)) {
+        c("cause", "ladnm")
+      } else {
+        "ladnm"
+      }
+    } else {
+      if ("cause" %in% names(d)) {
+        "cause"
+      }else {character(0)
+      }
+    }
+    
     metric_lab <- unique(d$metric)[1]
+    
     if (isTRUE(input$diff_cumulative)) {
-      d |> group_by(across(all_of(c("scen", by)))) |>
+      d |> 
+        group_by(across(all_of(c("scen", by)))) |>
         slice_max(order_by = cycle, n = 1, with_ties = FALSE) |>
         ungroup() |>
         transmute(
@@ -641,15 +710,27 @@ server <- function(input, output, session) {
           final_cycle = cycle,
           cumulative_value = y,
           cumulative_value_scaled = y * SCALING
-        ) |> arrange(scen, across(all_of(by)))
+        ) |>
+        arrange(scen, across(all_of(by))) |>
+        DT::datatable(options = list(pageLength = 10, autoWidth = TRUE))
     } else {
-      d |> group_by(across(all_of(c("scen", by)))) |>
-        summarise(final_cycle = max(cycle, na.rm = TRUE),
-                  cumulative_value = sum(diff, na.rm = TRUE), .groups = "drop") |>
-        mutate(metric = metric_lab, cumulative_value_scaled = cumulative_value * SCALING, .before = 1) |>
-        arrange(scen, across(all_of(by)))
+      d |> 
+        group_by(across(all_of(c("scen", by)))) |>
+        summarise(
+          final_cycle = max(cycle, na.rm = TRUE),
+          cumulative_value = sum(diff, na.rm = TRUE), 
+          .groups = "drop"
+        ) |>
+        mutate(
+          metric = metric_lab, 
+          cumulative_value_scaled = cumulative_value * SCALING,
+          .before = 1
+        ) |>
+        arrange(scen, across(all_of(by))) |>
+        DT::datatable(options = list(pageLength = 10, autoWidth = TRUE))
     }
   })
+  
   
   # ---------- Average ages (death / onset) ----------
   output$avg_cause_ui <- renderUI({
@@ -762,10 +843,11 @@ server <- function(input, output, session) {
           theme_clean() + theme(plot.margin = margin(5.5, 18, 5.5, 5.5))
       } else {
         df <- asr_lad_all_avg_1_30 |> filter(cause %in% causes)
+        if (length(input$lad_sel)) df <- df |> filter(ladnm %in% input$lad_sel)
         req(nrow(df) > 0)
         top_ids <- df |>
           filter(cause == causes[1], scen == "reference") |>
-          slice_max(order_by = age_std_rate, n = input$lad_topn, with_ties = FALSE) |>
+          #slice_max(order_by = age_std_rate, n = input$lad_topn, with_ties = FALSE) |>
           distinct(ladnm)
         dplot <- df |> filter(ladnm %in% top_ids$ladnm)
         req(nrow(dplot) > 0)
@@ -803,12 +885,13 @@ server <- function(input, output, session) {
         req(nrow(dat) > 0)
         if (length(input$lad_sel)) {
           dat <- dat |> filter(ladnm %in% input$lad_sel)
-        } else {
-          top_ids <- dat |> filter(cause == causes[1], scen == "reference") |>
-            group_by(ladnm) |> summarise(m = mean(age_std_rate, na.rm = TRUE), .groups = "drop") |>
-            slice_max(order_by = m, n = min(9, dplyr::n())) |> pull(ladnm)
-          dat <- dat |> filter(ladnm %in% top_ids)
-        }
+        } 
+        # else {
+        #   top_ids <- dat |> filter(cause == causes[1], scen == "reference") |>
+        #     group_by(ladnm) |> summarise(m = mean(age_std_rate, na.rm = TRUE), .groups = "drop") |>
+        #     slice_max(order_by = m, n = min(9, dplyr::n())) |> pull(ladnm)
+        #   dat <- dat |> filter(ladnm %in% top_ids)
+        # }
         req(nrow(dat) > 0)
         ggplot(dat, aes(x = cycle, y = age_std_rate, colour = scen)) +
           geom_smooth(se = FALSE) +
