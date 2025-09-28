@@ -22,7 +22,7 @@ zones <- read_csv("/media/ali/Expansion/backup_tabea/manchester-main/input/zoneS
 add_zones_and_scen <- function(df, zones, scen = "reference"){
   return(
     df |> left_join(zones |> 
-                      dplyr::select(oaID, imd10) |> 
+                      dplyr::select(oaID, imd10, ladnm) |> 
                       rename(zone = oaID)) |> 
       mutate(scen = scen)
   )
@@ -39,8 +39,24 @@ ss <- add_zones_and_scen(df = ss, zones, scen = "safeStreet")
 both <- add_zones_and_scen(df = both, zones, scen = "both")
 
 exp <- bind_rows(base, green, ss, both)
+# Add agegroup column
+exp <- exp |> 
+  mutate(agegroup = cut(age, c(0, 25, 45, 65, 85, Inf), 
+                        labels = c("0-24", "25-44", "45-64", "65-84", "85+"),
+                        right = FALSE, 
+                        include.lowest = TRUE))
 
 arrow::write_dataset(exp, partitioning = "scen", "temp/exp.parquet")
+
+sdf <- exp |> 
+  group_by(ladnm, imd10, scen, agegroup, gender) |> 
+  summarise(pa = median(mmetHr_cycle + mmetHr_otherSport + mmetHr_walk), 
+            across(starts_with("exposure"), ~median(.x, na.rm = TRUE), .names = "{.col}"))
+
+
+  
+
+names(df) <- sub(".*_", "", names(df))
 
 # exp <- arrow::open_dataset("temp/exp.parquet/")
 # 
