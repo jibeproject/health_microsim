@@ -1,0 +1,177 @@
+library(shiny)
+library(ggplot2)
+library(dplyr)
+library(DT)
+library(qs)
+library(bslib)
+
+print("printing wd")
+print(getwd())
+t <- qs::qread("data/280925_trips.qs")
+
+all_scenarios <- c("Base" = "reference",
+             "Green" = "green",
+             "Safe Street" = "safeStreet",
+             "Green + Safe Street" = "both")
+
+all_locations <- unique(t$avg_time_combined$LAD_origin)
+
+
+ui <- fluidPage(
+  titlePanel("Manchester Transport and Health model results"),
+  sidebarLayout(
+    sidebarPanel(
+      width = 3,
+      checkboxInput("use_plotly", "Interactive (Plotly)", value = TRUE),
+      selectInput("scen_sel", "Scenarios:", choices = all_scenarios,
+                  selected = all_scenarios, multiple = TRUE),
+      selectInput("view_level", "View by:", choices = c("Overall","LAD"),
+                  selected = "Overall"),
+      conditionalPanel(
+        "input.view_level == 'LAD'",
+        selectizeInput("lad_sel", "LAD(s):",
+                       choices = all_locations, multiple = TRUE,
+                       options = list(placeholder = "Pick LADs (optional)"))
+      ),
+      tags$hr(),
+      
+      ## --- Exact-tab selector (dropdown mirrors tabs) ---
+      radioButtons(
+        "metrics_picker", "Metrics:",
+        choices = c(
+          "Trip Modes",
+          "Distance",
+          "Duration",
+          "Zero Mode"
+        ),
+        selected = "Trip Modes"
+      ),
+      
+     ),
+    
+    mainPanel(
+      width = 9,
+      tabsetPanel(
+        id = "main_tabs",
+        
+        # ---- Differences (4 metric tabs) ----
+        tabPanel(
+          title = "test",
+          id= "test",
+          conditionalPanel(
+            condition = "input.metrics_picker == 'Zero Mode'",
+            plotlyOutput("out_zm")
+          ),
+          conditionalPanel("input.metrics_picker == 'Trip Modes'", 
+                           plotlyOutput("out_dist"))
+          ,
+          conditionalPanel("input.metrics_picker == 'Duration'", 
+                           plotlyOutput("out_dur"))
+        )
+        
+        
+      )
+    )
+  )
+)
+
+server <- function(input, output) {
+  
+  output$out_zm <- renderPlotly({
+    
+    # req(input$in_scens)
+    # req(input$in_cities)
+    # req(input$in_level)
+    # req(input$in_measure)
+    # # req(input$in_CIs)
+    # req(input$in_pathways)
+    # req(!is.null(input$in_strata))
+    
+    
+    plotly::ggplotly(ggplot(t$zero_mode, aes(x = mode, y = zero_percent, fill = scen)) +
+      geom_bar(stat = "identity", position = position_dodge(width = 0.9)) +
+      geom_text(
+        aes(label = paste0(zero_percent, "%")),
+        position = position_dodge(width = 0.9), 
+        vjust = -0.25,                       
+        size = 3) +
+      labs(
+        title = "Proportion of Individuals Reporting Non-Usage of Specific Transport Modes",
+        y = "Proportion (%)",
+        fill = "Scenario") +
+      theme_minimal() +
+      theme(
+        panel.grid.major = element_blank(),
+        panel.grid.minor = element_blank(),
+        axis.ticks.y = element_blank(),
+        plot.title = element_text(hjust = 0.5, face = "bold"), 
+        axis.text.x = element_text(face = "bold"),
+        axis.title.x = element_blank(),
+        axis.title.y = element_text(face = "bold"),
+        axis.text.y = element_text(face = "bold"),
+        legend.text = element_text(face = "bold"),
+        legend.title = element_text(face = "bold"))
+    )
+    
+  })
+  
+  output$out_dist <- renderPlotly({
+    
+    ggplot(t$distance, aes(x = distance_bracket, y = percent, fill = mode)) +
+      geom_bar(stat = "identity", position = "fill") +
+      geom_text(
+        aes(label = ifelse(percent > 1, paste0(round(percent, 1), "%"), "")), # Show label only if >= 1%
+        position = position_fill(vjust = 0.5), 
+        color = "white",
+        size = 3
+      ) +
+      labs(
+        title = "Transport Mode Share by Trip Distance",
+        y = "Proportion (%)",
+        x = "Distance (km)",
+        fill = "Transport Mode"
+      ) +
+      theme_minimal(base_size = 12) +
+      theme(
+        panel.grid.major = element_blank(),
+        panel.grid.minor = element_blank(),
+        axis.ticks.y = element_blank(),
+        plot.title = element_text(hjust = 0.5, face = "bold"), 
+        axis.text.y = element_blank(),
+        axis.text.x = element_text(face = "bold"),
+        strip.placement = "outside", 
+        strip.text = element_text(face = "bold"),
+        legend.text = element_text(face = "bold"),
+        legend.title = element_text(face = "bold")
+      ) +
+      facet_wrap(vars(scen), scales = "free_x")
+    
+  })
+  
+  
+  output$out_dur <- renderPlotly({
+    
+    ggplotly(ggplot(t$avg_time_combined) +
+               aes(x = mode, y = avgTime, fill = scen) +
+               geom_col(position = "dodge2") +
+               geom_text(aes(label = round(avgTime, 1),
+                             y = avgTime),
+                         size = 2, #hjust = -0.1, 
+                         hjust = 1.1, 
+                         vjust = 0.2,
+                         position = position_dodge(1),
+                         inherit.aes = TRUE
+               ) +
+               scale_fill_hue(direction = 1) +
+               labs(title = "Average weekly time (in hours) by mode per person and location",
+                    fill = "Scenario",
+                    x = "", y = "Hours") +
+               coord_flip() +
+               theme_minimal() +
+               facet_wrap(vars(LAD_origin))
+    )
+    
+  })
+}
+
+shinyApp(ui = ui, server = server)
