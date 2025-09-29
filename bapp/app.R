@@ -4,15 +4,16 @@ library(dplyr)
 library(DT)
 library(qs)
 library(bslib)
+library(plotly)
 
 print("printing wd")
 print(getwd())
 t <- qs::qread("data/280925_trips.qs")
 
-all_scenarios <- c("Base" = "reference",
-             "Green" = "green",
-             "Safe Street" = "safeStreet",
-             "Green + Safe Street" = "both")
+all_scenarios <- c("Reference" = "reference",
+             "Greening" = "green",
+             "Safer Streets" = "safeStreet",
+             "Safer Streets & Greening" = "both")
 
 all_locations <- unique(t$avg_time_combined$LAD_origin)
 
@@ -39,9 +40,9 @@ ui <- fluidPage(
       radioButtons(
         "metrics_picker", "Metrics:",
         choices = c(
-          "Trip Modes",
-          "Distance",
-          "Duration",
+          "Trip Mode Share (%)",
+          "Combined Trip Distance by Modes",
+          "Trip Duration by Mode",
           "Zero Mode"
         ),
         selected = "Trip Modes"
@@ -62,11 +63,13 @@ ui <- fluidPage(
             condition = "input.metrics_picker == 'Zero Mode'",
             plotlyOutput("out_zm")
           ),
-          conditionalPanel("input.metrics_picker == 'Trip Modes'", 
-                           plotlyOutput("out_dist"))
-          ,
-          conditionalPanel("input.metrics_picker == 'Duration'", 
+          conditionalPanel("input.metrics_picker == 'Trip Mode Share (%)'", 
+                           plotlyOutput("out_mshare")),
+          conditionalPanel("input.metrics_picker == 'Combined Trip Distance by Modes'", 
+                           plotlyOutput("out_cdist")),
+          conditionalPanel("input.metrics_picker == 'Trip Duration by Mode'", 
                            plotlyOutput("out_dur"))
+          
         )
         
         
@@ -87,6 +90,12 @@ server <- function(input, output) {
     # req(input$in_pathways)
     # req(!is.null(input$in_strata))
     
+    t$zero_mode <- t$zero_mode |> mutate(scen = case_when(scen == "both" ~ "Greening + Safe Streets",
+                            scen == "safeStreet" ~ "Safer Streets",
+                            scen == "reference" ~ "Reference",
+                            scen == "green" ~ "Greening",
+                            .default = scen))
+    
     
     plotly::ggplotly(ggplot(t$zero_mode, aes(x = mode, y = zero_percent, fill = scen)) +
       geom_bar(stat = "identity", position = position_dodge(width = 0.9)) +
@@ -95,6 +104,9 @@ server <- function(input, output) {
         position = position_dodge(width = 0.9), 
         vjust = -0.25,                       
         size = 3) +
+        # scale_fill_manual(values = c("both", "green", "safeStreet", "reference"), 
+        #                   labels = c("Greening + Safe Streets", "Greening",
+        #                              "Safer Streets", "Reference")) +
       labs(
         title = "Proportion of Individuals Reporting Non-Usage of Specific Transport Modes",
         y = "Proportion (%)",
@@ -115,12 +127,18 @@ server <- function(input, output) {
     
   })
   
-  output$out_dist <- renderPlotly({
+  output$out_mshare <- renderPlotly({
+    
+    t$distance <- t$distance |> mutate(scen = case_when(scen == "both" ~ "Greening + Safe Streets",
+                                                          scen == "safeStreet" ~ "Safer Streets",
+                                                          scen == "reference" ~ "Reference",
+                                                          scen == "green" ~ "Greening",
+                                                          .default = scen))
     
     ggplot(t$distance, aes(x = distance_bracket, y = percent, fill = mode)) +
       geom_bar(stat = "identity", position = "fill") +
       geom_text(
-        aes(label = ifelse(percent > 1, paste0(round(percent, 1), "%"), "")), # Show label only if >= 1%
+        aes(label = ifelse(percent > 2, paste0(round(percent, 1), "%"), "")), # Show label only if >= 1%
         position = position_fill(vjust = 0.5), 
         color = "white",
         size = 3
@@ -148,8 +166,41 @@ server <- function(input, output) {
     
   })
   
+  output$out_cdist <- renderPlotly({
+    
+    t$combined_distance <- t$combined_distance |> mutate(scen = case_when(scen == "both" ~ "Greening + Safe Streets",
+                                                        scen == "safeStreet" ~ "Safer Streets",
+                                                        scen == "reference" ~ "Reference",
+                                                        scen == "green" ~ "Greening",
+                                                        .default = scen))
+    
+    ggplotly(
+      ggplot(t$combined_distance) +
+        aes(x = mode, y = avgDistance, fill = scen) +
+        geom_col(position = "dodge2") +
+        scale_fill_hue(direction = 1) +
+        geom_text(aes(label = round(avgDistance, 1), y = avgDistance),
+                  size = 2, #hjust = -0.1, 
+                  hjust = 1.1, 
+                  vjust = 0.2,
+                  position = position_dodge(1),
+                  inherit.aes = TRUE
+        ) +
+        coord_flip() +
+        theme_minimal() +
+        facet_wrap(vars(LAD_origin)) +
+        labs(title = "Average weekly dist. pp by mode and location",
+             fill = "Scenario")
+    )
+  })
   
   output$out_dur <- renderPlotly({
+    
+    t$avg_time_combined <- t$avg_time_combined |> mutate(scen = case_when(scen == "both" ~ "Greening + Safe Streets",
+                                                                          scen == "safeStreet" ~ "Safer Streets",
+                                                                          scen == "reference" ~ "Reference",
+                                                                          scen == "green" ~ "Greening",
+                                                                          .default = scen))
     
     ggplotly(ggplot(t$avg_time_combined) +
                aes(x = mode, y = avgTime, fill = scen) +
