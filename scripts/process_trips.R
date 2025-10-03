@@ -66,15 +66,33 @@ arrow::write_dataset(dataset = trips, path = "temp/260925_trips.parquet", partit
 
 ### Table of the number of trips in each local authority in Greater Manchester
 
-trips <- arrow::open_dataset("temp/260925_trips.parquet")
+trips <- arrow::open_dataset("temp/280925_trips.parquet")
+
+trips <- trips |> 
+  #to_duckdb() |> 
+  mutate(distance = case_when(
+    mode %in% c("Driving Car", "Car Passenger", "Public Transport") ~ t.distance_auto,
+    mode == "Walking" ~ t.distance_walk,
+    mode == "Cycling" ~ t.distance_bike,
+    TRUE ~ NA_real_)) |> 
+  mutate(
+    distance_bracket = as.factor(cut(
+      distance,
+      breaks = c(0, 1, 3, 5, 10, 20, 40, Inf),
+      labels = c("0-1", "1-3", "3-5", "5-10", "10-20", "20-40", "40+"),
+      right = FALSE
+    )
+    )) |> 
+  collect()
+
 # Table of the number of trips in each local authority in Greater Manchester
 trip_counts <- trips |>  
-  select(t.id, LAD_origin, LAD_destination, scen) |>
+  select(t.id, LAD_origin, LAD_destination, scen, agegroup, gender) |>
   to_duckdb() |> 
   pivot_longer(cols = c(LAD_origin, LAD_destination),
                names_to = "type",
                values_to = c("location")) |>
-  group_by(location, scen) |>
+  group_by(location, scen, agegroup, gender) |>
   summarise(trip_count = n()) |> 
   group_by(scen) |> 
   mutate(percent_of_total = (trip_count / sum(trip_count))) |> 
@@ -212,11 +230,11 @@ pp=trips|> to_duckdb() |>
   group_by(p.ID, LAD_origin, scen)|>
   summarise(Cycling = sum(t.distance_bike[mode=="Cycling"]),
             Walking = sum(t.distance_walk[mode=="Walking"]),
-            Public_Transport = sum(t.distance_auto[mode=="Public Transport"]),
-            Driving_Car = sum(t.distance_auto[mode=="Driving Car"]),
-            Car_Passenger = sum(t.distance_auto[mode=="Car Passenger"])) |> collect()
+            `Public Transport` = sum(t.distance_auto[mode=="Public Transport"]),
+            `Driving Car` = sum(t.distance_auto[mode=="Driving Car"]),
+            `Car Passenger` = sum(t.distance_auto[mode=="Car Passenger"])) |> collect()
 
-pp <- pp |> gather(mode,dist,Cycling:Car_Passenger)
+pp <- pp |> gather(mode,dist,Cycling:`Car Passenger`)
 
 pop_lad <- trips |> distinct(p.ID, LAD_origin) |> group_by(LAD_origin) |> summarise(pop = n())
 
@@ -232,11 +250,11 @@ pp_all=trips|> to_duckdb() |>
   group_by(p.ID, scen)|>
   summarise(Cycling=sum(t.distance_bike[mode=="Cycling"]),
             Walking=sum(t.distance_walk[mode=="Walking"]),
-            Public_Transport=sum(t.distance_auto[mode=="Public Transport"]),
-            Driving_Car=sum(t.distance_auto[mode=="Driving Car"]),
-            Car_Passenger = sum(t.distance_auto[mode=="Car Passenger"])) |> collect()
+            `Public Transport`=sum(t.distance_auto[mode=="Public Transport"]),
+            `Driving Car`=sum(t.distance_auto[mode=="Driving Car"]),
+            `Car Passenger` = sum(t.distance_auto[mode=="Car Passenger"])) |> collect()
 
-pp_all <- pp_all|>gather(mode,dist,Cycling:Car_Passenger)
+pp_all <- pp_all|>gather(mode,dist,Cycling:`Car Passenger`)
 
 summary_distance_all <- pp_all |> 
   filter(!is.na(dist)) |> 
@@ -272,11 +290,11 @@ tt = trips |> to_duckdb() |>
   group_by(p.ID, LAD_origin, scen)|>
   summarise(Cycling=sum(time_bike[mode=="Cycling"], na.rm = T),
             Walking=sum(time_walk[mode=="Walking"], na.rm = T),
-            Public_Transport=sum(time_pt[mode=="Public Transport"], na.rm = T),
-            Driving_Car=sum(time_auto[mode=="Driving Car"], na.rm = T),
-            Car_Passenger=sum(time_auto[mode=="Car Passenger"], na.rm = T)) |> collect()
+            `Public Transport`=sum(time_pt[mode=="Public Transport"], na.rm = T),
+            `Driving Car`=sum(time_auto[mode=="Driving Car"], na.rm = T),
+            `Car Passenger`=sum(time_auto[mode=="Car Passenger"], na.rm = T)) |> collect()
 
-tt=tt|>gather(mode,time,Cycling:Car_Passenger)
+tt=tt|>gather(mode,time,Cycling:`Car Passenger`)
 
 summary_time=tt|>
   group_by(mode, LAD_origin, scen)|>
@@ -321,21 +339,10 @@ ggplotly(ggplot(avg_time_combined) +
 
 # Stacked Bar Plots for Average Distance via Transport Mode
 
-trips <- trips |> 
-  to_duckdb() |> 
-  mutate(distance = case_when(
-    mode %in% c("Driving Car", "Car Passenger", "Public Transport") ~ t.distance_auto,
-    mode == "Walking" ~ t.distance_walk,
-    mode == "Cycling" ~ t.distance_bike,
-    TRUE ~ NA_real_)) |> 
-  mutate(
-    distance_bracket = cut(
-      distance,
-      breaks = c(0, 1, 3, 5, 10, 20, 40, Inf),
-      labels = c("0-1", "1-3", "3-5", "5-10", "10-20", "20-40", "40+"),
-      right = FALSE
-    )
-  )
+
+
+
+
 
 # trips$distance_bracket <- cut(
 #   trips$distance,
@@ -349,6 +356,13 @@ distance <- trips |>
   group_by(distance_bracket, scen) |>
   mutate(percent = count / sum(count) * 100) |> 
   collect()
+
+distance$distance_bracket <- factor(distance$distance_bracket,
+                                         levels = c("0-1", "1-3", "3-5", "5-10",
+                                                    "10-20", "20-40", "40+"))
+
+
+
 
 ggplot(distance, aes(x = distance_bracket, y = percent, fill = mode)) +
   geom_bar(stat = "identity", position = "fill") +
@@ -377,7 +391,7 @@ ggplot(distance, aes(x = distance_bracket, y = percent, fill = mode)) +
     legend.text = element_text(face = "bold"),
     legend.title = element_text(face = "bold")
   ) +
-  facet_wrap(~ scen, scales = "free_x")
+  facet_wrap(vars(scen), scales = "free_x")
 
 
 # People with Zero trips via mode 
@@ -392,7 +406,8 @@ zero_mode <- trips |>
       summarise(count = n_distinct(p.ID), .groups = 'drop'),
     by = "scen") |>
   mutate(zero = total - count,
-         zero_percent = round(zero/total*100,1))
+         zero_percent = round(zero/total*100,1)) |> 
+  collect()
 
 ggplot(zero_mode, aes(x = mode, y = zero_percent, fill = scen)) +
   geom_bar(stat = "identity", position = position_dodge(width = 0.9)) +
@@ -417,3 +432,14 @@ ggplot(zero_mode, aes(x = mode, y = zero_percent, fill = scen)) +
     axis.text.y = element_text(face = "bold"),
     legend.text = element_text(face = "bold"),
     legend.title = element_text(face = "bold"))
+
+t <- mget(c("trips_percentage_combined",
+            "zero_mode",
+            "distance",
+            "avg_time_combined",
+            "combined_distance",
+            "trips_percentage_combined_imd",
+            "trips_percentage_combined"))
+
+
+qs::qsave(t, "bapp/data/280925_trips.qs" )
