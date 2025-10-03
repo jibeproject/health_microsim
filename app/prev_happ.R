@@ -20,7 +20,7 @@ suppressPackageStartupMessages({
 })
 
 # ------------------- Paths (edit these if needed) -------------------
-DATA_PATH  <- "../temp/290925_all_data_50p_20y.parquet" #all_data_230825.parquet"
+DATA_PATH  <- "data/all_data.parquet"#../temp/290925_all_data_50p_20y.parquet" #all_data_230825.parquet"
 ZONES_CSV  <- "/media/ali/Expansion/backup_tabea/manchester-main/input/zoneSystem.csv"
 
 # Local cache folder (relative to app)
@@ -59,7 +59,7 @@ if (USE_ALL_DATA_CACHE && file.exists(all_data_cache_path) && !REBUILD_CACHE) {
 }
 
 MIN_CYCLE <- 1
-MAX_CYCLE <- max(19)#all_data$cycle)
+MAX_CYCLE <- max(all_data$cycle)
 
 
 # ------------------- Helpers -------------------------------------------
