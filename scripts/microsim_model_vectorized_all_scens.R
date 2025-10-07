@@ -36,6 +36,8 @@ for (scen in c("base")) #for (scen in c("base", "safestreet", "green", "both"))
 
   SCEN_SHORT_NAME <- scen
   
+  manchester_dir_path <- '/media/ali/Expansion/backup_tabea/Ali/manchester'
+  
   dir_path <- scen
   if (scen == "base")
     dir_path <- 'reference'
@@ -47,8 +49,22 @@ for (scen in c("base")) #for (scen in c("base", "safestreet", "green", "both"))
       collect()
     
   } else if (!FILE_PATH_BELEN) {
-    # Option 2: Default (Ali)
-    synth_pop <- read_csv(here(paste0("jibe health/", SCEN_SHORT_NAME, "_pp_exposure_RR_2021.csv")))
+    
+    # if (scen == "base"){
+    #   f <- "pp_exposure_2021_base_140725.csv"
+    # }else if(scen == "safestreet"){
+    #   f <- "pp_exposure_2021_safeStreet_300725.csv"
+    # }else if(scen == "green"){
+    #   f <- "pp_exposure_2021_green_310725.csv"
+    # }else if(scen == "both"){
+    #   f <- "pp_exposure_2021_both_010825.csv"
+    # }
+    # 
+    # # Option 2: Default (Ali)
+    # #/media/ali/Expansion/backup_tabea/Ali/manchester
+    # synth_pop <- read_csv(here(paste0(manchester_dir_path, "/input/health/", f)))
+    
+    synth_pop <- read_csv(here(paste0(manchester_dir_path, "/scenOutput/", SCEN_SHORT_NAME, "/microData/pp_rr_2021.csv")))
     
   } else {
     # Option 3: Manchester
@@ -78,7 +94,7 @@ for (scen in c("base")) #for (scen in c("base", "safestreet", "green", "both"))
     
   } else if (!FILE_PATH_BELEN) {
     # Option 2: Default (e.g., Cambridge)
-    hd <- read_csv(here("jibe health/health_transitions_manchester.csv"))
+    hd <- read_csv(here(manchester_dir_path, "/input/health/health_transitions_manchester_04082025.csv"))
     
   } else {
     # Option 3: Manchester path (default if FILE_PATH_BELEN is TRUE and FILE_PATH_HPC is FALSE)
@@ -95,7 +111,7 @@ for (scen in c("base")) #for (scen in c("base", "safestreet", "green", "both"))
     
   } else if (!FILE_PATH_BELEN) {
     # Option 2: Default (Ali)
-    prev <- read_csv(here(paste0("jibe health/", SCEN_SHORT_NAME, "_prevalence_id.csv")))
+    prev <- read_csv(here(paste0(manchester_dir_path, "/input/health/base_prevalence_id_clean_230725.csv")))
     
   } else {
     # Option 3: Manchester path (default if FILE_PATH_BELEN is TRUE and FILE_PATH_HPC is FALSE)
@@ -109,7 +125,7 @@ for (scen in c("base")) #for (scen in c("base", "safestreet", "green", "both"))
     
   } else if (!FILE_PATH_BELEN) {
     # Option 2: Default (Ali)
-    zones <- read_csv(here("jibe health/zoneSystem.csv"))
+    zones <-  read_csv(here(paste0(manchester_dir_path, "/input/zoneSystem.csv")))
     
   } else {
     # Option 3: Manchester path (default if FILE_PATH_BELEN is TRUE and FILE_PATH_HPC is FALSE)
