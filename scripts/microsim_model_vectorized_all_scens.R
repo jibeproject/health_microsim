@@ -251,7 +251,7 @@ for (scen in c("base", "safestreet", "green", "both"))
   diseases <- unique(hd$cause)
   
   # Vectorized version of get_state
-  get_state_vectorized <- function(rd, cycle, cause, cm, ind_spec_rate, cause_risk = 1) {
+  get_state_vectorized <- function(rd, cycle, cause, cm, ind_spec_rate) {
     # rd = synth_matrix
     # cycle = incyc
     # cause = dis
@@ -268,7 +268,7 @@ for (scen in c("base", "safestreet", "green", "both"))
     
     # Calculate disease probability
     dis_rate <- as.numeric(sapply(rd[, cause], function(x) strsplit(x, ",")[[1]][rr_index]) |> as.numeric() 
-                           * ind_spec_rate * cause_risk)
+                           * ind_spec_rate)
     dis_prob <- 1 - exp(-dis_rate)
     
     # print(paste(cycle, cause, rr_index))
@@ -391,8 +391,7 @@ for (scen in c("base", "safestreet", "green", "both"))
           cycle = incyc,
           cause = dis,
           cm = cm,
-          ind_spec_rate = filtered_rates,
-          cause_risk = risk_factors
+          ind_spec_rate = filtered_rates
         )
         print(length(rdf))
         print(length(m[, incyc + 1]))
