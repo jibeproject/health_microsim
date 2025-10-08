@@ -14,21 +14,21 @@ library(data.table)  # For faster data operations
 library(stringi)     # For faster string operations
 
 # Boolean variable for dir/file paths
-FILE_PATH_BELEN <- TRUE
+FILE_PATH_BELEN <- FALSE
 FILE_PATH_HPC <- FALSE
 
 options(future.globals.maxSize = +Inf)
 
 # Set sample_pro to be greater than zero
-sample_prop <- 0.01
+sample_prop <- 0.0001
 
 # Number of cycles/years the simulation works
-n.c <- 2
+n.c <- 10
 
 # Define DISEASE RISK to incorporate disease interaction
 DISEASE_RISK <- TRUE
 
-for (scen in c("base")) #for (scen in c("base", "safestreet", "green", "both"))
+for (scen in c("base", "safestreet", "green", "both"))
 {
   # scen <- 'base'
   # For reproducibility across scenarios, set it inside the loop
@@ -39,8 +39,8 @@ for (scen in c("base")) #for (scen in c("base", "safestreet", "green", "both"))
   manchester_dir_path <- '/media/ali/Expansion/backup_tabea/Ali/manchester'
   
   dir_path <- scen
-  if (scen == "base")
-    dir_path <- 'reference'
+  #if (scen == "base")
+  #  dir_path <- 'reference'
   
   
   if (FILE_PATH_HPC) {
@@ -101,6 +101,8 @@ for (scen in c("base")) #for (scen in c("base", "safestreet", "green", "both"))
     hd <- read_csv(here("manchester/health/processed/health_transitions_manchester.csv"))
   }
   
+  hd <- hd[!duplicated(hd),]
+  
   
   hd[hd$cause == "head_neck_cancer",]$cause <- "head_and_neck_cancer"
   
@@ -144,6 +146,10 @@ for (scen in c("base")) #for (scen in c("base", "safestreet", "green", "both"))
     # Option 3: Manchester path (default if FILE_PATH_BELEN is TRUE and FILE_PATH_HPC is FALSE)
     disease_risks <<- read_csv(here("health/mod_disease_risks.csv"))
   }
+  
+  synth_pop <- synth_pop |> left_join(zones  |> 
+                                        rename(zone = oaID) |> 
+                                        dplyr::select(zone, ladcd, lsoa21cd))
   
   if (sample_prop > 0){
     synth_pop <- synth_pop  |> 
@@ -203,8 +209,8 @@ for (scen in c("base")) #for (scen in c("base", "safestreet", "green", "both"))
   
   df <- synth_pop
   
-  existing_causes <- synth_pop |> ungroup() |> dplyr::select(contains("pa")) |> names()
-  hd <- hd |> filter(cause %in% gsub("pa_","", existing_causes)) 
+  #existing_causes <- synth_pop |> ungroup() |> dplyr::select(contains("pa")) |> names()
+  #hd <- hd |> filter(cause %in% gsub("pa_","", existing_causes)) 
   
   synth_pop <- process_all_suffixes(synth_pop, 
                                     hd |> 
@@ -246,7 +252,14 @@ for (scen in c("base")) #for (scen in c("base", "safestreet", "green", "both"))
   
   # Vectorized version of get_state
   get_state_vectorized <- function(rd, cycle, cause, cm, ind_spec_rate, cause_risk = 1) {
-    # print(cause)
+    # rd = synth_matrix
+    # cycle = incyc
+    # cause = dis
+    # cm = cm
+    # ind_spec_rate = filtered_rates
+    # cause_risk = risk_factors
+    #browser()
+    print(cause)
     prev_state <- as.character(cm[, 1])
     curr_state <- as.character(cm[, 2])
     current_age <- (as.numeric(rd[, "age"]) + cycle)
@@ -366,6 +379,10 @@ for (scen in c("base")) #for (scen in c("base", "safestreet", "green", "both"))
         filtered_rates <- hd_prepped[.(lookup_keys), rate, on = "lookup_key"]
         filtered_rates[is.na(filtered_rates)] <- 0
         
+        if (length(filtered_rates) > nrow(synth_matrix)){
+          filtered_rates <- filtered_rates[1:nrow(synth_matrix)]
+        }
+        
         # Calculate risk factors in bulk if needed
         if (DISEASE_RISK) {
           risk_factors <- rep(1, nrow(synth_matrix))
@@ -453,8 +470,7 @@ for (scen in c("base")) #for (scen in c("base", "safestreet", "green", "both"))
         # Get current and previous states in bulk
         cm <- m[, c(paste0("c", incyc - 1), paste0("c", incyc))]
         
-        # Update states in bulk
-        m[, incyc + 1] <- get_state_vectorized(
+        rdf <- get_state_vectorized(
           rd = synth_matrix,
           cycle = incyc,
           cause = dis,
@@ -462,6 +478,12 @@ for (scen in c("base")) #for (scen in c("base", "safestreet", "green", "both"))
           ind_spec_rate = filtered_rates,
           cause_risk = risk_factors
         )
+        print(length(rdf))
+        print(length(m[, incyc + 1]))
+        #browser()
+        
+        # Update states in bulk
+        m[, incyc + 1] <- rdf
       }
     }
     
@@ -575,17 +597,17 @@ for (scen in c("base")) #for (scen in c("base", "safestreet", "green", "both"))
   df$id <- rownames(m)
 
 
-  if (FILE_PATH_HPC) {
-    # Option 1: HPC path
-    arrow::write_dataset(df, paste0("health_data/results/", SCEN_SHORT_NAME, "_dis_inter_", DISEASE_RISK, "_state_trans-n.c-", n.c, "-n.i-", n.i, "-n.d-", length(diseases), ".parquet"))
-
-  } else if (!FILE_PATH_BELEN) {
-    # Option 2: Default (Ali)
-    arrow::write_dataset(df, paste0("data/", SCEN_SHORT_NAME, "_dis_inter_", DISEASE_RISK, "_state_trans-n.c-", n.c, "-n.i-", n.i, "-n.d-", length(diseases), ".parquet"))
-
-  } else {
-    # Option 3: Manchester path (default if FILE_PATH_BELEN is TRUE and FILE_PATH_HPC is FALSE)
-    arrow::write_dataset(df, paste0("manchester/health/processed/", SCEN_SHORT_NAME, "_dis_inter_", DISEASE_RISK, "_state_trans-n.c-", n.c, "-n.i-", n.i, "-n.d-", length(diseases), ".parquet"))
-  }
+  # if (FILE_PATH_HPC) {
+  #   # Option 1: HPC path
+  #   arrow::write_dataset(df, paste0("health_data/results/", SCEN_SHORT_NAME, "_dis_inter_", DISEASE_RISK, "_state_trans-n.c-", n.c, "-n.i-", n.i, "-n.d-", length(diseases), ".parquet"))
+  # 
+  # } else if (!FILE_PATH_BELEN) {
+  #   # Option 2: Default (Ali)
+  #   arrow::write_dataset(df, paste0("data/", SCEN_SHORT_NAME, "_dis_inter_", DISEASE_RISK, "_state_trans-n.c-", n.c, "-n.i-", n.i, "-n.d-", length(diseases), ".parquet"))
+  # 
+  # } else {
+  #   # Option 3: Manchester path (default if FILE_PATH_BELEN is TRUE and FILE_PATH_HPC is FALSE)
+  #   arrow::write_dataset(df, paste0("manchester/health/processed/", SCEN_SHORT_NAME, "_dis_inter_", DISEASE_RISK, "_state_trans-n.c-", n.c, "-n.i-", n.i, "-n.d-", length(diseases), ".parquet"))
+  # }
   
 }
