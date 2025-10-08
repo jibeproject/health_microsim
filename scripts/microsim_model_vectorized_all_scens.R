@@ -20,7 +20,7 @@ FILE_PATH_HPC <- FALSE
 options(future.globals.maxSize = +Inf)
 
 # Set sample_pro to be greater than zero
-sample_prop <- 0.0001
+sample_prop <- 0.01
 
 # Number of cycles/years the simulation works
 n.c <- 10
@@ -28,7 +28,7 @@ n.c <- 10
 # Define DISEASE RISK to incorporate disease interaction
 DISEASE_RISK <- TRUE
 
-for (scen in c("base", "safestreet", "green", "both"))
+for (scen in c("base"))#, "safestreet", "green", "both"))
 {
   # scen <- 'base'
   # For reproducibility across scenarios, set it inside the loop
@@ -259,16 +259,42 @@ for (scen in c("base", "safestreet", "green", "both"))
     # ind_spec_rate = filtered_rates
     # cause_risk = risk_factors
     #browser()
+    risk_factors <- 1
     print(cause)
     prev_state <- as.character(cm[, 1])
     curr_state <- as.character(cm[, 2])
+    
+    current_diseases <- length(strsplit(prev_state, " ")[[1]])
+    
     current_age <- (as.numeric(rd[, "age"]) + cycle)
+    if (current_diseases == 1) {  
+      risk_factors <- risk_factors * 1.23
+    }
+    if (current_diseases == 2) {
+      risk_factors <- risk_factors * 1.62
+    }
+    if (current_diseases == 3) {
+      risk_factors <- risk_factors * 2.09
+    }
+    if (current_diseases == 4) {
+      risk_factors <- risk_factors * 2.77
+    }
+    if (current_diseases == 5) {
+      risk_factors <- risk_factors * 3.46
+    }
+    if (current_diseases > 5) {
+      risk_factors <- risk_factors * 5.14
+    }
     
     rr_index <- 1
     
     # Calculate disease probability
     dis_rate <- as.numeric(sapply(rd[, cause], function(x) strsplit(x, ",")[[1]][rr_index]) |> as.numeric() 
                            * ind_spec_rate)
+    
+    if (cause == "all_cause_mortality") {
+      dis_rate <- dis_rate * risk_factors
+    }
     dis_prob <- 1 - exp(-dis_rate)
     
     # print(paste(cycle, cause, rr_index))
