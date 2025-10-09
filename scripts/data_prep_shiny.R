@@ -130,13 +130,16 @@ get_summary <- function(SCEN_NAME,
   setDT(m)
   
   # Melt wide to long on all columns starting with "c"
-  long_data <- melt(m, id.vars = c("id", "age"), measure.vars = patterns("^c"), variable.name = "name", value.name = "value")
+  long_data <- melt(m, id.vars = c("id", "age", "agegroup", "gender", "ladcd", "lsoa21cd"), 
+                    measure.vars = patterns("^c"), 
+                    variable.name = "name", value.name = "value")
   
   # Cycle from column name
   long_data[, cycle := as.numeric(str_remove(name, "^c"))]
   
   # Split pipe-separated values and unlist into rows
-  long_data <- long_data[, .(value = unlist(strsplit(value, "\\|"))), by = .(id, age, cycle)]
+  long_data <- long_data[, .(value = unlist(strsplit(value, "\\|"))), 
+                         by = .(id, age, agegroup, gender, ladcd, lsoa21cd, name, cycle)]
   
   # Trim whitespace and replace terms
   long_data[, value := str_trim(value)]
@@ -188,7 +191,7 @@ get_summary <- function(SCEN_NAME,
 ## microdata_dir_name = "microData", 
 ## manchester_folder = "/media/ali/Expansion/backup_tabea/manchester-main")
 manchester_folder = "/media/ali/Expansion/backup_tabea/manchester-main/"
-fyear <- 2040
+fyear <- 2051
 
 ## === Prepare general data long ===
 all_data <- list(
