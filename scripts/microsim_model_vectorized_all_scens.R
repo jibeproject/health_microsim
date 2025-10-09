@@ -26,7 +26,7 @@ sample_prop <- 0.01
 n.c <- 10
 
 # Define DISEASE RISK to incorporate disease interaction
-DISEASE_RISK <- TRUE
+# DISEASE_RISK <- TRUE
 
 for (scen in c("base"))#, "safestreet", "green", "both"))
 {
@@ -37,6 +37,22 @@ for (scen in c("base"))#, "safestreet", "green", "both"))
   SCEN_SHORT_NAME <- scen
   
   manchester_dir_path <- '/media/ali/Expansion/backup_tabea/Ali/manchester'
+  
+  if (grepl("base", scen)){
+    inj_exp <- read_csv(paste0(manchester_dir_path, "/input/health/pp_exposure_2021_base_140725.csv")) |> dplyr::select(id, contains("sev"))
+  }
+  if (grepl("safestreet", scen)){
+    inj_exp <- read_csv(paste0(manchester_dir_path, "/input/health/pp_exposure_2021_safeStreet_300725.csv")) |> dplyr::select(id, contains("sev"))
+  }
+  if (grepl("both", scen)){
+    inj_exp <- read_csv(paste0(manchester_dir_path, "/input/health/pp_exposure_2021_both_010825.csv")) |> dplyr::select(id, contains("sev"))
+  }
+  if (grepl("green", scen)){
+    inj_exp <- read_csv(paste0(manchester_dir_path, "/input/health/pp_exposure_2021_green_310725.csv")) |> dplyr::select(id, contains("sev"))
+  }
+  
+  agp <- read_csv(paste0(manchester_dir_path, "/input/accident/age_gender_rr.csv"))
+  
   
   dir_path <- scen
   #if (scen == "base")
@@ -71,6 +87,7 @@ for (scen in c("base"))#, "safestreet", "green", "both"))
     synth_pop <- read_csv(here(paste0("manchester/health/processed/", SCEN_SHORT_NAME, "_pp_exposure_RR_2021.csv")))
   }
   
+  synth_pop <- synth_pop |> left_join(inj_exp)
   
   # Introduce agegroup
   synth_pop <- synth_pop |> 
@@ -263,29 +280,7 @@ for (scen in c("base"))#, "safestreet", "green", "both"))
     print(cause)
     prev_state <- as.character(cm[, 1])
     curr_state <- as.character(cm[, 2])
-    
-    current_diseases <- length(strsplit(prev_state, " ")[[1]])
-    
     current_age <- (as.numeric(rd[, "age"]) + cycle)
-    if (current_diseases == 1) {  
-      risk_factors <- risk_factors * 1.23
-    }
-    if (current_diseases == 2) {
-      risk_factors <- risk_factors * 1.62
-    }
-    if (current_diseases == 3) {
-      risk_factors <- risk_factors * 2.09
-    }
-    if (current_diseases == 4) {
-      risk_factors <- risk_factors * 2.77
-    }
-    if (current_diseases == 5) {
-      risk_factors <- risk_factors * 3.46
-    }
-    if (current_diseases > 5) {
-      risk_factors <- risk_factors * 5.14
-    }
-    
     rr_index <- 1
     
     # Calculate disease probability
@@ -293,8 +288,30 @@ for (scen in c("base"))#, "safestreet", "green", "both"))
                            * ind_spec_rate)
     
     if (cause == "all_cause_mortality") {
+      current_diseases <- length(strsplit(prev_state, " ")[[1]])
+      
+      if (current_diseases == 1) {  
+        risk_factors <- risk_factors * 1.23
+      }
+      if (current_diseases == 2) {
+        risk_factors <- risk_factors * 1.62
+      }
+      if (current_diseases == 3) {
+        risk_factors <- risk_factors * 2.09
+      }
+      if (current_diseases == 4) {
+        risk_factors <- risk_factors * 2.77
+      }
+      if (current_diseases == 5) {
+        risk_factors <- risk_factors * 3.46
+      }
+      if (current_diseases > 5) {
+        risk_factors <- risk_factors * 5.14
+      }
+      
       dis_rate <- dis_rate * risk_factors
     }
+    
     dis_prob <- 1 - exp(-dis_rate)
     
     # print(paste(cycle, cause, rr_index))
@@ -369,14 +386,14 @@ for (scen in c("base"))#, "safestreet", "green", "both"))
   }
   
   # Main simulation function
-  run_simulation <- function(synth_pop_wprob, m, hd, disease_risks, n.c, diseases, DISEASE_RISK = TRUE) {
+  run_simulation <- function(synth_pop_wprob, m, hd, disease_risks, n.c, diseases) {
     
     # synth_pop_wprob <- synth_pop
     # Prepare data for fast access
     
     # synth_pop_wprob <- synth_pop
     hd_prepped <- prep_health_data(hd)
-    if (DISEASE_RISK) disease_risks_prepped <- prep_disease_risks(disease_risks)
+    #if (DISEASE_RISK) disease_risks_prepped <- prep_disease_risks(disease_risks)
     
     # Convert to matrix for faster column access
     synth_matrix <- as.matrix(synth_pop_wprob)
@@ -433,7 +450,7 @@ for (scen in c("base"))#, "safestreet", "green", "both"))
   
   # Run the simulation
   tic()
-  m <- run_simulation(synth_pop, m, hd, disease_risks, n.c, diseases, DISEASE_RISK)
+  m <- run_simulation(synth_pop, m, hd, disease_risks, n.c, diseases)
   toc()
 
 
