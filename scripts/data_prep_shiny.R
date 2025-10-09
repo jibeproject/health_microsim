@@ -10,6 +10,7 @@ suppressPackageStartupMessages({
   library(plotly)
   library(readr)
   library(rlang)
+  library(data.table)
 })
 
 # === Global Settings ===
@@ -125,42 +126,47 @@ get_summary <- function(SCEN_NAME,
   #|> 
   #   mutate(across(starts_with("c"), ~ ifelse(str_detect(., "killed"), "dead", .))) # Ali to update
   
-  # Long format and event unpacking
-  long_data <- m |> 
-    pivot_longer(cols = starts_with("c")) |>
-    arrange(id, parse_number(name)) |>
-    mutate(
-      cycle = as.numeric(str_remove(name, "^c")),
-      unpacked = str_split(value, "\\|")
-    ) |>
-    unnest_longer(unpacked) |>
-    mutate(
-      value = str_trim(unpacked),
-      value = str_replace_all(value, fixed("parkinson’s_disease"), "parkinson")
-    ) |>
-    dplyr::select(-unpacked) |>
-    filter(value != "null") |>
-    arrange(id, cycle) |>
-    group_by(id) |>
-    # Forward-fill 'age_cycle' after first appearance of non-null value
-    mutate(
-      dead_count = cumsum(grepl("dead", value)),
-      age_cycle = ifelse(!value %in% c("null"), age + cycle - min(cycle[! value %in% c("null")]), NA)
-    ) |>
-    ungroup() |> 
-    filter(!(grepl("dead", value) & dead_count > 1)) |>
-    dplyr::select(-dead_count) |> 
-    mutate(agegroup_cycle = cut(
-      age_cycle,
-      breaks = c(seq(0, 85, by = 5), Inf),  # 0,5,10,...,85,Inf
-      labels = c(
-        paste(seq(0, 80, by = 5), seq(4, 84, by = 5), sep = "-"),
-        "85+"
-      ),
-      right = FALSE,
-      include.lowest = TRUE
-    )) |> 
-    distinct()
+  # Convert to data.table (in place)
+  setDT(m)
+  
+  # Melt wide to long on all columns starting with "c"
+  long_data <- melt(m, id.vars = c("id", "age"), measure.vars = patterns("^c"), variable.name = "name", value.name = "value")
+  
+  # Cycle from column name
+  long_data[, cycle := as.numeric(str_remove(name, "^c"))]
+  
+  # Split pipe-separated values and unlist into rows
+  long_data <- long_data[, .(value = unlist(strsplit(value, "\\|"))), by = .(id, age, cycle)]
+  
+  # Trim whitespace and replace terms
+  long_data[, value := str_trim(value)]
+  long_data[, value := str_replace_all(value, fixed("parkinson’s_disease"), "parkinson")]
+  
+  # Filter out "null"
+  long_data <- long_data[value != "null"]
+  
+  # Order by id and cycle
+  setorder(long_data, id, cycle)
+  
+  # Compute cumulative dead count and age_cycle
+  long_data[, dead_count := cumsum(grepl("dead", value)), by = id]
+  min_cycle <- long_data[value != "null", .(min_cycle = min(cycle)), by = id]
+  long_data <- merge(long_data, min_cycle, by = "id")
+  long_data[, age_cycle := ifelse(value != "null", age + cycle - min_cycle, NA_real_)]
+  
+  # Remove rows with multiple "dead"
+  long_data <- long_data[!(grepl("dead", value) & dead_count > 1)]
+  
+  # Remove helper columns
+  long_data[, c("dead_count", "min_cycle") := NULL]
+  
+  # Create age groups
+  breaks <- c(seq(0, 85, 5), Inf)
+  labels <- c(paste(seq(0, 80, 5), seq(4, 84, 5), sep = "-"), "85+")
+  long_data[, agegroup_cycle := cut(age_cycle, breaks = breaks, labels = labels, right = FALSE, include.lowest = TRUE)]
+  
+  # Remove duplicates
+  long_data <- unique(long_data)
   
   if (!is.null(group_vars) && summarise && length(group_vars) > 0) {
   long_data <- long_data |>
@@ -182,7 +188,7 @@ get_summary <- function(SCEN_NAME,
 ## microdata_dir_name = "microData", 
 ## manchester_folder = "/media/ali/Expansion/backup_tabea/manchester-main")
 manchester_folder = "/media/ali/Expansion/backup_tabea/manchester-main/"
-fyear <- 2032
+fyear <- 2040
 
 ## === Prepare general data long ===
 all_data <- list(
