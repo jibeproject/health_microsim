@@ -58,7 +58,7 @@ get_summary <- function(SCEN_NAME,
   
   # Read health tracker file
   if (grepl("\\.csv$", file_path)) {
-    m <- arrow::open_csv_dataset(file_path) |> to_duckdb() |> collect()
+    m <- read_csv(file_path)#arrow::open_csv_dataset(file_path) |> to_duckdb() |> collect()
   } else {
     m <- arrow::open_dataset(file_path)
   }
@@ -190,12 +190,12 @@ get_summary <- function(SCEN_NAME,
 ## final_year = 2022, 
 ## microdata_dir_name = "microData", 
 ## manchester_folder = "/media/ali/Expansion/backup_tabea/manchester-main")
-manchester_folder = "/media/ali/Expansion/backup_tabea/manchester-main/"
+manchester_folder = "/run/user/1000/gvfs/smb-share:server=ifs-prod-1152-cifs.ifs.uis.private.cam.ac.uk,share=cedar-grp-drive/HealthImpact/Data/Country/UK/JIBE/manchester/"
 fyear <- 2051
 
 ## === Prepare general data long ===
 all_data <- list(
-  base = get_summary("base", summarise = FALSE, final_year = fyear, manchester_folder = manchester_folder) |> mutate(scen = "reference"),
+  base = get_summary("100%/base", summarise = FALSE, final_year = fyear, manchester_folder = manchester_folder) |> mutate(scen = "reference"),
   #green = get_summary("green", summarise = FALSE, final_year = fyear, manchester_folder = manchester_folder) |> mutate(scen = "green"),
   safeStreet = get_summary("safeStreet", summarise = FALSE, final_year = fyear, manchester_folder = manchester_folder) |> mutate(scen = "safeStreet"),
   #both = get_summary("both", summarise = FALSE, final_year = fyear, manchester_folder = manchester_folder) |> mutate(scen = "both")
