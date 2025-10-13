@@ -439,6 +439,7 @@ server <- function(input, output, session) {
                  mean_age_weighted_years = mean_age_weighted)
       } else {
         mean_age_dead_raw_by_scen_val_lad |>
+          (\(df) if(length(input$lad_sel) > 0) filter(df, ladnm %in% input$lad_sel) else df)() |>
           filter(value %in% causes) |>
           arrange(scen, ladnm, value) |>
           rename(mean_age_raw_years = mean_age_raw)
@@ -465,6 +466,7 @@ server <- function(input, output, session) {
                  mean_age_weighted_years = mean_age_weighted)
       } else {
         mean_age_onset_raw_by_scen_val_lad |>
+          (\(df) if(length(input$lad_sel) > 0) filter(df, ladnm %in% input$lad_sel) else df)() |>
           filter(value == cause) |>
           arrange(scen, ladnm) |>
           rename(mean_age_raw_years = mean_age_raw)
