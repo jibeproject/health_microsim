@@ -1,0 +1,121 @@
+library(dplyr)
+library(tidyr)
+library(gt)
+library(scales)
+library(glue)
+library(here)
+
+exposure <- arrow::open_dataset(here("temp/exp.parquet")) |> collect()
+
+# Function to calculate quantiles for columns starting with "exp" with optional grouping
+calc_quantiles_grouped <- function(data, group_var = NULL) {
+  # data <- df
+  quantile_probs <- c(0, 0.25, 0.5, 0.75, 1)
+  quantile_names <- c("0%", "25%", "50%", "75%", "100%")
+  
+  if (!is.null(group_var)) {
+    group_vars_sym <- if (length(group_var) > 1) {
+      rlang::syms(group_var)
+    } else {
+      rlang::sym(group_var)
+    }
+    grouped_df <- data %>% group_by(!!!group_vars_sym)
+  } else {
+    grouped_df <- data
+  }
+  
+  
+  summarised <- grouped_df %>%
+    summarise(across(starts_with("exposure"), list(
+      `0%` = ~ quantile(.x, 0),
+      `25%` = ~ quantile(.x, 0.25),
+      `50%` = ~ quantile(.x, 0.5),
+      `75%` = ~ quantile(.x, 0.75),
+      `100%` = ~ quantile(.x, 1)
+    ), .names = "{.col}_{.fn}"), .groups = "drop") %>%
+    pivot_longer(
+      cols = -all_of(group_var),
+      names_to = c("variable", "quantile"),
+      names_pattern = "^(.*)_(.*)$"
+    ) %>%
+    mutate(quantile = factor(quantile, levels = quantile_names)) %>%
+    arrange(across(all_of(group_var)), variable, quantile)
+  return(summarised)
+}
+
+df <- exposure
+# Example usage with your dataframe `df`
+overall <- calc_quantiles_grouped(df, "scen")
+by_gender <- calc_quantiles_grouped(df, c("scen", "gender"))
+by_ladnm <- calc_quantiles_grouped(df, c("scen", "ladnm"))
+by_agegroup <- calc_quantiles_grouped(df, c("scen", "agegroup"))
+# Add grouping column to differentiate
+overall <- overall %>% mutate(grouping = "Overall")
+by_gender <- by_gender %>% mutate(grouping = paste("Gender:", gender)) %>% select(-gender)
+by_ladnm <- by_ladnm %>% mutate(grouping = paste("LADNM:", ladnm)) %>% select(-ladnm)
+by_agegroup <- by_agegroup %>% mutate(grouping = paste("Agegroup:", agegroup)) %>% select(-agegroup)
+# Bind all results into one dataframe
+all_quantiles <- bind_rows(overall, by_gender, by_ladnm, by_agegroup) #%>%
+  #select(grouping, variable, quantile, value)
+# Create a wide format table for gt display
+gt_table <- all_quantiles %>%
+  pivot_wider(names_from = quantile, values_from = value) %>%
+  gt(groupname_col = "grouping") %>%
+  tab_header(title = "Quantiles for exp Columns by Groupings") %>%
+  cols_label(
+    grouping = "Group",
+    variable = "Variable",
+    `0%` = "Min",
+    `25%` = "25th Percentile",
+    `50%` = "Median",
+    `75%` = "75th Percentile",
+    `100%` = "Max"
+  )
+View(all_quantiles)
+
+           
+# Define a color function that maps normalized values (0–1) to a color between lightpink and lightgreen
+col_fun <- col_numeric(palette = c("lightpink", "lightgreen"), domain = c(0, 1))
+# Pivot the data so that each row is defined by grouping, variable, and quantile,
+# with one column per scen.
+wide_df <- all_quantiles %>%
+  pivot_wider(
+    id_cols = c(grouping, variable, quantile),
+    names_from = scen,
+    values_from = value
+  )
+# Compute row-wise min and max and generate HTML formatting without using cell_spec.
+# Each cell's background color is determined by its normalized value relative to the row.
+formatted_df <- wide_df %>%
+  rowwise() %>%
+  mutate(
+    row_min = min(c_across(c(both, green, reference, safeStreet)), na.rm = TRUE),
+    row_max = max(c_across(c(both, green, reference, safeStreet)), na.rm = TRUE),
+    both_norm = if_else(row_max == row_min, 0.5, (both - row_min) / (row_max - row_min)),
+    green_norm = if_else(row_max == row_min, 0.5, (green - row_min) / (row_max - row_min)),
+    reference_norm = if_else(row_max == row_min, 0.5, (reference - row_min) / (row_max - row_min)),
+    safeStreet_norm = if_else(row_max == row_min, 0.5, (safeStreet - row_min) / (row_max - row_min)),
+    both_html = glue("<div style='background-color:{col_fun(both_norm)}'>{round(both, 2)}</div>"),
+    green_html = glue("<div style='background-color:{col_fun(green_norm)}'>{round(green, 2)}</div>"),
+    reference_html = glue("<div style='background-color:{col_fun(reference_norm)}'>{round(reference, 2)}</div>"),
+    safeStreet_html = glue("<div style='background-color:{col_fun(safeStreet_norm)}'>{round(safeStreet, 2)}</div>")
+  ) %>%
+  ungroup()
+# Create a gt table using the HTML formatted cells; group by 'grouping'.
+gt_tbl <- formatted_df %>%
+  select(grouping, variable, quantile, both_html, green_html, reference_html, safeStreet_html) %>%
+  # Combine variable and quantile into one row label.
+  #mutate(var_quant = paste(variable, "(", quantile, ")", sep = "")) %>%
+  #select(-variable, -quantile) %>%
+  gt(groupname_col = "grouping", rowname_col = "") %>%
+  cols_label(
+    both_html = "Greeing + Safer Streets",
+    green_html = "Greening",
+    reference_html = "Reference",
+    safeStreet_html = "Safer Streets"
+  ) %>%
+  fmt_markdown(
+    columns = c(both_html, green_html, reference_html, safeStreet_html)
+  ) %>%
+  tab_options(table.font.size = "small")
+gt_tbl
