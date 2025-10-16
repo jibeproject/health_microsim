@@ -14,10 +14,11 @@ editor: visual
 
 ## Weekly exposures
 
-Weekly person centric exposure table. 
+Weekly person centric exposure table.
 
-(with the model outputs generated on 13th October, 2025. before fixing the bug with PA (of not using gravity in its calculations) and not using precalculated network for cycling. Code used [SHA](https://github.com/Public-Health-Modelling-Cambridge/silo/tree/20f982fc47b0d470aaac88e816fd717f39f7099b))
+(suffix **\_1**: with the model outputs generated on 13th October, 2025. before fixing the bug with PA (of not using gravity in its calculations) and not using precalculated network for cycling. Code used [SHA](https://github.com/Public-Health-Modelling-Cambridge/silo/tree/20f982fc47b0d470aaac88e816fd717f39f7099b))
 
+(suffix **\_2**: latest run with the model outputs generated on 16th October, 2025, after fixing the bug with PA using gravity, and updating link exposures for AP. Code used [SHA](https://github.com/Public-Health-Modelling-Cambridge/silo/tree/8dc88c6fe181d9a553f6f807a6c7b18d12b1bb6b))
 
 ```{r}
 #| column: screen
@@ -26,23 +27,63 @@ Weekly person centric exposure table.
 #| code-fold: true
 #| tbl-colwidths: false
  
-library(dplyr)
+library(tidyverse)
 library(tidyr)
 library(gt)
 library(scales)
 library(glue)
 library(here)
 
-df <- arrow::open_dataset(here("temp/exp.parquet")) |> collect()
+zones <- read_csv("/media/ali/Expansion/backup_tabea/manchester-main/input/zoneSystem.csv")
 
+add_zones_and_scen <- function(df, zones, scen = "reference"){
+  return(
+    df |> left_join(zones |> 
+                      dplyr::select(oaID, imd10, ladnm) |> 
+                      rename(zone = oaID)) |> 
+      mutate(scen = scen)
+  )
+}
+
+base <- read_csv("/media/ali/Expansion/backup_tabea/manchester-main/input/health/pp_exposure_2021_base_140725.csv")
+green <- read_csv("/media/ali/Expansion/backup_tabea/manchester-main/input/health/pp_exposure_2021_green_310725.csv")
+ss <- read_csv("/media/ali/Expansion/backup_tabea/manchester-main/input/health/pp_exposure_2021_safeStreet_300725.csv")
+both <- read_csv("/media/ali/Expansion/backup_tabea/manchester-main/input/health/pp_exposure_2021_both_010825.csv")
+
+base1 <- read_csv("/home/ali/IdeaProjects/161025_100%/base/pp_exposure_2021.csv")
+both1 <- read_csv("/home/ali/IdeaProjects/161025_100%/both/pp_exposure_2021.csv")
+green1 <- read_csv("/home/ali/IdeaProjects/161025_100%/green/pp_exposure_2021.csv")
+ss1 <- read_csv("/home/ali/IdeaProjects/161025_100%/safeStreet/pp_exposure_2021.csv")
+
+
+base <- add_zones_and_scen(df = base, zones, scen = "reference_1")
+green <- add_zones_and_scen(df = green, zones, scen = "green_1")
+ss <- add_zones_and_scen(df = ss, zones, scen = "safeStreet_1")
+both <- add_zones_and_scen(df = both, zones, scen = "both_1")
+
+base1 <- add_zones_and_scen(df = base1, zones, scen = "reference_2")
+green1 <- add_zones_and_scen(df = green1, zones, scen = "green_2")
+ss1 <- add_zones_and_scen(df = ss1, zones, scen = "safeStreet_2")
+both1 <- add_zones_and_scen(df = both1, zones, scen = "both_2")
+
+df <- bind_rows(base, base1, green, green1, ss,ss1, both, both1)
+
+rm(base, base1, green, green1, ss,ss1, both, both1)
+
+# Add agegroup column
 df <- df |> 
-  mutate(total_PA = mmetHr_walk + mmetHr_cycle + mmetHr_otherSport)
+  mutate(agegroup = cut(age, c(0, 25, 45, 65, 85, Inf), 
+                        labels = c("0-24", "25-44", "45-64", "65-84", "85+"),
+                        right = FALSE, 
+                        include.lowest = TRUE),
+         total_PA = mmetHr_walk + mmetHr_cycle + mmetHr_otherSport)
+
 
 # Function to calculate quantiles for columns starting with "exp" with optional grouping
 calc_quantiles_grouped <- function(data, group_var = NULL) {
   # data <- df
-  quantile_probs <- c(0, 0.25, 0.5, 0.75, 1)
-  quantile_names <- c("0%", "25%", "50%", "75%", "100%")
+  quantile_probs <- c(5, 25, 50, 75, 95)
+  quantile_names <- c("5%", "25%", "50%", "75%", "95%")
   
   if (!is.null(group_var)) {
     group_vars_sym <- if (length(group_var) > 1) {
@@ -61,11 +102,11 @@ calc_quantiles_grouped <- function(data, group_var = NULL) {
       across(
         matches("^(exposure|total_PA)"),
         list(
-          `0%` = ~ quantile(.x, 0),
+          `5%` = ~ quantile(.x, 0.05),
           `25%` = ~ quantile(.x, 0.25),
           `50%` = ~ quantile(.x, 0.5),
           `75%` = ~ quantile(.x, 0.75),
-          `100%` = ~ quantile(.x, 1)
+          `95%` = ~ quantile(.x, 0.95)
         ),
         .names = "{.col}_{.fn}"
       ),
@@ -102,13 +143,12 @@ gt_table <- all_quantiles |>
   cols_label(
     grouping = "Group",
     variable = "Variable",
-    `0%` = "Min",
+    `5%` = "5th",
     `25%` = "25th Percentile",
     `50%` = "Median",
     `75%` = "75th Percentile",
-    `100%` = "Max"
+    `95%` = "95th"
   )
-View(all_quantiles)
 
            
 # Define a color function that maps normalized values (0–1) to a color between lightpink and lightgreen
@@ -126,36 +166,51 @@ wide_df <- all_quantiles |>
 formatted_df <- wide_df |>
   rowwise() |>
   mutate(
-    row_min = min(c_across(c(both, green, reference, safeStreet)), na.rm = TRUE),
-    row_max = max(c_across(c(both, green, reference, safeStreet)), na.rm = TRUE),
-    both_norm = if_else(row_max == row_min, 0.5, (both - row_min) / (row_max - row_min)),
-    green_norm = if_else(row_max == row_min, 0.5, (green - row_min) / (row_max - row_min)),
-    reference_norm = if_else(row_max == row_min, 0.5, (reference - row_min) / (row_max - row_min)),
-    safeStreet_norm = if_else(row_max == row_min, 0.5, (safeStreet - row_min) / (row_max - row_min)),
-    both_html = glue("<div style='background-color:{col_fun(both_norm)}'>{round(both, 2)}</div>"),
-    green_html = glue("<div style='background-color:{col_fun(green_norm)}'>{round(green, 2)}</div>"),
-    reference_html = glue("<div style='background-color:{col_fun(reference_norm)}'>{round(reference, 2)}</div>"),
-    safeStreet_html = glue("<div style='background-color:{col_fun(safeStreet_norm)}'>{round(safeStreet, 2)}</div>")
+    row_min = min(c_across(c(reference_1, reference_2, green_1, green_2, safeStreet_1, safeStreet_2, both_1, both_2)), na.rm = TRUE),
+    row_max = max(c_across(c(reference_1, reference_2, green_1, green_2, safeStreet_1, safeStreet_2, both_1, both_2)), na.rm = TRUE),
+    reference_1_norm = if_else(row_max == row_min, 0.5, (reference_1 - row_min) / (row_max - row_min)),
+    reference_2_norm = if_else(row_max == row_min, 0.5, (reference_2 - row_min) / (row_max - row_min)),
+    both_1_norm = if_else(row_max == row_min, 0.5, (both_1 - row_min) / (row_max - row_min)),
+    both_2_norm = if_else(row_max == row_min, 0.5, (both_2 - row_min) / (row_max - row_min)),
+    green_1_norm = if_else(row_max == row_min, 0.5, (green_1 - row_min) / (row_max - row_min)),
+    green_2_norm = if_else(row_max == row_min, 0.5, (green_2 - row_min) / (row_max - row_min)),
+    safeStreet_1_norm = if_else(row_max == row_min, 0.5, (safeStreet_1 - row_min) / (row_max - row_min)),
+    safeStreet_2_norm = if_else(row_max == row_min, 0.5, (safeStreet_2 - row_min) / (row_max - row_min)),
+    reference_1_html = glue("<div style='background-color:{col_fun(reference_1_norm)}'>{round(reference_1, 2)}</div>"),
+    reference_2_html = glue("<div style='background-color:{col_fun(reference_2_norm)}'>{round(reference_2, 2)}</div>"),
+    both_1_html = glue("<div style='background-color:{col_fun(both_1_norm)}'>{round(both_1, 2)}</div>"),
+    both_2_html = glue("<div style='background-color:{col_fun(both_2_norm)}'>{round(both_2, 2)}</div>"),
+    green_1_html = glue("<div style='background-color:{col_fun(green_1_norm)}'>{round(green_1, 2)}</div>"),
+    green_2_html = glue("<div style='background-color:{col_fun(green_2_norm)}'>{round(green_2, 2)}</div>"),
+    
+    safeStreet_1_html = glue("<div style='background-color:{col_fun(safeStreet_1_norm)}'>{round(safeStreet_1, 2)}</div>"),
+    safeStreet_2_html = glue("<div style='background-color:{col_fun(safeStreet_2_norm)}'>{round(safeStreet_2, 2)}</div>")
   ) |>
   ungroup()
 # Create a gt table using the HTML formatted cells; group by 'grouping'.
 gt_tbl <- formatted_df |>
-  select(grouping, variable, quantile, both_html, green_html, reference_html, safeStreet_html) |>
+  select(grouping, variable, quantile, contains("html")) |>
   # Combine variable and quantile into one row label.
   #mutate(var_quant = paste(variable, "(", quantile, ")", sep = "")) |>
   #select(-variable, -quantile) |>
   gt(groupname_col = "grouping", rowname_col = "") |>
   cols_label(
-    both_html = "Greening + Safer Streets",
-    green_html = "Greening",
-    reference_html = "Reference",
-    safeStreet_html = "Safer Streets"
+    reference_1_html = "V1: Reference",
+    reference_2_html = "V2: Reference",
+    both_1_html = "V1: Greening + Safer Streets",
+    both_2_html = "V2: Greening + Safer Streets",
+    green_1_html = "V1: Greening",
+    green_2_html = "V2: Greening",
+    safeStreet_1_html = "V1: Safer Streets",
+    safeStreet_2_html = "V2: Safer Streets"
   ) |>
-  fmt_markdown(
-    columns = c(both_html, green_html, reference_html, safeStreet_html)
-  ) |>
+  # fmt_markdown(
+  #   columns = c(both_1_html, green_html, reference_html, safeStreet_html)
+  # ) |>
   tab_options(table.font.size = "small") |> 
-  opt_interactive(use_filters = T)
+  opt_interactive(use_filters = T,
+                    use_sorting = F,
+                  use_compact_mode = T)
 gt_tbl
 
 ```
