@@ -6,7 +6,7 @@ library(dplyr)  # still needed for verbs but they dispatch to data.table
 ZONES_CSV  <- "/media/ali/Expansion/backup_tabea/manchester-main/input/zoneSystem.csv"
 zones    <- readr::read_csv(ZONES_CSV, show_col_types = FALSE)
 lads <- zones |> distinct(ladcd, ladnm)
-all_data <- arrow::open_dataset("temp/081025/all_data.parquet/")# |> filter(cycle < 21) |> to_duckdb() |> collect()
+all_data <- arrow::open_dataset("temp/081025/all_data.parquet/") |> to_duckdb()# |> filter(cycle < 21) |> to_duckdb() |> collect()
 
 #all_data <- all_data |> filter(ladcd == "E08000003")
 
@@ -14,16 +14,36 @@ MIN_CYCLE <- 1
 MAX_CYCLE <- 30#max(all_data$cycle)
 
 #------------------- Helpers -------------------------------------------
-  ageband <- function(x) cut(
-    x, breaks = c(seq(0,100,5), Inf),
-    labels = c(paste(seq(0,95,5), seq(4,99,5), sep = "-"), "100+"),
-    right = FALSE, include.lowest = TRUE
-  )
-  
-  add_agegroups <- function(df) {
-    df |>
-      mutate(agegroup_cycle = ageband(age_cycle))
-  }
+# Define age break function compatible with Arrow (without cut)
+add_agegroups <- function(df) {
+  df |> 
+    mutate(
+      agegroup_cycle = case_when(
+        age_cycle >= 0   & age_cycle < 5   ~ "0-4",
+        age_cycle >= 5   & age_cycle < 10  ~ "5-9",
+        age_cycle >= 10  & age_cycle < 15  ~ "10-14",
+        age_cycle >= 15  & age_cycle < 20  ~ "15-19",
+        age_cycle >= 20  & age_cycle < 25  ~ "20-24",
+        age_cycle >= 25  & age_cycle < 30  ~ "25-29",
+        age_cycle >= 30  & age_cycle < 35  ~ "30-34",
+        age_cycle >= 35  & age_cycle < 40  ~ "35-39",
+        age_cycle >= 40  & age_cycle < 45  ~ "40-44",
+        age_cycle >= 45  & age_cycle < 50  ~ "45-49",
+        age_cycle >= 50  & age_cycle < 55  ~ "50-54",
+        age_cycle >= 55  & age_cycle < 60  ~ "55-59",
+        age_cycle >= 60  & age_cycle < 65  ~ "60-64",
+        age_cycle >= 65  & age_cycle < 70  ~ "65-69",
+        age_cycle >= 70  & age_cycle < 75  ~ "70-74",
+        age_cycle >= 75  & age_cycle < 80  ~ "75-79",
+        age_cycle >= 80  & age_cycle < 85  ~ "80-84",
+        age_cycle >= 85  & age_cycle < 90  ~ "85-89",
+        age_cycle >= 90  & age_cycle < 95  ~ "90-94",
+        age_cycle >= 95  & age_cycle < 100 ~ "95-99",
+        age_cycle >= 100                 ~ "100+",
+        TRUE                            ~ NA_character_
+      )
+    )
+}
   
   theme_clean <- function() {
     theme_minimal(base_size = 12) +
@@ -71,7 +91,7 @@ MAX_CYCLE <- 30#max(all_data$cycle)
   incidence_all <- all_data |>
     filter(!stringr::str_detect(value, "dead|healthy|null|depression")) |>
     group_by(id, scen, value) |>
-    arrow::to_duckdb() |>
+    #arrow::to_duckdb() |>
     slice_min(order_by = cycle, n = 1, with_ties = FALSE) |>
     ungroup() |>
     collect()
@@ -80,7 +100,7 @@ incidence_depression <- all_data |>
   filter(value == "depression") |>
   arrange(id, scen, cycle) |>
   group_by(id, scen) |>
-  arrow::to_duckdb() |>
+  # arrow::to_duckdb() |>
   mutate(is_new = is.na(lag(value)) | lag(value) != "depression") |>
   filter(is_new) |>
   ungroup() |> 
@@ -96,36 +116,6 @@ incidence <- bind_rows(incidence_all |>
   left_join(lads, by = "ladcd")
 
 # ---- Population (at risk) ----
-# Define age break function compatible with Arrow (without cut)
-add_agegroups <- function(df) {
-  df |> 
-    mutate(
-      agegroup_cycle = case_when(
-        age_cycle >= 0   & age_cycle < 5   ~ "0-4",
-        age_cycle >= 5   & age_cycle < 10  ~ "5-9",
-        age_cycle >= 10  & age_cycle < 15  ~ "10-14",
-        age_cycle >= 15  & age_cycle < 20  ~ "15-19",
-        age_cycle >= 20  & age_cycle < 25  ~ "20-24",
-        age_cycle >= 25  & age_cycle < 30  ~ "25-29",
-        age_cycle >= 30  & age_cycle < 35  ~ "30-34",
-        age_cycle >= 35  & age_cycle < 40  ~ "35-39",
-        age_cycle >= 40  & age_cycle < 45  ~ "40-44",
-        age_cycle >= 45  & age_cycle < 50  ~ "45-49",
-        age_cycle >= 50  & age_cycle < 55  ~ "50-54",
-        age_cycle >= 55  & age_cycle < 60  ~ "55-59",
-        age_cycle >= 60  & age_cycle < 65  ~ "60-64",
-        age_cycle >= 65  & age_cycle < 70  ~ "65-69",
-        age_cycle >= 70  & age_cycle < 75  ~ "70-74",
-        age_cycle >= 75  & age_cycle < 80  ~ "75-79",
-        age_cycle >= 80  & age_cycle < 85  ~ "80-84",
-        age_cycle >= 85  & age_cycle < 90  ~ "85-89",
-        age_cycle >= 90  & age_cycle < 95  ~ "90-94",
-        age_cycle >= 95  & age_cycle < 100 ~ "95-99",
-        age_cycle >= 100                 ~ "100+",
-        TRUE                            ~ NA_character_
-      )
-    )
-}
 
 # all_data should be an Arrow Dataset, e.g.
 # all_data <- open_dataset("s3://mybucket/data/")
@@ -133,7 +123,6 @@ add_agegroups <- function(df) {
 people_raw <- all_data |> 
   add_agegroups() |> 
   group_by(agegroup_cycle, gender, cycle, scen, ladcd) |> 
-  collect() |> 
   summarise(pop = n_distinct(id[!grepl("dead|null", value)]), .groups = "drop") |> 
   left_join(lads, by = "ladcd")
 
@@ -161,14 +150,12 @@ people_lad <- people_raw |>
 healthy_total_cycle <- all_data |>
   filter(value == "healthy") |>
   group_by(scen, cycle) |>
-  to_duckdb() |> 
   summarise(value = n_distinct(id), .groups = "drop") |> 
   collect()
 
 life_years_cycle <- all_data |>
   filter(!grepl("dead", value)) |>
   group_by(scen, cycle) |>
-  to_duckdb() |> 
   summarise(value = n_distinct(id), .groups = "drop") |> 
   collect()
 
@@ -212,16 +199,14 @@ healthy_overall  <- healthy_total_cycle |> diff_vs_reference()
 healthy_gender   <- all_data |> 
   filter(value == "healthy") |>
   group_by(scen, cycle, gender) |> 
-  to_duckdb() |> 
   summarise(value = n_distinct(id), .groups = "drop") |>
   diff_vs_reference(by = "gender") |> 
   collect()
 
 healthy_lad      <- all_data |> 
   filter(value == "healthy") |>
-  left_join(lads, by = "ladcd") |>
+  left_join(lads, by = "ladcd", copy = T) |>
   group_by(scen, cycle, ladnm) |> 
-  to_duckdb() |> 
   summarise(value = n_distinct(id), .groups = "drop") |>
   diff_vs_reference(by = "ladnm") |> 
   collect()
@@ -232,7 +217,6 @@ lifey_overall <- life_years_cycle |>
 lifey_gender  <- all_data |> 
   filter(!grepl("dead", value)) |>
   group_by(scen, cycle, gender) |> 
-  to_duckdb() |> 
   summarise(value = n_distinct(id), .groups = "drop") |>
   diff_vs_reference(by = "gender") |> 
   collect()
@@ -246,22 +230,29 @@ lifey_gender  <- all_data |>
 #   diff_vs_reference(by = "ladnm") |> 
 #   collect()
 
+# lifey_lad <- all_data |>
+#   filter(!grepl("dead", value)) |>
+#   to_duckdb() |>  # convert to DuckDB relation early
+#   left_join(lads, by = "ladcd") |>
+#   group_by(scen, cycle, ladnm) |>
+#   summarise(value = n_distinct(id), .groups = "drop") |>
+#   diff_vs_reference(by = "ladnm") |>
+#   collect()  # bring results into memory only now
+
 lifey_lad <- all_data |>
   filter(!grepl("dead", value)) |>
-  to_duckdb() |>  # convert to DuckDB relation early
-  left_join(lads, by = "ladcd") |>
+  left_join(lads, by = "ladcd", copy = TRUE) |>  # Enable temporary copy
   group_by(scen, cycle, ladnm) |>
   summarise(value = n_distinct(id), .groups = "drop") |>
   diff_vs_reference(by = "ladnm") |>
-  collect()  # bring results into memory only now
-
+  collect()
 # ---- Mean age (death & onset) ----
 inc_death_src <- incidence |>
-  filter(value %in% death_values) |>
+  filter(grepl("dead", value)) |> 
   select(scen, value, age_cycle, gender, ladnm)
 
 incidence_src <- incidence |>
-  filter(!value %in% c("healthy","null") & !value %in% death_values) |>
+  filter(!value %in% c("healthy","null") & !grepl("dead", value)) |>
   select(scen, value, age_cycle, gender, ladnm)
 
 weighted_mean_by <- function(df, group_keys) {
@@ -375,18 +366,23 @@ healthy_age_counts <- all_data |>
   add_agegroups() |>
   filter(value == "healthy", cycle >= MIN_CYCLE) |>
   group_by(agegroup_cycle, scen, cycle) |>
-  summarise(num = n_distinct(id), .groups = "drop")
+  summarise(num = n_distinct(id), .groups = "drop") |> 
+  collect()
+
 healthy_age_counts_gender <- all_data |>
   add_agegroups() |>
   filter(value == "healthy", cycle >= MIN_CYCLE) |>
   group_by(agegroup_cycle, scen, cycle, gender) |>
-  summarise(num = n_distinct(id), .groups = "drop")
+  summarise(num = n_distinct(id), .groups = "drop") |> 
+  collect()
+
 healthy_age_counts_lad <- all_data |>
   add_agegroups() |>
   filter(value == "healthy", cycle >= MIN_CYCLE) |>
   group_by(agegroup_cycle, scen, cycle, ladcd) |>
   summarise(num = n_distinct(id), .groups = "drop") |>
-  left_join(lads, by = "ladcd")
+  left_join(lads, by = "ladcd", copy = T) |> 
+  collect()
 
 all_causes <- incidence |>
   distinct(value) |> pull(value) |> setdiff(c("healthy","null"))
@@ -445,8 +441,7 @@ pc <- mget(c(
   "asr_lad_all_per_cycle","asr_lad_all_avg_1_30",
   "asr_healthy_years_overall","asr_healthy_years_overall_avg_1_30"
 ))
+precomp_path <- "temp/precomputed_mcr_100%.qs"
 message("Saving precomputed cache: ", precomp_path)
 #saveRDS(pc, precomp_path, compress = "xz")
 qs::qsave(pc, precomp_path)
-# Expose to the current environment
-list2env(pc, envir = environment())
