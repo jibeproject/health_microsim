@@ -25,7 +25,7 @@ stopifnot(all(c("ladcd","ladnm") %in% names(zones)))
 lads <- zones |> distinct(ladcd, ladnm)
 
 MIN_CYCLE <- 1
-MAX_CYCLE <- 20#ax(all_data$cycle)
+MAX_CYCLE <- 30#ax(all_data$cycle)
 
 
 # ------------------- Helpers -------------------------------------------
@@ -77,7 +77,7 @@ align_age_levels <- function(w, people_age) {
 # ------------------- Precompute (with cache) ---------------------------
 death_values <- c("dead","dead_car","dead_bike","dead_walk")
 
-pc <- qs::qread("data/prec_21yrs.qs")
+pc <- qs::qread(here("temp/precomputed_mcr_100%.qs"))#data/prec_21yrs.qs")
 list2env(pc, envir = environment())
 SCALING <- 1L
 
@@ -162,11 +162,6 @@ ui <- fluidPage(
       tabsetPanel(
         id = "main_tabs",
         tabPanel(
-          "Population",
-          conditionalPanel("input.use_plotly", plotlyOutput("plot_poply", height = 520)),
-          conditionalPanel("!input.use_plotly", plotOutput("plot_pop", height = 520))
-        ),
-        tabPanel(
           "Differences vs reference",
           conditionalPanel("input.use_plotly", plotlyOutput("plot_diffly", height = 520)),
           conditionalPanel("!input.use_plotly", plotOutput("plot_diff", height = 520)),
@@ -179,7 +174,13 @@ ui <- fluidPage(
           "ASR",
           conditionalPanel("input.use_plotly", plotlyOutput("plot_asrly", height = 640)),
           conditionalPanel("!input.use_plotly", plotOutput("plot_asr", height = 640))
+        ),
+        tabPanel(
+          "Population",
+          conditionalPanel("input.use_plotly", plotlyOutput("plot_poply", height = 520)),
+          conditionalPanel("!input.use_plotly", plotOutput("plot_pop", height = 520))
         )
+        
       )
     )
   )
