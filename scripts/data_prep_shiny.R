@@ -13,28 +13,7 @@ suppressPackageStartupMessages({
   library(data.table)
 })
 
-# === Global Settings ===
-FILE_PATH_BELEN <- FALSE # for location input files
-DATA_PATH_BELEN <- FALSE # for location output files for shiny# Scaling factor for results
-
-SCALING <- 5 # change depending on sample size
-
-# Set path based on condition
-base_path <- if (DATA_PATH_BELEN) {
-  "manchester/health/processed/shiny_data/"
-} else {
-  "shiny_data/"
-}
-
-# === Load zone names ===
-zones <- if (!FILE_PATH_BELEN) {
-  read_csv("/media/ali/Expansion/backup_tabea/manchester-main/input/zoneSystem.csv")
-} else {
-  read_csv("manchester/health/processed/zoneSystem.csv")
-} 
-
 # === Data loading function ===
-
 get_summary <- function(SCEN_NAME, 
                         final_year = 2051, 
                         microdata_dir_name = "microdata", 
@@ -54,6 +33,8 @@ get_summary <- function(SCEN_NAME,
     manchester_folder, "scenOutput/",
     SCEN_NAME, "/", microdata_dir_name, "/pp_healthDiseaseTracker_", final_year, ".csv"
   )
+  
+  zones <- read_csv(paste0(manchester_folder, "input/zoneSystem.csv"))
   
   
   # Read health tracker file
@@ -191,7 +172,8 @@ get_summary <- function(SCEN_NAME,
 ## microdata_dir_name = "microData", 
 ## manchester_folder = "/media/ali/Expansion/backup_tabea/manchester-main")
 manchester_folder = "/run/user/1000/gvfs/smb-share:server=ifs-prod-1152-cifs.ifs.uis.private.cam.ac.uk,share=cedar-grp-drive/HealthImpact/Data/Country/UK/JIBE/manchester/"
-fyear <- 2052
+manchester_folder <- "/media/ali/Expansion/backup_tabea/manchester-main/"
+fyear <- 2051
 
 ## === Prepare general data long ===
 all_data <- list(
