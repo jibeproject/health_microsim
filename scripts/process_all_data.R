@@ -6,7 +6,7 @@ library(dplyr)  # still needed for verbs but they dispatch to data.table
 ZONES_CSV  <- "/media/ali/Expansion/backup_tabea/manchester-main/input/zoneSystem.csv"
 zones    <- readr::read_csv(ZONES_CSV, show_col_types = FALSE)
 lads <- zones |> distinct(ladcd, ladnm)
-all_data <- arrow::open_dataset("temp/081025/all_data.parquet/") |> to_duckdb()# |> filter(cycle < 21) |> to_duckdb() |> collect()
+all_data <- arrow::open_dataset("temp/111025/all_data.parquet/") |> filter(cycle != 31) |> to_duckdb()
 
 #all_data <- all_data |> filter(ladcd == "E08000003")
 
@@ -124,7 +124,8 @@ people_raw <- all_data |>
   add_agegroups() |> 
   group_by(agegroup_cycle, gender, cycle, scen, ladcd) |> 
   summarise(pop = n_distinct(id[!grepl("dead|null", value)]), .groups = "drop") |> 
-  left_join(lads, by = "ladcd")
+  left_join(lads, by = "ladcd", copy = T) |> 
+  collect()
 
 
 # people_raw <- all_data |>
@@ -441,7 +442,7 @@ pc <- mget(c(
   "asr_lad_all_per_cycle","asr_lad_all_avg_1_30",
   "asr_healthy_years_overall","asr_healthy_years_overall_avg_1_30"
 ))
-precomp_path <- "temp/precomputed_mcr_100%.qs"
+precomp_path <- "temp/precomputed_mcr_100%V1.qs"
 message("Saving precomputed cache: ", precomp_path)
 #saveRDS(pc, precomp_path, compress = "xz")
 qs::qsave(pc, precomp_path)
