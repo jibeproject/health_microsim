@@ -77,7 +77,7 @@ align_age_levels <- function(w, people_age) {
 # ------------------- Precompute (with cache) ---------------------------
 death_values <- c("dead","dead_car","dead_bike","dead_walk")
 
-pc <- qs::qread(here("temp/precomputed_mcr_100%.qs"))#data/prec_21yrs.qs")
+pc <- qs::qread(here("temp/precomputed_mcr_191025_100%.qs"))#data/prec_21yrs.qs")
 list2env(pc, envir = environment())
 SCALING <- 1L
 
@@ -428,16 +428,14 @@ server <- function(input, output, session) {
           left_join(mean_age_dead_weight_by_scen_val |> filter(value %in% causes),
                     by = c("scen","value")) |>
           arrange(scen, value) |>
-          rename(mean_age_raw_years = mean_age_raw,
-                 mean_age_weighted_years = mean_age_weighted)
+          rename(mean_age_raw_years = mean_age_raw)
       } else if (view == "Gender") {
         mean_age_dead_raw_by_scen_val_gender |>
           filter(value %in% causes) |>
           left_join(mean_age_dead_weight_by_scen_val_gender |> filter(value %in% causes),
                     by = c("scen","value","gender")) |>
           arrange(scen, gender, value) |>
-          rename(mean_age_raw_years = mean_age_raw,
-                 mean_age_weighted_years = mean_age_weighted)
+          rename(mean_age_raw_years = mean_age_raw)
       } else {
         mean_age_dead_raw_by_scen_val_lad |>
           (\(df) if(length(input$lad_sel) > 0) filter(df, ladnm %in% input$lad_sel) else df)() |>
@@ -454,8 +452,7 @@ server <- function(input, output, session) {
                     by = c("scen","value")) |>
           arrange(scen) |>
           select(scen, value,
-                 mean_age_raw_years = mean_age_raw,
-                 mean_age_weighted_years = mean_age_weighted)
+                 mean_age_raw_years = mean_age_raw)
       } else if (view == "Gender") {
         mean_age_onset_raw_by_scen_val_gender |>
           filter(value == cause) |>
@@ -463,8 +460,7 @@ server <- function(input, output, session) {
                     by = c("scen","value","gender")) |>
           arrange(scen, gender) |>
           select(scen, gender, value,
-                 mean_age_raw_years = mean_age_raw,
-                 mean_age_weighted_years = mean_age_weighted)
+                 mean_age_raw_years = mean_age_raw)
       } else {
         mean_age_onset_raw_by_scen_val_lad |>
           (\(df) if(length(input$lad_sel) > 0) filter(df, ladnm %in% input$lad_sel) else df)() |>
