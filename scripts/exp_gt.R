@@ -80,52 +80,52 @@ gt_table <- all_quantiles |>
     `75%` = "75th Percentile",
     `100%` = "Max"
   )
-View(all_quantiles)
 
-           
-# Define a color function that maps normalized values (0–1) to a color between lightpink and lightgreen
+# Define the color function
 col_fun <- col_numeric(palette = c("lightpink", "lightgreen"), domain = c(0, 1))
-# Pivot the data so that each row is defined by grouping, variable, and quantile,
-# with one column per scen.
+
+# Pivot data so that each row represents (grouping, variable, quantile)
 wide_df <- all_quantiles |>
   pivot_wider(
     id_cols = c(grouping, variable, quantile),
     names_from = scen,
     values_from = value
   )
-# Compute row-wise min and max and generate HTML formatting without using cell_spec.
-# Each cell's background color is determined by its normalized value relative to the row.
-formatted_df <- wide_df |>
+
+# Dynamically detect the scenario columns
+scen_cols <- setdiff(names(wide_df), c("grouping", "variable", "quantile"))
+
+# Compute normalized columns
+norm_df <- wide_df |>
   rowwise() |>
   mutate(
-    row_min = min(c_across(c(both, green, reference, safeStreet)), na.rm = TRUE),
-    row_max = max(c_across(c(both, green, reference, safeStreet)), na.rm = TRUE),
-    both_norm = if_else(row_max == row_min, 0.5, (both - row_min) / (row_max - row_min)),
-    green_norm = if_else(row_max == row_min, 0.5, (green - row_min) / (row_max - row_min)),
-    reference_norm = if_else(row_max == row_min, 0.5, (reference - row_min) / (row_max - row_min)),
-    safeStreet_norm = if_else(row_max == row_min, 0.5, (safeStreet - row_min) / (row_max - row_min)),
-    both_html = glue("<div style='background-color:{col_fun(both_norm)}'>{round(both, 2)}</div>"),
-    green_html = glue("<div style='background-color:{col_fun(green_norm)}'>{round(green, 2)}</div>"),
-    reference_html = glue("<div style='background-color:{col_fun(reference_norm)}'>{round(reference, 2)}</div>"),
-    safeStreet_html = glue("<div style='background-color:{col_fun(safeStreet_norm)}'>{round(safeStreet, 2)}</div>")
+    row_min = min(c_across(all_of(scen_cols)), na.rm = TRUE),
+    row_max = max(c_across(all_of(scen_cols)), na.rm = TRUE)
   ) |>
+  mutate(across(
+    all_of(scen_cols),
+    function(x) if_else(row_max == row_min, 0.5, (x - row_min) / (row_max - row_min)),
+    .names = "{.col}_norm"
+  )) |>
   ungroup()
-# Create a gt table using the HTML formatted cells; group by 'grouping'.
-gt_tbl <- formatted_df |>
-  select(grouping, variable, quantile, both_html, green_html, reference_html, safeStreet_html) |>
-  # Combine variable and quantile into one row label.
-  #mutate(var_quant = paste(variable, "(", quantile, ")", sep = "")) |>
-  #select(-variable, -quantile) |>
-  gt(groupname_col = "grouping", rowname_col = "") |>
-  cols_label(
-    both_html = "Greening + Safer Streets",
-    green_html = "Greening",
-    reference_html = "Reference",
-    safeStreet_html = "Safer Streets"
-  ) |>
-  fmt_markdown(
-    columns = c(both_html, green_html, reference_html, safeStreet_html)
-  ) |>
-  tab_options(table.font.size = "small") |> 
-  opt_interactive(use_filters = T)
+
+# Now safely construct HTML columns without using glue inside across()
+for (scen in scen_cols) {
+  norm_col <- paste0(scen, "_norm")
+  html_col <- paste0(scen, "_html")
+  norm_df[[html_col]] <- mapply(function(val, norm) {
+    color <- col_fun(norm)
+    sprintf("<div style='background-color:%s'>%s</div>", color, round(val, 2))
+  }, norm_df[[scen]], norm_df[[norm_col]])
+}
+
+html_cols <- paste0(scen_cols, "_html")
+
+gt_tbl <- norm_df |>
+  select(grouping, variable, quantile, all_of(html_cols)) |>
+  gt(groupname_col = "grouping") |>
+  fmt_markdown(columns = all_of(html_cols)) |>
+  tab_options(table.font.size = "small") |>
+  opt_interactive(use_filters = TRUE)
+
 gt_tbl
