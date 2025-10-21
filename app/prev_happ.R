@@ -77,7 +77,7 @@ align_age_levels <- function(w, people_age) {
 # ------------------- Precompute (with cache) ---------------------------
 death_values <- c("dead","dead_car","dead_bike","dead_walk")
 
-pc <- qs::qread(here("temp/precomputed_mcr_191025_100%.qs"))#data/prec_21yrs.qs")
+pc <- qs::qread(here("temp/precomputed_mcr_100%V2.qs"))
 list2env(pc, envir = environment())
 SCALING <- 1L
 
