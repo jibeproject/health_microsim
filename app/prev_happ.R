@@ -19,65 +19,14 @@ suppressPackageStartupMessages({
   library(DT)
 })
 
-# ------------------- Paths (edit these if needed) -------------------
-zones    <- readr::read_csv("/media/ali/Expansion/backup_tabea/manchester/input/zoneSystem.csv", show_col_types = FALSE)
-stopifnot(all(c("ladcd","ladnm") %in% names(zones)))
-lads <- zones |> distinct(ladcd, ladnm)
-
 MIN_CYCLE <- 1
-MAX_CYCLE <- 30#ax(all_data$cycle)
-
+MAX_CYCLE <- 30
 
 # ------------------- Helpers -------------------------------------------
-ageband <- function(x) cut(
-  x, breaks = c(seq(0,100,5), Inf),
-  labels = c(paste(seq(0,95,5), seq(4,99,5), sep = "-"), "100+"),
-  right = FALSE, include.lowest = TRUE
-)
-
-add_agegroups <- function(df) {
-  df |>
-    mutate(agegroup_cycle = ageband(age_cycle))
-}
-
-theme_clean <- function() {
-  theme_minimal(base_size = 12) +
-    theme(panel.grid.minor = element_blank(),
-          plot.title = element_text(face = "bold"),
-          strip.text = element_text(lineheight = 0.9))
-}
-add_zero_line <- function() geom_hline(yintercept = 0, linewidth = 0.3)
-
-pop_share <- function(df, group_vars = c("cycle","scen")) {
-  df |>
-    group_by(across(all_of(c(group_vars, "agegroup_cycle")))) |>
-    summarise(pop = sum(pop, na.rm = TRUE), .groups = "drop_last") |>
-    mutate(share = pop / sum(pop, na.rm = TRUE)) |>
-    ungroup()
-}
-
-diff_vs_reference <- function(df, by = character(0), value_col = "value") {
-  ref <- df |>
-    filter(scen == "reference") |>
-    rename(value_ref = !!rlang::sym(value_col)) |>
-    select(cycle, all_of(by), value_ref)
-  df |>
-    filter(scen != "reference") |>
-    left_join(ref, by = c("cycle", by)) |>
-    mutate(diff = .data[[value_col]] - value_ref) |>
-    select(scen, cycle, all_of(by), diff)
-}
-
-get_age_levels <- function(x) if (is.factor(x)) levels(x) else sort(unique(x))
-align_age_levels <- function(w, people_age) {
-  lv <- get_age_levels(people_age)
-  w |> mutate(agegroup_cycle = factor(as.character(agegroup_cycle), levels = lv))
-}
-
 # ------------------- Precompute (with cache) ---------------------------
 death_values <- c("dead","dead_car","dead_bike","dead_walk")
 
-pc <- qs::qread(here("temp/precomputed_mcr_100%V2.qs"))
+pc <- qs::qread(here("temp/precomputed_mcr_wgd_100%V2.qs"))
 list2env(pc, envir = environment())
 SCALING <- 1L
 
