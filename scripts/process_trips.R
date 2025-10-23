@@ -42,38 +42,52 @@ trips <- trips |>
 
 rm(pp, zone)
 
+trips$time_pt <- as.numeric(trips$time_pt)
+
 trips <- trips |>
-  #select(p.ID,t.distance_walk,t.distance_bike,t.distance_auto,t.distance_auto,time_auto,time_pt,mode,scenario,LAD_origin, imd_origin) |>
-  mutate(time_walk = t.distance_walk/2.92,
-         time_bike = t.distance_bike/10.44,
-         time_pt = as.numeric(time_pt),
-         time_auto = time_auto/60,
-         time_pt = time_pt/60,
-         mode = case_when(
-           mode == "autoDriver" ~ "Driving Car",
-           mode == "autoPassenger" ~ "Car Passenger",
-           mode == "pt" ~ "Public Transport",
-           mode == "walk" ~ "Walking",
-           mode == "bicycle" ~ "Cycling",
-           TRUE ~ "Other"),
-         mode = factor(mode, levels = c("Driving Car",
-                                        "Car Passenger",
-                                        "Public Transport",
-                                        "Walking",
-                                        "Cycling",
-                                        "Other")),
-         distance = case_when(
-           mode %in% c("Driving Car", "Car Passenger", "Public Transport") ~ t.distance_auto,
-           mode == "Walking" ~ t.distance_walk,
-           mode == "Cycling" ~ t.distance_bike,
-           TRUE ~ NA_real_),
-         distance_bracket = as.factor(cut(
-           distance,
-           breaks = c(0, 1, 3, 5, 10, 20, 40, Inf),
-           labels = c("0-1", "1-3", "3-5", "5-10", "10-20", "20-40", "40+"),
-           right = FALSE
-         )
-         ))
+  mutate(mode = case_when(
+    mode == "autoDriver" ~ "Driving Car",
+    mode == "autoPassenger" ~ "Car Passenger",
+    mode == "pt" ~ "Public Transport",
+    mode == "walk" ~ "Walking",
+    mode == "bicycle" ~ "Cycling",
+    TRUE ~ "Other"),
+    mode = factor(mode, levels = c("Driving Car",
+                                   "Car Passenger",
+                                   "Public Transport",
+                                   "Walking",
+                                   "Cycling",
+                                   "Other")),
+    t.factor = if_else(t.purpose %in% c("HBW", 
+                                        "HBE", 
+                                        "HBA", 
+                                        "HBS", 
+                                        "HBR", 
+                                        "HBO",
+                                        "RRT"), 2,1),
+    time_walk = time_walk/60,
+    time_bike = time_bike/60,
+    time_auto = time_auto/60,
+    time_pt = time_pt/60,
+    time = case_when(mode=="Cycling"~time_bike,
+                     mode=="Walking"~time_walk,
+                     mode=="Public Transport"~time_pt,
+                     mode=="Driving Car"~time_auto,
+                     mode=="Car Passenger"~time_auto),
+    distance = case_when(
+      mode %in% c("Driving Car", "Car Passenger", "Public Transport") ~ t.distance_auto,
+      mode == "Cycling"~t.distance_bike,
+      mode == "Walking"~t.distance_walk),
+    time_factored = time * t.factor,
+    dist_factored = distance * t.factor,
+    distance_bracket = as.factor(cut(
+      distance,
+      breaks = c(0, 1, 3, 5, 10, 20, 40, Inf),
+      labels = c("0-1", "1-3", "3-5", "5-10", "10-20", "20-40", "40+"),
+      right = FALSE
+    )
+    )
+  )
 
 add_agegroups <- function(df) {
   df |> 
@@ -90,13 +104,16 @@ add_agegroups <- function(df) {
 
 trips <- add_agegroups(trips)
 
-arrow::write_dataset(dataset = trips, path = "temp/221025_trips.parquet", partitioning = c("scen", "LAD_origin"))
+arrow::write_dataset(dataset = trips, path = "temp/231025_trips.parquet", partitioning = c("scen", "LAD_origin"))
 
 ## Creating Visualizations
 
 ### Table of the number of trips in each local authority in Greater Manchester
 
-trips <- arrow::open_dataset("temp/221025_trips.parquet/") |> to_duckdb()
+trips <- arrow::open_dataset("temp/231025_trips.parquet/") |> 
+  dplyr::select(-distance) |> 
+  rename(distance = dist_factored) |> 
+  to_duckdb()
 
 # trips$distance_bracket <- cut(
 #   trips$distance,
@@ -463,5 +480,5 @@ t <- mget(c("trips_percentage_combined",
             "trips_percentage_combined"))
 
 
-qs::qsave(t, "bapp/data/221025_trips.qs" )
-qs::qsave(t, "temp/221025_trips.qs" )
+qs::qsave(t, "bapp/data/231025_trips.qs" )
+qs::qsave(t, "temp/231025_trips.qs" )
