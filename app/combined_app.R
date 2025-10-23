@@ -19,6 +19,13 @@ suppressPackageStartupMessages({
   library(DT)
 })
 
+pc <- qs::qread(here("temp/precomputed_mcr_wgd_100%V2.qs"))
+list2env(pc, envir = environment())
+SCALING <- 1L
+
+t <- qs::qread(here("temp/231025_trips.qs" ))
+
+
 MIN_CYCLE <- 1
 MAX_CYCLE <- 30
 
@@ -61,13 +68,6 @@ align_age_levels <- function(w, people_age) {
 
 # ------------------- Precompute (with cache) ---------------------------
 death_values <- c("dead","dead_car","dead_bike","dead_walk")
-
-pc <- qs::qread(here("temp/precomputed_mcr_wgd_100%V2.qs"))
-list2env(pc, envir = environment())
-SCALING <- 1L
-
-t <- qs::qread(here("temp/221025_trips.qs" ))
-#list2env(t, envir = environment())
 
 # ------------------- UI -------------------------------------------------
 all_scenarios <- sort(unique(people_overall$scen))
