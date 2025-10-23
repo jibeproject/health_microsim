@@ -603,3 +603,5 @@ server <- function(input, output, session) {
 }
 
 shinyApp(ui, server)
+
+# ifey_overall |> group_by(scen) |> reframe(ly = sum(diff)) |> left_join(healthy_overall |> group_by(scen) |> reframe(healthy = sum(diff))) |> left_join(deaths_overall |> group_by(scen) |> reframe(deaths = sum(diff))) |> mutate(`ly/healthy` = ly/healthy, `ly/deaths` = ly/deaths)
