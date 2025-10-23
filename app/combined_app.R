@@ -66,6 +66,9 @@ pc <- qs::qread(here("temp/precomputed_mcr_wgd_100%V2.qs"))
 list2env(pc, envir = environment())
 SCALING <- 1L
 
+t <- qs::qread(here("temp/221025_trips.qs" ))
+#list2env(t, envir = environment())
+
 # ------------------- UI -------------------------------------------------
 all_scenarios <- sort(unique(people_overall$scen))
 pop_cycles    <- sort(unique(people_overall$cycle))
@@ -93,9 +96,37 @@ ui <- fluidPage(
                        choices = all_lads_nm, multiple = TRUE,
                        options = list(placeholder = "Pick LADs (optional)"))
       ),
+      
+      conditionalPanel(
+        condition = "input.main_tabs == 'Travel Behaviour'",
+        radioButtons(
+          "metrics_picker", "Metrics:",
+          choices = c(
+            "Trip Mode Share (%)",
+            "Combined Trip Distance by Modes",
+            "Trip Duration by Mode",
+            "Zero Mode"
+          ),
+          selected = "Trip Mode Share (%)"
+        )
+      ),
+      
       tags$hr(),
       tabsetPanel(
         id = "control_tabs", type = "pills",
+        # conditionalPanel(
+        #   condition = "input.metrics_picker == 'Zero Mode'",
+        #   plotlyOutput("out_zm")
+        # ),
+        # conditionalPanel(
+        #   condition = "input.metrics_picker == 'Trip Mode Share (%)'", 
+        #   plotlyOutput("out_mshare")),
+        # conditionalPanel(
+        #   condition = "input.metrics_picker == 'Combined Trip Distance by Modes'", 
+        #   plotlyOutput("out_cdist")),
+        # conditionalPanel(
+        #   condition = "input.metrics_picker == 'Trip Duration by Mode'", 
+        #   plotlyOutput("out_dur")),
         conditionalPanel(
           condition = "input.main_tabs == 'Population'",
           h2("Population"),
@@ -105,6 +136,12 @@ ui <- fluidPage(
                        inline = TRUE),
           checkboxInput("pop_share", "Show shares (else counts)", value = TRUE)
         ),
+        
+        conditionalPanel(
+          condition = "input.main_tabs == 'Travel Behaviour'",
+          
+        ),
+        
         conditionalPanel(
           condition = "input.main_tabs == 'Differences vs reference'",
           h2("Differences"),
@@ -133,10 +170,6 @@ ui <- fluidPage(
           selectizeInput("asr_causes", "Causes:", choices = all_causes_asr,
                          selected = c("coronary_heart_disease","stroke","healthy_years"),
                          multiple = TRUE)#,
-          # conditionalPanel(
-          #   "input.view_level == 'LAD' && input.asr_mode == 'avg'",
-          #   numericInput("lad_topn", "Top N LADs:", min = 5, max = 50, value = 25, step = 1)
-          # )
         )
       ),
       tags$hr(),
@@ -146,6 +179,11 @@ ui <- fluidPage(
       width = 9,
       tabsetPanel(
         id = "main_tabs",
+        
+        tabPanel(
+          "Travel Behaviour",
+          plotlyOutput("out_mshare")
+        ),
         tabPanel(
           "Differences vs reference",
           conditionalPanel("input.use_plotly", plotlyOutput("plot_diffly", height = 520)),
@@ -280,8 +318,6 @@ server <- function(input, output, session) {
     d <- diff_long(); req(nrow(d) > 0)
     ylab <- if (isTRUE(input$diff_cumulative)) "Cumulative Δ vs reference" else "Δ vs reference"
     
-    #browser()
-    
     
     ttl  <- d$metric[1]
     if ("gender" %in% names(d)) {
@@ -305,31 +341,7 @@ server <- function(input, output, session) {
   output$plot_diff   <- renderPlot({ build_diff_plot() })
   output$plot_diffly <- renderPlotly({ ggplotly(build_diff_plot(), tooltip = c("x","y","colour","linetype")) })
   
-  # output$table_diff_summary <- renderTable({
-  #   d <- diff_long(); req(nrow(d) > 0)
-  #   by <- if ("gender" %in% names(d)) c("cause", "gender") else if ("ladnm" %in% names(d)) c("cause", "ladnm") else "cause"
-  #   metric_lab <- unique(d$metric)[1]
-  #   if (isTRUE(input$diff_cumulative)) {
-  #     d |> group_by(across(all_of(c("scen", by)))) |>
-  #       slice_max(order_by = cycle, n = 1, with_ties = FALSE) |>
-  #       ungroup() |>
-  #       transmute(
-  #         metric = metric_lab, scen,
-  #         !!!(if (length(by)) rlang::syms(by) else NULL),
-  #         final_cycle = cycle,
-  #         cumulative_value = y,
-  #         cumulative_value_scaled = y * SCALING
-  #       ) |> arrange(scen, across(all_of(by)))
-  #   } else {
-  #     d |> group_by(across(all_of(c("scen", by)))) |>
-  #       summarise(final_cycle = max(cycle, na.rm = TRUE),
-  #                 cumulative_value = sum(diff, na.rm = TRUE), .groups = "drop") |>
-  #       mutate(metric = metric_lab, cumulative_value_scaled = cumulative_value * SCALING, .before = 1) |>
-  #       arrange(scen, across(all_of(by)))
-  #   }
-  #   
-  # })
-  
+
   output$table_diff_summary <- DT::renderDT({
     d <- diff_long()
     req(nrow(d) > 0)
@@ -600,6 +612,187 @@ server <- function(input, output, session) {
     filename = function() paste0("export_", gsub("\\s+","_", tolower(input$main_tabs)), "_", Sys.Date(), ".csv"),
     content  = function(file) readr::write_csv(current_table(), file, na = "")
   )
+  
+  
+  output$out_zm <- renderPlotly({
+    
+    # req(input$in_scens)
+    # req(input$in_cities)
+    # req(input$in_level)
+    # req(input$in_measure)
+    # # req(input$in_CIs)
+    # req(input$in_pathways)
+    # req(!is.null(input$in_strata))
+    
+    t$zero_mode <- t$zero_mode |> mutate(scen = case_when(scen == "both" ~ "Greening + Safe Streets",
+                                                          scen == "safeStreet" ~ "Safer Streets",
+                                                          scen == "reference" ~ "Reference",
+                                                          scen == "green" ~ "Greening",
+                                                          .default = scen))
+    
+    
+    plotly::ggplotly(ggplot(t$zero_mode, aes(x = mode, y = zero_percent, fill = scen)) +
+                       geom_bar(stat = "identity", position = position_dodge(width = 0.9)) +
+                       geom_text(
+                         aes(label = paste0(zero_percent, "%")),
+                         position = position_dodge(width = 0.9), 
+                         vjust = -0.25,                       
+                         size = 3) +
+                       # scale_fill_manual(values = c("both", "green", "safeStreet", "reference"), 
+                       #                   labels = c("Greening + Safe Streets", "Greening",
+                       #                              "Safer Streets", "Reference")) +
+                       labs(
+                         title = "Proportion of Individuals Reporting Non-Usage of Specific Transport Modes",
+                         y = "Proportion (%)",
+                         fill = "Scenario") +
+                       theme_minimal() +
+                       theme(
+                         panel.grid.major = element_blank(),
+                         panel.grid.minor = element_blank(),
+                         axis.ticks.y = element_blank(),
+                         plot.title = element_text(hjust = 0.5, face = "bold"), 
+                         axis.text.x = element_text(face = "bold"),
+                         axis.title.x = element_blank(),
+                         axis.title.y = element_text(face = "bold"),
+                         axis.text.y = element_text(face = "bold"),
+                         legend.text = element_text(face = "bold"),
+                         legend.title = element_text(face = "bold"))
+    )
+    
+  })
+  
+  output$out_mshare <- renderPlotly({
+    req(input$scen_sel)
+      if (input$metrics_picker == "Trip Mode Share (%)") {
+        
+        if (input$view_level == "Overall"){
+          
+          #,"Gender","LAD"))
+        
+        # browser()
+        dist <- t$distance |> group_by(distance_bracket, scen, mode) |> reframe(percent = sum(percent)) |> 
+          filter(scen %in% input$scen_sel)
+        
+        ggplot(dist, aes(x = distance_bracket, y = percent, fill = mode)) +
+          geom_bar(stat = "identity", position = "fill") +
+          geom_text(
+            aes(label = ifelse(percent > 2, paste0(round(percent, 1), "%"), "")), # Show label only if >= 1%
+            position = position_fill(vjust = 0.5), 
+            color = "white",
+            size = 3
+          ) +
+          labs(
+            title = "Transport Mode Share by Trip Distance",
+            y = "Proportion (%)",
+            x = "Distance (km)",
+            fill = "Transport Mode"
+          ) +
+          theme_minimal(base_size = 12) +
+          theme(
+            panel.grid.major = element_blank(),
+            panel.grid.minor = element_blank(),
+            axis.ticks.y = element_blank(),
+            plot.title = element_text(hjust = 0.5, face = "bold"), 
+            axis.text.y = element_blank(),
+            axis.text.x = element_text(face = "bold"),
+            strip.placement = "outside", 
+            strip.text = element_text(face = "bold"),
+            legend.text = element_text(face = "bold"),
+            legend.title = element_text(face = "bold")
+          ) +
+          facet_wrap(vars(scen), scales = "free_x")
+        
+        }
+        else{
+          
+          dist <- t$distance |> group_by(distance_bracket, gender, scen, mode) |> reframe(percent = sum(percent))  |> 
+            filter(scen %in% input$scen_sel)
+          
+          ggplot(dist, aes(x = distance_bracket, y = percent, fill = mode)) +
+            geom_bar(stat = "identity", position = "fill") +
+            geom_text(
+              aes(label = ifelse(percent > 2, paste0(round(percent, 1), "%"), "")), # Show label only if >= 1%
+              position = position_fill(vjust = 0.5), 
+              color = "white",
+              size = 3
+            ) +
+            labs(
+              title = "Transport Mode Share by Trip Distance",
+              y = "Proportion (%)",
+              x = "Distance (km)",
+              fill = "Transport Mode"
+            ) +
+            theme_minimal(base_size = 12) +
+            theme(
+              panel.grid.major = element_blank(),
+              panel.grid.minor = element_blank(),
+              axis.ticks.y = element_blank(),
+              plot.title = element_text(hjust = 0.5, face = "bold"), 
+              axis.text.y = element_blank(),
+              axis.text.x = element_text(face = "bold"),
+              strip.placement = "outside", 
+              strip.text = element_text(face = "bold"),
+              legend.text = element_text(face = "bold"),
+              legend.title = element_text(face = "bold")
+            ) +
+            facet_wrap(vars(scen, gender), scales = "free_x")
+          
+          
+        }
+        
+        
+      } else if (input$metrics_picker == "Combined Trip Distance by Modes") {
+        ggplotly(
+          ggplot(t$combined_distance) +
+            aes(x = mode, y = avgDistance, fill = scen) +
+            geom_col(position = "dodge2") +
+            scale_fill_hue(direction = 1) +
+            geom_text(aes(label = round(avgDistance, 1), y = avgDistance),
+                      size = 2, #hjust = -0.1, 
+                      hjust = 1.1, 
+                      vjust = 0.2,
+                      position = position_dodge(1),
+                      inherit.aes = TRUE
+            ) +
+            coord_flip() +
+            theme_minimal() +
+            facet_wrap(vars(LAD_origin)) +
+            labs(title = "Average weekly dist. pp by mode and location",
+                 fill = "Scenario")
+        )
+        
+      } else if (input$metrics_picker == "Trip Duration by Mode") {
+        ggplotly(ggplot(t$avg_time_combined) +
+                   aes(x = mode, y = avgTime, fill = scen) +
+                   geom_col(position = "dodge2") +
+                   geom_text(aes(label = round(avgTime, 1),
+                                 y = avgTime),
+                             size = 2, #hjust = -0.1, 
+                             hjust = 1.1, 
+                             vjust = 0.2,
+                             position = position_dodge(1),
+                             inherit.aes = TRUE
+                   ) +
+                   scale_fill_hue(direction = 1) +
+                   labs(title = "Average weekly time (in hours) by mode per person and location",
+                        fill = "Scenario",
+                        x = "", y = "Hours") +
+                   coord_flip() +
+                   theme_minimal() +
+                   facet_wrap(vars(LAD_origin))
+        )        
+      } else if (input$metrics_picker == "Zero Mode") {
+        plot_ly(
+          data = data.frame(category = LETTERS[1:4], count = c(10, 5, 15, 20)),
+          x = ~category, y = ~count, type = "bar"
+        ) %>%
+          layout(title = "Zero Mode Metrics", yaxis = list(title = "Count"))
+      }
+
+    
+  })
+  
+
 }
 
 shinyApp(ui, server)
