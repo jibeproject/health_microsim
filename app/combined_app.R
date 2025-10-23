@@ -81,7 +81,7 @@ all_causes_asr <- sort(unique(c(
 )))
 
 ui <- fluidPage(
-  titlePanel("Local Health Explorer — Population, Differences, Mean Ages & ASR"),
+  titlePanel("Travel and Health Explorer"),
   sidebarLayout(
     sidebarPanel(
       width = 3,
@@ -114,19 +114,6 @@ ui <- fluidPage(
       tags$hr(),
       tabsetPanel(
         id = "control_tabs", type = "pills",
-        # conditionalPanel(
-        #   condition = "input.metrics_picker == 'Zero Mode'",
-        #   plotlyOutput("out_zm")
-        # ),
-        # conditionalPanel(
-        #   condition = "input.metrics_picker == 'Trip Mode Share (%)'", 
-        #   plotlyOutput("out_mshare")),
-        # conditionalPanel(
-        #   condition = "input.metrics_picker == 'Combined Trip Distance by Modes'", 
-        #   plotlyOutput("out_cdist")),
-        # conditionalPanel(
-        #   condition = "input.metrics_picker == 'Trip Duration by Mode'", 
-        #   plotlyOutput("out_dur")),
         conditionalPanel(
           condition = "input.main_tabs == 'Population'",
           h2("Population"),
