@@ -668,6 +668,7 @@ server <- function(input, output, session) {
         
       }else if(input$view_level == "Gender"){
         tp <- t$trips_percentage_combined |> 
+          filter(!is.na(gender)) |> 
           group_by(scen, mode, gender) |> 
           reframe(trip_count = sum(trip_count)) |> 
           group_by(scen, gender) |> 
@@ -693,6 +694,11 @@ server <- function(input, output, session) {
       if (length(input$scen_sel)){
         tp <- tp |> 
           filter(scen %in% input$scen_sel)
+      }
+      
+      if(length(input$lad_sel)){
+        tp <- tp |> 
+          filter(LAD_origin %in% input$lad_sel)
       }
       
       
