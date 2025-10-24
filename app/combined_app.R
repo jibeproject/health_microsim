@@ -654,6 +654,8 @@ server <- function(input, output, session) {
     if (input$metrics_picker == "Trip Mode Share (%)") {
       
       facet_vars <- vars("")
+      
+      fs <- 3
 
       if (input$view_level == "Overall") {
         tp <- t$trips_percentage_combined |> 
@@ -688,12 +690,15 @@ server <- function(input, output, session) {
           mutate(pt = trip_count/tt * 100)
         
         facet_vars <- vars(LAD_origin)
+        fs <- 1
+      
         
       }
       
       if (length(input$scen_sel)){
         tp <- tp |> 
           filter(scen %in% input$scen_sel)
+        fs <- 3
       }
       
       if(length(input$lad_sel)){
@@ -706,8 +711,38 @@ server <- function(input, output, session) {
                  aes(x = scen, y = pt, fill = mode) +
                  geom_col() +
                  scale_fill_hue(direction = 1) +
-                 theme_minimal() +
-                 facet_wrap(facet_vars))
+                 theme_minimal(base_size = 12) +
+                   theme(
+                     panel.grid.major = element_blank(),
+                     panel.grid.minor = element_blank(),
+                     axis.ticks.y = element_blank(),
+                     plot.title = element_text(hjust = 0.5, face = "bold"),
+                     axis.text.y = element_blank(),
+                     axis.text.x = element_text(face = "bold"),
+                     strip.placement = "outside",
+                     strip.text = element_text(face = "bold"),
+                     legend.text = element_text(face = "bold"),
+                     legend.title = element_text(face = "bold")
+                   ) +
+                 # geom_text(
+                 #       aes(label = ifelse(pt > 2, paste0(round(pt, 1), "%"), "")),
+                 #       position = position_fill(vjust = 0.5),
+                 #       color = "white",
+                 #       size = 3
+                 #     ) +
+                 
+                 geom_text(aes(label = ifelse(pt > 2, paste0(round(pt, 1), "%"), "")),
+                           position = position_stack(vjust = .5),
+                           size = fs) +
+                 
+                 facet_wrap(facet_vars) +
+                   labs(
+                     title = "Transport Mode Share (%)",
+                     y = "Proportion (%)",
+                     x = "Scenario",
+                     fill = "Transport Mode"
+                   )
+                 )
       
       # facet_vars <- vars(scen)
       # if (input$view_level != "Overall") {
