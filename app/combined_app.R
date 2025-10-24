@@ -103,9 +103,9 @@ ui <- fluidPage(
           "metrics_picker", "Metrics:",
           choices = c(
             "Trip Mode Share (%)",
+            "Trip Mode Share by Distance (%)",
             "Combined Trip Distance by Modes",
-            "Trip Duration by Mode",
-            "Zero Mode"
+            "Trip Duration by Mode"
           ),
           selected = "Trip Mode Share (%)"
         )
@@ -144,8 +144,8 @@ ui <- fluidPage(
           checkboxInput("diff_cumulative", "Cumulative over cycles", value = TRUE)
         ),
         conditionalPanel(
-          condition = "input.main_tabs == 'Average ages'",
-          h2("Average ages"),
+          condition = "input.main_tabs == 'Average onset ages'",
+          h2("Average onset ages"),
           selectInput("avg_kind", "Average age of:", choices = c("Death"="death","Disease onset"="onset")),
           uiOutput("avg_cause_ui")
         ),
@@ -179,7 +179,7 @@ ui <- fluidPage(
           h5("Summary (cumulative at latest cycle, or sum if non-cumulative)"),
           DT::dataTableOutput("table_diff_summary")
         ),
-        tabPanel("Average ages", tableOutput("table_avg")),
+        tabPanel("Average onset ages", tableOutput("table_avg")),
         tabPanel(
           "ASR",
           conditionalPanel("input.use_plotly", plotlyOutput("plot_asrly", height = 640)),
@@ -571,7 +571,7 @@ server <- function(input, output, session) {
         d |> group_by(across(all_of(c("scen", by)))) |> slice_max(order_by = cycle, n = 1, with_ties = FALSE) |>
           ungroup() |> transmute(scen, across(all_of(by)), final_cycle = cycle, cumulative_value = y, cumulative_value_scaled = y * SCALING)
       } else d
-    } else if (tab == "Average ages") {
+    } else if (tab == "Average onset ages") {
       output$table_avg |> req(); isolate({ output$table_avg() })
     } else if (tab == "ASR") {
       if (input$asr_mode == "avg") {
