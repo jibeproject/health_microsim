@@ -1,8 +1,3 @@
-# ======================================================================
-# Local Shiny: Population, Differences, Mean Ages (death/onset), ASR
-# with simple on-disk caching in ./data to avoid recomputation
-# ======================================================================
-
 suppressPackageStartupMessages({
   library(shiny)
   library(dplyr) 
@@ -12,8 +7,6 @@ suppressPackageStartupMessages({
   library(ggplot2)
   library(plotly) 
   library(scales) 
-  library(forcats)
-  library(purrr)
   library(here)
   library(qs)
   library(DT)
@@ -169,12 +162,12 @@ ui <- fluidPage(
         
         tabPanel(
           "Travel Behaviour",
-          plotlyOutput("out_mshare")
+          plotlyOutput("out_mshare", height = "85vh")
         ),
         tabPanel(
           "Differences vs reference",
-          conditionalPanel("input.use_plotly", plotlyOutput("plot_diffly", height = 520)),
-          conditionalPanel("!input.use_plotly", plotOutput("plot_diff", height = 520)),
+          conditionalPanel("input.use_plotly", plotlyOutput("plot_diffly", height = "50vh")),
+          conditionalPanel("!input.use_plotly", plotOutput("plot_diff", height = "50vh")),
           tags$hr(),
           h5("Summary (cumulative at latest cycle, or sum if non-cumulative)"),
           DT::dataTableOutput("table_diff_summary")
@@ -182,13 +175,13 @@ ui <- fluidPage(
         tabPanel("Average onset ages", tableOutput("table_avg")),
         tabPanel(
           "ASR",
-          conditionalPanel("input.use_plotly", plotlyOutput("plot_asrly", height = 640)),
-          conditionalPanel("!input.use_plotly", plotOutput("plot_asr", height = 640))
+          conditionalPanel("input.use_plotly", plotlyOutput("plot_asrly", height = "85vh")),
+          conditionalPanel("!input.use_plotly", plotOutput("plot_asr", height = "85vh"))
         ),
         tabPanel(
           "Population",
-          conditionalPanel("input.use_plotly", plotlyOutput("plot_poply", height = 520)),
-          conditionalPanel("!input.use_plotly", plotOutput("plot_pop", height = 520))
+          conditionalPanel("input.use_plotly", plotlyOutput("plot_poply", height = "85vh")),
+          conditionalPanel("!input.use_plotly", plotOutput("plot_pop", height = "85vh"))
         )
         
       )
@@ -650,6 +643,9 @@ server <- function(input, output, session) {
   
   output$out_mshare <- renderPlotly({
     req(input$scen_sel)
+    # req(input$lad_sel)
+    # req(input$view_sel)
+    
     
     if (input$metrics_picker == "Trip Mode Share (%)") {
       
@@ -676,7 +672,10 @@ server <- function(input, output, session) {
           group_by(scen, gender) |> 
           mutate(tt = sum(trip_count)) |> 
           ungroup() |> 
-          mutate(pt = trip_count/tt * 100)
+          mutate(pt = trip_count/tt * 100,
+                 gender = as.factor(case_when(gender == 1 ~ "Male", 
+                                                            gender == 2 ~ "Female")))
+                 
         
         
         facet_vars <- vars(gender)
