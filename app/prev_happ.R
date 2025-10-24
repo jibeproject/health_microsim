@@ -20,7 +20,9 @@ suppressPackageStartupMessages({
 })
 
 # ------------------- Paths (edit these if needed) -------------------
-zones    <- readr::read_csv("/media/ali/Expansion/backup_tabea/manchester/input/zoneSystem.csv", show_col_types = FALSE)
+# zones    <- readr::read_csv("/media/ali/Expansion/backup_tabea/manchester/input/zoneSystem.csv", show_col_types = FALSE)
+zones <- readr::read_csv(here("app/data/zoneSystem.csv"))
+
 stopifnot(all(c("ladcd","ladnm") %in% names(zones)))
 lads <- zones |> distinct(ladcd, ladnm)
 
@@ -77,7 +79,8 @@ align_age_levels <- function(w, people_age) {
 # ------------------- Precompute (with cache) ---------------------------
 death_values <- c("dead","dead_car","dead_bike","dead_walk")
 
-pc <- qs::qread(here("temp/precomputed_mcr_100%V2.qs"))
+# pc <- qs::qread(here("temp/precomputed_mcr_100%V2.qs"))
+pc <- qs::qread(here("Y:/HealthImpact/Data/Country/UK/JIBE_health_output_data/211025/precomputed_mcr_wgd_100%V2.qs"))
 list2env(pc, envir = environment())
 SCALING <- 1L
 
