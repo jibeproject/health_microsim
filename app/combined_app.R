@@ -690,6 +690,11 @@ server <- function(input, output, session) {
         
       }
       
+      if (length(input$scen_sel)){
+        tp <- tp |> 
+          filter(scen %in% input$scen_sel)
+      }
+      
       
       ggplotly(ggplot(tp) +
                  aes(x = scen, y = pt, fill = mode) +
