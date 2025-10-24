@@ -23,7 +23,7 @@ pc <- qs::qread(here("temp/precomputed_mcr_wgd_100%V2.qs"))
 list2env(pc, envir = environment())
 SCALING <- 1L
 
-t <- qs::qread(here("temp/231025_trips.qs" ))
+t <- qs::qread(here("temp/241025_trips.qs"))
 
 
 MIN_CYCLE <- 1
@@ -653,49 +653,103 @@ server <- function(input, output, session) {
     
     if (input$metrics_picker == "Trip Mode Share (%)") {
       
-      # Set grouping variables dynamically based on view_level
-      group_vars <- c("distance_bracket", "scen", "mode")
-      facet_vars <- vars(scen)
-      if (input$view_level != "Overall") {
-        group_vars <- c(group_vars[1], "gender", group_vars[-1])  # Insert gender after distance_bracket
-        facet_vars <- vars(scen, gender)
+      facet_vars <- vars("")
+
+      if (input$view_level == "Overall") {
+        tp <- t$trips_percentage_combined |> 
+          group_by(scen, mode) |> 
+          reframe(trip_count = sum(trip_count)) |> 
+          group_by(scen) |> 
+          mutate(tt = sum(trip_count)) |> 
+          ungroup() |> 
+          mutate(pt = trip_count/tt * 100)
+        
+        #"Gender","LAD"
+        
+      }else if(input$view_level == "Gender"){
+        tp <- t$trips_percentage_combined |> 
+          group_by(scen, mode, gender) |> 
+          reframe(trip_count = sum(trip_count)) |> 
+          group_by(scen, gender) |> 
+          mutate(tt = sum(trip_count)) |> 
+          ungroup() |> 
+          mutate(pt = trip_count/tt * 100)
+        
+        
+        facet_vars <- vars(gender)
+      }else if(input$view_level == "LAD"){
+        tp <- t$trips_percentage_combined |> 
+          group_by(LAD_origin, scen, mode) |> 
+          reframe(trip_count = sum(trip_count)) |> 
+          group_by(scen, LAD_origin) |> 
+          mutate(tt = sum(trip_count)) |> 
+          ungroup() |> 
+          mutate(pt = trip_count/tt * 100)
+        
+        facet_vars <- vars(LAD_origin)
+        
       }
       
-      # Group and summarize the data
-      dist <- t$distance |>
-        group_by(across(all_of(group_vars))) |>
-        reframe(percent = sum(percent)) |>
-        filter(scen %in% input$scen_sel)
       
-      # Create the plot with dynamic faceting
-      ggplot(dist, aes(x = distance_bracket, y = percent, fill = mode)) +
-        geom_bar(stat = "identity", position = "fill") +
-        geom_text(
-          aes(label = ifelse(percent > 2, paste0(round(percent, 1), "%"), "")), 
-          position = position_fill(vjust = 0.5),
-          color = "white",
-          size = 3
-        ) +
-        labs(
-          title = "Transport Mode Share by Trip Distance",
-          y = "Proportion (%)",
-          x = "Distance (km)",
-          fill = "Transport Mode"
-        ) +
-        theme_minimal(base_size = 12) +
-        theme(
-          panel.grid.major = element_blank(),
-          panel.grid.minor = element_blank(),
-          axis.ticks.y = element_blank(),
-          plot.title = element_text(hjust = 0.5, face = "bold"),
-          axis.text.y = element_blank(),
-          axis.text.x = element_text(face = "bold"),
-          strip.placement = "outside",
-          strip.text = element_text(face = "bold"),
-          legend.text = element_text(face = "bold"),
-          legend.title = element_text(face = "bold")
-        ) +
-        facet_wrap(facet_vars, scales = "free_x")
+      ggplotly(ggplot(tp) +
+                 aes(x = scen, y = pt, fill = mode) +
+                 geom_col() +
+                 scale_fill_hue(direction = 1) +
+                 theme_minimal() +
+                 facet_wrap(facet_vars))
+      
+      # facet_vars <- vars(scen)
+      # if (input$view_level != "Overall") {
+      #   group_vars <- c(group_vars[1], "gender", group_vars[-1])  # Insert gender after distance_bracket
+      #   facet_vars <- vars(scen, gender)
+      # }
+      
+      
+    
+      
+      # # Set grouping variables dynamically based on view_level
+      # group_vars <- c("distance_bracket", "scen", "mode")
+      # facet_vars <- vars(scen)
+      # if (input$view_level != "Overall") {
+      #   group_vars <- c(group_vars[1], "gender", group_vars[-1])  # Insert gender after distance_bracket
+      #   facet_vars <- vars(scen, gender)
+      # }
+      # 
+      # # Group and summarize the data
+      # dist <- t$distance |>
+      #   group_by(across(all_of(group_vars))) |>
+      #   reframe(percent = sum(percent)) |>
+      #   filter(scen %in% input$scen_sel)
+      # 
+      # # Create the plot with dynamic faceting
+      # ggplot(dist, aes(x = distance_bracket, y = percent, fill = mode)) +
+      #   geom_bar(stat = "identity", position = "fill") +
+      #   geom_text(
+      #     aes(label = ifelse(percent > 2, paste0(round(percent, 1), "%"), "")), 
+      #     position = position_fill(vjust = 0.5),
+      #     color = "white",
+      #     size = 3
+      #   ) +
+      #   labs(
+      #     title = "Transport Mode Share by Trip Distance",
+      #     y = "Proportion (%)",
+      #     x = "Distance (km)",
+      #     fill = "Transport Mode"
+      #   ) +
+      #   theme_minimal(base_size = 12) +
+      #   theme(
+      #     panel.grid.major = element_blank(),
+      #     panel.grid.minor = element_blank(),
+      #     axis.ticks.y = element_blank(),
+      #     plot.title = element_text(hjust = 0.5, face = "bold"),
+      #     axis.text.y = element_blank(),
+      #     axis.text.x = element_text(face = "bold"),
+      #     strip.placement = "outside",
+      #     strip.text = element_text(face = "bold"),
+      #     legend.text = element_text(face = "bold"),
+      #     legend.title = element_text(face = "bold")
+      #   ) +
+      #   facet_wrap(facet_vars, scales = "free_x")
     }
     
     else if (input$metrics_picker == "Combined Trip Distance by Modes") {
