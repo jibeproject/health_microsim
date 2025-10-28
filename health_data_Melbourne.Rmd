@@ -111,7 +111,8 @@ health_outcomes_risks <- tibble::tribble(
   "Depressive disorders", "GBD (F32-F33.9, F34.1)", "#", "PA (F32-F33)", "#", "#", "#",
   "All cause dementia",  "GBD (F00-F02.0, F02.8-F03.91, F06.2, G30-G31.1, G31.8-G32.89)", "#","PA (F01-F03)", "#", "#", "#",
   "Diabetes type 2", "GBD (E11-E11.1, E11.3-E11.9)", "AIHW (E11)", "PA", "#", "#", "#",
-  "Chronic obstructive pulmonary disease",  "GBD (J41-J42.4, J43-J44.9)", "AIHW (J40-J44)","PA", "#", "#", "#"
+  "Chronic obstructive pulmonary disease",  "GBD (J41-J42.4, J43-J44.9)", "AIHW (J40-J44)","PA", "#", "#", "#",
+  "Parkinson disease",  "GBD (G20)", "AIHW (G20)","PA", "#", "#", "#",
 )
 
 inputs <- kableExtra::kable(
