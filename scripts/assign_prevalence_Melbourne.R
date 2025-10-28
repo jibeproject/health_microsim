@@ -108,121 +108,121 @@ write_csv(
 )
 
 
-# Compare assignment with GBD original data
+# # Compare assignment with GBD original data
 
-## Crude rates per age group, gender and by LAD per 100,000 people
+# ## Crude rates per age group, gender and by LAD per 100,000 people
 
-gbd_original <- read.csv(paste0(
-  "../", study_region, "/health/processed/gbd_processed.csv"
-)) |>
-  mutate(rate_100k = rate_1*100000) |>
-  rename(total = val, 
-          SA2_MAIN16 = location) |>
-  mutate(sex = case_when(sex == "Female" ~ "female", 
-                          sex == "Male" ~ "male")) |>
-  select(sex, cause, agegroup, total, SA2_MAIN16, rate_100k) |>
-  mutate(type = "gbd")
-
-
-population <- synth_pop_prev |> select(id, age, sex, ladcd, ladnm) |>
-  mutate(agegroup = case_when(
-    age < 5             ~ "<5",
-    age >= 5 & age <= 9 ~ "5-9",
-    age >= 10 & age <= 14 ~ "10-14",
-    age >= 15 & age <= 19 ~ "15-19",
-    age >= 20 & age <= 24 ~ "20-24",
-    age >= 25 & age <= 29 ~ "25-29",
-    age >= 30 & age <= 34 ~ "30-34",
-    age >= 35 & age <= 39 ~ "35-39",
-    age >= 40 & age <= 44 ~ "40-44",
-    age >= 45 & age <= 49 ~ "45-49",
-    age >= 50 & age <= 54 ~ "50-54",
-    age >= 55 & age <= 59 ~ "55-59",
-    age >= 60 & age <= 64 ~ "60-64",
-    age >= 65 & age <= 69 ~ "65-69",
-    age >= 70 & age <= 74 ~ "70-74",
-    age >= 75 & age <= 79 ~ "75-79",
-    age >= 80 & age <= 84 ~ "80-84",
-    age >= 85 & age <= 89 ~ "85-89",
-    age >= 90 & age <= 94 ~ "90-94",
-    age >= 95            ~ "95+",
-    TRUE ~ NA_character_
-  )) |> group_by(agegroup, sex, SA2_MAIN16) |>
-              summarize(pop = n_distinct(id))
+# gbd_original <- read.csv(paste0(
+#   "../", study_region, "/health/processed/gbd_processed.csv"
+# )) |>
+#   mutate(rate_100k = rate_1*100000) |>
+#   rename(total = val, 
+#           SA2_MAIN16 = location) |>
+#   mutate(sex = case_when(sex == "Female" ~ "female", 
+#                           sex == "Male" ~ "male")) |>
+#   select(sex, cause, agegroup, total, SA2_MAIN16, rate_100k) |>
+#   mutate(type = "gbd")
 
 
-prev_long <- synth_pop_prev |> 
-  pivot_longer(
-    cols = copd_status:stroke_status,
-    values_to = "value"
-  ) |>
-  mutate(agegroup = case_when(
-    age < 5             ~ "<5",
-    age >= 5 & age <= 9 ~ "5-9",
-    age >= 10 & age <= 14 ~ "10-14",
-    age >= 15 & age <= 19 ~ "15-19",
-    age >= 20 & age <= 24 ~ "20-24",
-    age >= 25 & age <= 29 ~ "25-29",
-    age >= 30 & age <= 34 ~ "30-34",
-    age >= 35 & age <= 39 ~ "35-39",
-    age >= 40 & age <= 44 ~ "40-44",
-    age >= 45 & age <= 49 ~ "45-49",
-    age >= 50 & age <= 54 ~ "50-54",
-    age >= 55 & age <= 59 ~ "55-59",
-    age >= 60 & age <= 64 ~ "60-64",
-    age >= 65 & age <= 69 ~ "65-69",
-    age >= 70 & age <= 74 ~ "70-74",
-    age >= 75 & age <= 79 ~ "75-79",
-    age >= 80 & age <= 84 ~ "80-84",
-    age >= 85 & age <= 89 ~ "85-89",
-    age >= 90 & age <= 94 ~ "90-94",
-    age >= 95            ~ "95+",
-    TRUE ~ NA_character_
-  )) |>
-  group_by(agegroup, sex, ladcd, ladnm, name) |>
-  summarise(total = sum(value)) |>
-  mutate(name = str_remove(name, "_status")) |>
-  left_join(population) |>
-  mutate(rate_100k = total/pop*100000) |> 
-  mutate(type = "assigned") |>
-  rename(cause = name) |>
-  ungroup()|>
-  select(sex, cause, agegroup, total, ladnm, rate_100k, type)
+# population <- synth_pop_prev |> select(id, age, sex, ladcd, ladnm) |>
+#   mutate(agegroup = case_when(
+#     age < 5             ~ "<5",
+#     age >= 5 & age <= 9 ~ "5-9",
+#     age >= 10 & age <= 14 ~ "10-14",
+#     age >= 15 & age <= 19 ~ "15-19",
+#     age >= 20 & age <= 24 ~ "20-24",
+#     age >= 25 & age <= 29 ~ "25-29",
+#     age >= 30 & age <= 34 ~ "30-34",
+#     age >= 35 & age <= 39 ~ "35-39",
+#     age >= 40 & age <= 44 ~ "40-44",
+#     age >= 45 & age <= 49 ~ "45-49",
+#     age >= 50 & age <= 54 ~ "50-54",
+#     age >= 55 & age <= 59 ~ "55-59",
+#     age >= 60 & age <= 64 ~ "60-64",
+#     age >= 65 & age <= 69 ~ "65-69",
+#     age >= 70 & age <= 74 ~ "70-74",
+#     age >= 75 & age <= 79 ~ "75-79",
+#     age >= 80 & age <= 84 ~ "80-84",
+#     age >= 85 & age <= 89 ~ "85-89",
+#     age >= 90 & age <= 94 ~ "90-94",
+#     age >= 95            ~ "95+",
+#     TRUE ~ NA_character_
+#   )) |> group_by(agegroup, sex, SA2_MAIN16) |>
+#               summarize(pop = n_distinct(id))
 
 
-compare <- bind_rows(gbd_original, prev_long) |>
-        filter(!agegroup %in% c("<5", "5-9", "10-14"))
+# prev_long <- synth_pop_prev |> 
+#   pivot_longer(
+#     cols = copd_status:stroke_status,
+#     values_to = "value"
+#   ) |>
+#   mutate(agegroup = case_when(
+#     age < 5             ~ "<5",
+#     age >= 5 & age <= 9 ~ "5-9",
+#     age >= 10 & age <= 14 ~ "10-14",
+#     age >= 15 & age <= 19 ~ "15-19",
+#     age >= 20 & age <= 24 ~ "20-24",
+#     age >= 25 & age <= 29 ~ "25-29",
+#     age >= 30 & age <= 34 ~ "30-34",
+#     age >= 35 & age <= 39 ~ "35-39",
+#     age >= 40 & age <= 44 ~ "40-44",
+#     age >= 45 & age <= 49 ~ "45-49",
+#     age >= 50 & age <= 54 ~ "50-54",
+#     age >= 55 & age <= 59 ~ "55-59",
+#     age >= 60 & age <= 64 ~ "60-64",
+#     age >= 65 & age <= 69 ~ "65-69",
+#     age >= 70 & age <= 74 ~ "70-74",
+#     age >= 75 & age <= 79 ~ "75-79",
+#     age >= 80 & age <= 84 ~ "80-84",
+#     age >= 85 & age <= 89 ~ "85-89",
+#     age >= 90 & age <= 94 ~ "90-94",
+#     age >= 95            ~ "95+",
+#     TRUE ~ NA_character_
+#   )) |>
+#   group_by(agegroup, sex, ladcd, ladnm, name) |>
+#   summarise(total = sum(value)) |>
+#   mutate(name = str_remove(name, "_status")) |>
+#   left_join(population) |>
+#   mutate(rate_100k = total/pop*100000) |> 
+#   mutate(type = "assigned") |>
+#   rename(cause = name) |>
+#   ungroup()|>
+#   select(sex, cause, agegroup, total, ladnm, rate_100k, type)
+
+
+# compare <- bind_rows(gbd_original, prev_long) |>
+#         filter(!agegroup %in% c("<5", "5-9", "10-14"))
 
 
 
-# Generate plots for each location, sex, and cause
-combinations <- compare %>% 
-  select(SA2_MAIN16, sex, cause) %>% 
-  distinct()
+# # Generate plots for each location, sex, and cause
+# combinations <- compare %>% 
+#   select(SA2_MAIN16, sex, cause) %>% 
+#   distinct()
 
-for (i in seq_len(nrow(combinations))) {
-  loc <- combinations$SA2_MAIN16[i]
-  sx <- combinations$sex[i]
-  cs <- combinations$cause[i]
+# for (i in seq_len(nrow(combinations))) {
+#   loc <- combinations$SA2_MAIN16[i]
+#   sx <- combinations$sex[i]
+#   cs <- combinations$cause[i]
 
-  df_filtered <- compare %>%
-    filter(SA2_MAIN16 == loc, sex == sx, cause == cs)
+#   df_filtered <- compare %>%
+#     filter(SA2_MAIN16 == loc, sex == sx, cause == cs)
   
-  plot <- ggplot(df_filtered, aes(x = factor(agegroup), y = rate_100k, fill = type)) +
-    geom_col(position = position_dodge(width = 0.8), alpha = 0.8) +
-    scale_fill_manual(
-      values = c("assigned" = "blue", "gbd" = "red"),
-      labels = c("assigned" = "Values Assigned", "gbd" = "Val GBD")
-    ) +
-    labs(title = paste("Location:", loc, "| Sex:", sx, "| Cause:", cs),
-         x = "Age Group",
-         y = "Rate per 100k",
-         fill = "Legend") +
-    theme_classic() +
-    theme(axis.text.x = element_text(angle = 45, hjust = 1))
+#   plot <- ggplot(df_filtered, aes(x = factor(agegroup), y = rate_100k, fill = type)) +
+#     geom_col(position = position_dodge(width = 0.8), alpha = 0.8) +
+#     scale_fill_manual(
+#       values = c("assigned" = "blue", "gbd" = "red"),
+#       labels = c("assigned" = "Values Assigned", "gbd" = "Val GBD")
+#     ) +
+#     labs(title = paste("Location:", loc, "| Sex:", sx, "| Cause:", cs),
+#          x = "Age Group",
+#          y = "Rate per 100k",
+#          fill = "Legend") +
+#     theme_classic() +
+#     theme(axis.text.x = element_text(angle = 45, hjust = 1))
 
-  ggsave(filename = paste0("../",study_region,"/images/prevalence/plot_", loc, "_", sx, "_", cs, ".png"),
-         plot = plot, width = 8, height = 6)
-}
+#   ggsave(filename = paste0("../",study_region,"/images/prevalence/plot_", loc, "_", sx, "_", cs, ".png"),
+#          plot = plot, width = 8, height = 6)
+# }
 
 
