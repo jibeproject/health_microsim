@@ -5,6 +5,7 @@ library(here)
 library(esquisse)
 
 study_region <- "Melbourne"
+# study_region <- "Brunswick"
 
 # Synthetic population baseline
 synth_pop <- read.csv(
@@ -94,15 +95,17 @@ synth_pop_prev_long <- synth_pop_prev |> pivot_longer(
   group_by(id) %>%
   summarise(diseases = paste(diseases, collapse = " "), .groups = "drop")
 
-date_today_string <- format(Sys.Date(), "%y%m%d")
+date_today_yyyy_mm_dd <- format(Sys.Date(), "%Y-%m-%d")
 
 write_csv(
-  synth_pop_prev_long, 
+  synth_pop_prev_long,
   paste0(
-    "../", 
-    study_region, 
+    "../",
+    study_region,
     "/input/health/base_prevalence_id_clean_",
-    date_today_string,
+    date_today_yyyy_mm_dd,
+    "_",
+    study_region,
     ".csv"
   )
 )
