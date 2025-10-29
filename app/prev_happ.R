@@ -1,5 +1,8 @@
 # ======================================================================
 # Local Shiny: Population, Differences, Mean Ages (death/onset), ASR
+# + Disease picker for Δ diseases
+# + Robust gender fix (handles 1/2, M/F strings)
+# + NEW: Impact summary tab (deaths prevented, life years, healthy) by scenario
 # ======================================================================
 
 suppressPackageStartupMessages({
@@ -18,7 +21,6 @@ suppressPackageStartupMessages({
   library(DT)
 })
 
-<<<<<<< HEAD
 options(scipen = 999)
 
 # ------------------- Inputs / Data -------------------------------------
@@ -102,7 +104,7 @@ scale_gender_linetype <- function() scale_linetype_manual(values = c(Female = "s
 
 # Metric palette (Impact summary)
 pal_metric <- c(
-  "Deaths avoided"                 = "#E69F00",
+  "Premature deaths avoided"                 = "#E69F00",
   "Life years gained"                        = "#56B4E9",
   "Life years without major NCDs"            = "#009E73"
 )
@@ -114,21 +116,6 @@ ageband <- function(x) cut(
   right = FALSE, include.lowest = TRUE
 )
 add_agegroups <- function(df) df |> mutate(agegroup_cycle = ageband(age_cycle))
-=======
-MIN_CYCLE <- 1
-MAX_CYCLE <- 30
-
-# ------------------- Helpers -------------------------------------------
-add_zero_line <- function() geom_hline(yintercept = 0, linewidth = 0.3)
-
-theme_clean <- function() {
-  theme_minimal(base_size = 12) +
-    theme(panel.grid.minor = element_blank(),
-          plot.title = element_text(face = "bold"),
-          strip.text = element_text(lineheight = 0.9))
-}
-add_zero_line <- function() geom_hline(yintercept = 0, linewidth = 0.3)
->>>>>>> f5ba4b84d30d5e7cfbb07952b5efca24442d8644
 
 pop_share <- function(df, group_vars = c("cycle","scen")) {
   df |>
@@ -152,22 +139,6 @@ compute_bar_labels <- function(df, value_col, facet_cols = character(), inside_f
     ungroup()
 }
 
-<<<<<<< HEAD
-=======
-get_age_levels <- function(x) if (is.factor(x)) levels(x) else sort(unique(x))
-align_age_levels <- function(w, people_age) {
-  lv <- get_age_levels(people_age)
-  w |> mutate(agegroup_cycle = factor(as.character(agegroup_cycle), levels = lv))
-}
-
-# ------------------- Precompute (with cache) ---------------------------
-death_values <- c("dead","dead_car","dead_bike","dead_walk")
-
-pc <- qs::qread(here("temp/precomputed_mcr_wgd_100%V2.qs"))
-list2env(pc, envir = environment())
-SCALING <- 1L
-
->>>>>>> f5ba4b84d30d5e7cfbb07952b5efca24442d8644
 # ------------------- UI -------------------------------------------------
 all_scenarios <- sort(unique(people_overall$scen))
 all_scenarios_lab <- stats::setNames(all_scenarios, scen_label(all_scenarios))
@@ -212,7 +183,7 @@ ui <- fluidPage(
           h2("Differences"),
           selectInput("metric_kind", "Metric:", choices = c(
             "Diseases postponed (Δ diseases)"      = "diseases",
-            "Deaths avoided"             = "deaths",
+            "Premature deaths avoided"             = "deaths",
             "Life years gained without major NCDs" = "healthy",
             "Life years gained"                    = "life"
           )),
@@ -257,7 +228,7 @@ ui <- fluidPage(
                       min = min(trend_cycles), max = max(trend_cycles),
                       value = MIN_CYCLE, step = 1),
           checkboxInput("impact_cumulative", "Cumulative over cycles", value = TRUE),
-          helpText("Shows deaths avoided, Life years gained, and Life years without major NCDs by scenario.")
+          helpText("Shows Premature deaths avoided, Life years gained, and Life years without major NCDs by scenario.")
         )
       ),
       tags$hr(),
@@ -433,7 +404,7 @@ server <- function(input, output, session) {
     }
     
     pick <- switch(input$metric_kind,
-                   deaths   = list(Overall=deaths_overall,  Gender=deaths_gender,  LAD=dl,  label="Deaths avoided"),
+                   deaths   = list(Overall=deaths_overall,  Gender=deaths_gender,  LAD=dl,  label="Premature deaths avoided"),
                    diseases = list(Overall=diseases_overall,Gender=diseases_gender,LAD=dil, label="Δ Diseases"),
                    healthy  = list(Overall=healthy_overall, Gender=healthy_gender, LAD=hl,  label="Life years without major NCDs"),
                    life     = list(Overall=lifey_overall,   Gender=lifey_gender,   LAD=ll,  label="Life years gained")
@@ -853,7 +824,7 @@ server <- function(input, output, session) {
     
     # Stack three metrics with their labels
     lab_map <- c(
-      deaths = "Deaths avoided",
+      deaths = "Premature deaths avoided",
       lifey  = "Life years gained",
       healthy= "Life years without major NCDs"
     )
@@ -1055,8 +1026,3 @@ server <- function(input, output, session) {
 }
 
 shinyApp(ui, server)
-<<<<<<< HEAD
-=======
-
-# ifey_overall |> group_by(scen) |> reframe(ly = sum(diff)) |> left_join(healthy_overall |> group_by(scen) |> reframe(healthy = sum(diff))) |> left_join(deaths_overall |> group_by(scen) |> reframe(deaths = sum(diff))) |> mutate(`ly/healthy` = ly/healthy, `ly/deaths` = ly/deaths)
->>>>>>> f5ba4b84d30d5e7cfbb07952b5efca24442d8644
