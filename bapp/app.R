@@ -5,15 +5,18 @@ library(DT)
 library(qs)
 library(bslib)
 library(plotly)
+library(here)
 
 print("printing wd")
 print(getwd())
-t <- qs::qread("data/280925_trips.qs")
+t <- qs::qread(here("bapp/data/221025_trips.qs"))
+list2env(t, envir = environment())
 
 all_scenarios <- c("Reference" = "reference",
              "Greening" = "green",
              "Safer Streets" = "safeStreet",
-             "Safer Streets & Greening" = "both")
+             "Safer Streets & Greening" = "both",
+             "Go Dutch" = "goDutch")
 
 all_locations <- unique(t$avg_time_combined$LAD_origin)
 
@@ -45,7 +48,7 @@ ui <- fluidPage(
           "Trip Duration by Mode",
           "Zero Mode"
         ),
-        selected = "Trip Modes"
+        selected = "Trip Mode Share (%)"
       ),
       
      ),
@@ -226,3 +229,21 @@ server <- function(input, output) {
 }
 
 shinyApp(ui = ui, server = server)
+
+
+# asr_overall_all |> 
+#   group_by(cause, scen) |> 
+#   reframe(age_std_rate = mean(age_std_rate)) |> 
+#   group_by(cause) |> 
+#   mutate(diff_ref  = age_std_rate[scen == "reference"] - age_std_rate) |> 
+#   filter(grepl("depression|dementia|heart|stroke|breast|lung|diabetes|copd", cause)) |> 
+#   mutate(
+#     value_label = ifelse(
+#       scen == "reference", 
+#       as.character(round(age_std_rate, 1)), 
+#       str_glue("{round(age_std_rate, 1)} ({round(diff_ref, 2)})")
+#     )
+#   ) |> 
+#   select(cause, scen, value_label) |> 
+#   pivot_wider(names_from = scen, values_from = value_label) |> 
+#   dplyr::select(cause, reference, safeStreet, green, both, goDutch)
