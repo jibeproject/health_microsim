@@ -1,0 +1,231 @@
+---
+title: "Exposures (weekly)"
+author: "Ali Abbas"
+format:
+  html:
+    self-contained: true
+knitr:
+  opts_chunk: 
+    echo: false
+    warning: false
+    message: false
+date: now
+editor: visual
+---
+
+## Weekly exposures
+
+Weekly person centric exposure table.
+
+-   **V1**: with the model outputs generated on 13th October, 2025. before fixing the bug with PA (of not using gravity in its calculations) and not using precalculated network for cycling. Code used [SHA](#0))
+
+-   **V2**: latest run with the model outputs generated on 16th October, 2025, after fixing the bug with PA using gravity, and updating link exposures for AP. Code used [SHA](https://github.com/Public-Health-Modelling-Cambridge/silo/tree/8dc88c6fe181d9a553f6f807a6c7b18d12b1bb6b))
+
+```{r}
+#| column: screen
+#| echo: false
+#| warning: false
+#| code-fold: true
+#| tbl-colwidths: false
+ 
+library(tidyverse)
+library(tidyr)
+library(gt)
+library(scales)
+library(glue)
+library(here)
+
+zones <- read_csv("/media/ali/Expansion/backup_tabea/manchester-main/input/zoneSystem.csv")
+
+add_zones_and_scen <- function(df, zones, scen = "reference"){
+  return(
+    df |> left_join(zones |> 
+                      dplyr::select(oaID, imd10, ladnm) |> 
+                      rename(zone = oaID)) |> 
+      mutate(scen = scen)
+  )
+}
+
+base <- read_csv("/media/ali/Expansion/backup_tabea/manchester-main/input/health/pp_exposure_2021_base_140725.csv")
+green <- read_csv("/media/ali/Expansion/backup_tabea/manchester-main/input/health/pp_exposure_2021_green_310725.csv")
+ss <- read_csv("/media/ali/Expansion/backup_tabea/manchester-main/input/health/pp_exposure_2021_safeStreet_300725.csv")
+both <- read_csv("/media/ali/Expansion/backup_tabea/manchester-main/input/health/pp_exposure_2021_both_010825.csv")
+
+base1 <- read_csv("/home/ali/IdeaProjects/161025_100%/base/pp_exposure_2021.csv")
+both1 <- read_csv("/home/ali/IdeaProjects/161025_100%/both/pp_exposure_2021.csv")
+green1 <- read_csv("/home/ali/IdeaProjects/161025_100%/green/pp_exposure_2021.csv")
+ss1 <- read_csv("/home/ali/IdeaProjects/161025_100%/safeStreet/pp_exposure_2021.csv")
+goDutch1 <- read_csv("/home/ali/GH/manchester/input/health/pp_exposure_2021_goDutch_161025.csv")
+
+
+base <- add_zones_and_scen(df = base, zones, scen = "reference_1")
+green <- add_zones_and_scen(df = green, zones, scen = "green_1")
+ss <- add_zones_and_scen(df = ss, zones, scen = "safeStreet_1")
+both <- add_zones_and_scen(df = both, zones, scen = "both_1")
+
+base1 <- add_zones_and_scen(df = base1, zones, scen = "reference_2")
+green1 <- add_zones_and_scen(df = green1, zones, scen = "green_2")
+ss1 <- add_zones_and_scen(df = ss1, zones, scen = "safeStreet_2")
+both1 <- add_zones_and_scen(df = both1, zones, scen = "both_2")
+goDutch1 <- add_zones_and_scen(df = goDutch1, zones, scen = "goDutch_2")
+
+
+df <- bind_rows(base, base1, green, green1, ss,ss1, both, both1, goDutch1)
+
+rm(base, base1, green, green1, ss,ss1, both, both1, goDutch1)
+
+# Add agegroup column
+df <- df |> 
+  mutate(agegroup = cut(age, c(0, 25, 45, 65, 85, Inf), 
+                        labels = c("0-24", "25-44", "45-64", "65-84", "85+"),
+                        right = FALSE, 
+                        include.lowest = TRUE),
+         total_PA = mmetHr_walk + mmetHr_cycle + mmetHr_otherSport)
+
+
+# Function to calculate quantiles for columns starting with "exp" with optional grouping
+calc_quantiles_grouped <- function(data, group_var = NULL) {
+  # data <- df
+  quantile_probs <- c(5, 25, 50, 75, 95)
+  quantile_names <- c("5%", "25%", "50%", "75%", "95%")
+  
+  if (!is.null(group_var)) {
+    group_vars_sym <- if (length(group_var) > 1) {
+      rlang::syms(group_var)
+    } else {
+      rlang::sym(group_var)
+    }
+    grouped_df <- data |> group_by(!!!group_vars_sym)
+  } else {
+    grouped_df <- data
+  }
+  
+  
+  summarised <- grouped_df |>
+    summarise(
+      across(
+        matches("^(exposure|total_PA)"),
+        list(
+          `5%` = ~ quantile(.x, 0.05),
+          `25%` = ~ quantile(.x, 0.25),
+          `50%` = ~ quantile(.x, 0.5),
+          `75%` = ~ quantile(.x, 0.75),
+          `95%` = ~ quantile(.x, 0.95)
+        ),
+        .names = "{.col}_{.fn}"
+      ),
+      .groups = "drop"
+    ) |>
+    pivot_longer(
+      cols = -all_of(group_var),
+      names_to = c("variable", "quantile"),
+      names_pattern = "^(.*)_(.*)$"
+    ) |>
+    mutate(quantile = factor(quantile, levels = quantile_names)) |>
+    arrange(across(all_of(group_var)), variable, quantile)
+  return(summarised)
+}
+
+# Example usage with your dataframe `df`
+overall <- calc_quantiles_grouped(df, "scen")
+by_gender <- calc_quantiles_grouped(df, c("scen", "gender"))
+by_ladnm <- calc_quantiles_grouped(df, c("scen", "ladnm"))
+by_agegroup <- calc_quantiles_grouped(df, c("scen", "agegroup"))
+# Add grouping column to differentiate
+overall <- overall |> mutate(grouping = "Overall")
+by_gender <- by_gender |> mutate(grouping = paste("Gender:", gender)) |> select(-gender)
+by_ladnm <- by_ladnm |> mutate(grouping = paste("LADNM:", ladnm)) |> select(-ladnm)
+by_agegroup <- by_agegroup |> mutate(grouping = paste("Agegroup:", agegroup)) |> select(-agegroup)
+# Bind all results into one dataframe
+all_quantiles <- bind_rows(overall, by_gender, by_ladnm, by_agegroup) #|>
+  #select(grouping, variable, quantile, value)
+# Define a color function that maps normalized values (0–1) to a color between lightpink and lightgreen
+col_fun <- col_numeric(palette = c("lightpink", "lightgreen"), domain = c(0, 1))
+# Pivot the data so that each row is defined by grouping, variable, and quantile,
+# Pivot data so that each row represents (grouping, variable, quantile)
+wide_df <- all_quantiles |>
+  pivot_wider(
+    id_cols = c(grouping, variable, quantile),
+    names_from = scen,
+    values_from = value
+  )
+
+# Dynamically detect the scenario columns
+scen_cols <- setdiff(names(wide_df), c("grouping", "variable", "quantile"))
+
+# Compute normalized columns
+norm_df <- wide_df |>
+  rowwise() |>
+  mutate(
+    row_min = min(c_across(all_of(scen_cols)), na.rm = TRUE),
+    row_max = max(c_across(all_of(scen_cols)), na.rm = TRUE)
+  ) |>
+  mutate(across(
+    all_of(scen_cols),
+    function(x) if_else(row_max == row_min, 0.5, (x - row_min) / (row_max - row_min)),
+    .names = "{.col}_norm"
+  )) |>
+  ungroup()
+
+# Now safely construct HTML columns without using glue inside across()
+for (scen in scen_cols) {
+  norm_col <- paste0(scen, "_norm")
+  html_col <- paste0(scen, "_html")
+  norm_df[[html_col]] <- mapply(function(val, norm) {
+    color <- col_fun(norm)
+    sprintf("<div style='background-color:%s'>%s</div>", color, round(val, 2))
+  }, norm_df[[scen]], norm_df[[norm_col]])
+}
+
+html_cols <- paste0(scen_cols, "_html")
+
+gt_tbl <- norm_df |>
+  select(grouping, variable, quantile, all_of(html_cols)) |>
+  gt(groupname_col = "grouping") |>
+  cols_label(
+    reference_1_html = "V1: Reference",
+    reference_2_html = "V2: Reference",
+    both_1_html = "V1: Greening + Safer Streets",
+    both_2_html = "V2: Greening + Safer Streets",
+    green_1_html = "V1: Greening",
+    green_2_html = "V2: Greening",
+    safeStreet_1_html = "V1: Safer Streets",
+    safeStreet_2_html = "V2: Safer Streets",
+    goDutch_2_html = "V2: Go Dutch"
+  ) |>
+  fmt_markdown(columns = all_of(html_cols)) |>
+  tab_options(table.font.size = "small") |>
+  opt_interactive(use_filters = T,
+                     use_sorting = F,
+                   use_compact_mode = T)
+
+
+gt_tbl
+
+# Create a gt table using the HTML formatted cells; group by 'grouping'.
+# gt_tbl <- formatted_df |>
+#   select(grouping, variable, quantile, contains("html")) |>
+#   # Combine variable and quantile into one row label.
+#   #mutate(var_quant = paste(variable, "(", quantile, ")", sep = "")) |>
+#   #select(-variable, -quantile) |>
+#   gt(groupname_col = "grouping", rowname_col = "") |>
+#   cols_label(
+#     reference_1_html = "V1: Reference",
+#     reference_2_html = "V2: Reference",
+#     both_1_html = "V1: Greening + Safer Streets",
+#     both_2_html = "V2: Greening + Safer Streets",
+#     green_1_html = "V1: Greening",
+#     green_2_html = "V2: Greening",
+#     safeStreet_1_html = "V1: Safer Streets",
+#     safeStreet_2_html = "V2: Safer Streets"
+#   ) |>
+#   # fmt_markdown(
+#   #   columns = c(both_1_html, green_html, reference_html, safeStreet_html)
+#   # ) |>
+#   tab_options(table.font.size = "small") |> 
+#   opt_interactive(use_filters = T,
+#                     use_sorting = F,
+#                   use_compact_mode = T)
+gt_tbl
+
+```
