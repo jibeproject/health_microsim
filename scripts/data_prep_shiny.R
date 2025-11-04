@@ -1,23 +1,21 @@
 # === Load libraries ===
-suppressPackageStartupMessages({
-  library(tidyverse)
-  library(arrow)
-  library(DT)
-  library(purrr)
-  library(stringr)
-  library(esquisse)
-  library(ggplot2)
-  library(plotly)
-  library(readr)
-  library(rlang)
-  library(data.table)
-})
+pkgs <- c(
+  "tidyverse","arrow","DT","purrr","stringr","esquisse",
+  "ggplot2","plotly","readr","rlang","data.table","tcltk"
+)
+
+missing <- pkgs[!sapply(pkgs, requireNamespace, quietly = TRUE)]
+if (length(missing)) install.packages(missing, dependencies = TRUE)
+
+suppressPackageStartupMessages(
+  invisible(lapply(pkgs, library, character.only = TRUE))
+)
 
 # === Data loading function ===
 get_summary <- function(SCEN_NAME, 
                         final_year = 2051, 
-                        microdata_dir_name = "microdata", 
-                        manchester_folder = "", 
+                        microdata_folder = "microdata", 
+                        region_folder = "", 
                         group_vars = NULL, 
                         summarise = TRUE) {
   # final_year <- 2022
@@ -25,16 +23,14 @@ get_summary <- function(SCEN_NAME,
   # 
   # SCEN_NAME <- "base"
   
-  print(microdata_dir_name)
+  print(microdata_folder)
   
   #browser()
+  output_dir <- paste0(region_folder, "/scenOutput/", SCEN_NAME)
+  pop_dir_path <- paste0(output_dir, "/", microdata_folder)
+  file_path <- paste0(pop_dir_path, "/pp_healthDiseaseTracker_", final_year, ".csv")
   
-  file_path <- paste0(
-    manchester_folder, "scenOutput/",
-    SCEN_NAME, "/", microdata_dir_name, "/pp_healthDiseaseTracker_", final_year, ".csv"
-  )
-  
-  zones <- read_csv(paste0(manchester_folder, "input/zoneSystem.csv"))
+  zones <- read_csv(paste0(region_folder, "/input/zoneSystem.csv"))
   
   
   # Read health tracker file
@@ -52,7 +48,7 @@ get_summary <- function(SCEN_NAME,
   names(m)[match(year_cols, names(m))] <- new_names
   
   # Load population files
-  pop_dir_path <- paste0(manchester_folder, "scenOutput/", SCEN_NAME, "/", microdata_dir_name)
+  
 
   pp_csv_files <- list.files(path = pop_dir_path, pattern = "^pp_\\d{4}\\.csv$", full.names = TRUE)
   newborn_data <- lapply(pp_csv_files, function(file) {
@@ -75,7 +71,7 @@ get_summary <- function(SCEN_NAME,
     distinct()
   
   # Exposure population
-  pop_path <- paste0(manchester_folder, "input/health/pp_exposure_2021_base_140725.csv")
+  pop_path <- paste0(region_folder, "input/health/pp_exposure_2021_base_140725.csv")
   
   if (!file.exists(pop_path)) stop("Population exposure file does not exist: ", pop_path)
   
@@ -171,15 +167,29 @@ get_summary <- function(SCEN_NAME,
 ## final_year = 2022, 
 ## microdata_dir_name = "microData", 
 ## manchester_folder = "/media/ali/Expansion/backup_tabea/manchester-main")
-manchester_folder = "/run/user/1000/gvfs/smb-share:server=ifs-prod-1152-cifs.ifs.uis.private.cam.ac.uk,share=cedar-grp-drive/HealthImpact/Data/Country/UK/JIBE/manchester/"
-manchester_folder <- "/media/ali/Expansion/backup_tabea/manchester-main/"
+region_folder = tcltk::tk_choose.dir(caption = "Select a study region folder with SILO outputs")
+
+# Check if a folder was selected
+if (!is.na(region_folder)) {
+  cat("Selected folder path:", region_folder, "\n")
+} else {
+  cat("No folder selected.\n")
+}
+
 fyear <- 2051
 
 ## === Prepare general data long ===
-all_data <- list(
-  base = get_summary("100%/base", summarise = FALSE, final_year = fyear, manchester_folder = manchester_folder) |> mutate(scen = "reference"),
-  #green = get_summary("green", summarise = FALSE, final_year = fyear, manchester_folder = manchester_folder) |> mutate(scen = "green"),
-  safeStreet = get_summary("100%/safeStreet", summarise = FALSE, final_year = fyear, manchester_folder = manchester_folder) |> mutate(scen = "safeStreet"),
-  #both = get_summary("both", summarise = FALSE, final_year = fyear, manchester_folder = manchester_folder) |> mutate(scen = "both")
-)
 
+if (grepl("manchester", tolower(basename(region_folder)))) {
+    all_data <- list(
+        base = get_summary("100%/base", summarise = FALSE, final_year = fyear, region_folder = region_folder) |> mutate(scen = "reference"),
+        #green = get_summary("green", summarise = FALSE, final_year = fyear, manchester_folder = manchester_folder) |> mutate(scen = "green"),
+        safeStreet = get_summary("100%/safeStreet", summarise = FALSE, final_year = fyear, region_folder = region_folder) |> mutate(scen = "safeStreet"),
+        #both = get_summary("both", summarise = FALSE, final_year = fyear, manchester_folder = manchester_folder) |> mutate(scen = "both")
+    )
+} else if (grepl("melbourne", tolower(basename(region_folder))) | grepl("brunswick", tolower(basename(region_folder)))) {
+    all_data <- list(
+        base = get_summary("base", summarise = FALSE, final_year = fyear, region_folder = region_folder) |> mutate(scen = "reference"),
+        cycling = get_summary("cycling", summarise = FALSE, final_year = fyear, region_folder = region_folder) |> mutate(scen = "cycling"),
+    )
+}
