@@ -21,7 +21,10 @@ trips_green <- read_csv("temp/trips/green/trips.csv") |> mutate(scen = "green")
 
 trips_goDutch <- read_csv("temp/trips/goDutch/trips.csv") |> mutate(scen = "goDutch")
 
-pp <- read_csv(paste0(dir_path, "microData/pp_2021.csv"))
+pp <- read_csv("/media/ali/Expansion/backup_tabea/manchester/input/health/pp_exposure_2021_base_140725.csv") |> 
+  left_join(zone  |> 
+              rename(zone = oaID) |> 
+              dplyr::select(zone, ladnm, ladcd, lsoa21cd))
 
 trips <- bind_rows(trips_ref, trips_green, trips_ss, trips_both, trips_goDutch)
 
@@ -38,7 +41,7 @@ trips <- trips |>
               dplyr::select(LAD_destination = ladnm, imd_destination = imd10, oaID),
             by = c("destinationZone" = "oaID"), copy = T) |> 
   left_join(pp  |> 
-              dplyr::select(id,age,gender,occupation), by = c("p.ID" = "id"), copy = T)
+              dplyr::select(id, age, gender, ladnm, ladcd, lsoa21cd, occupation), by = c("p.ID" = "id"), copy = T)
 
 rm(pp, zone)
 
@@ -104,13 +107,13 @@ add_agegroups <- function(df) {
 
 trips <- add_agegroups(trips)
 
-arrow::write_dataset(dataset = trips, path = "temp/231025_trips.parquet", partitioning = c("scen", "LAD_origin"))
+arrow::write_dataset(dataset = trips, path = "temp/041125_trips.parquet", partitioning = c("scen", "ladnm"))
 
 ## Creating Visualizations
 
 ### Table of the number of trips in each local authority in Greater Manchester
 
-trips <- arrow::open_dataset("temp/231025_trips.parquet/") |> 
+trips <- arrow::open_dataset("temp/041125_trips.parquet/") |> 
   to_duckdb()
 
 # Distribution of trips by mode and location 
@@ -176,7 +179,7 @@ trips_percentage_combined_imd$imd <- factor(trips_percentage_combined_imd$imd_or
 
 # Average weekly distance by mode of transportation
 pp <- trips |> #to_duckdb() |> 
-  group_by(p.ID, LAD_origin, scen, gender, agegroup) |> 
+  group_by(p.ID, ladnm, scen, gender, agegroup) |> 
   summarise(Cycling = sum(t.distance_bike[mode == "Cycling"] * t.factor[mode=="Cycling"], na.rm = TRUE) ,
             Walking = sum(t.distance_walk[mode=="Walking"]  * t.factor[mode=="Walking"], na.rm = TRUE) ,
             `Public Transport` = sum(t.distance_auto[mode=="Public Transport"]  * t.factor[mode=="Public Transport"], na.rm = TRUE) ,
@@ -188,9 +191,10 @@ pp <- pp |>
   gather(mode,dist,Cycling:`Car Passenger`)
 
 pop_lad <- trips |> 
-  distinct(p.ID, LAD_origin) |> 
-  group_by(LAD_origin) |> 
-  summarise(pop = n()) |> 
+  filter(scen == "reference") |> 
+  #distinct(p.ID, LAD_origin) |> 
+  group_by(ladnm) |> 
+  summarise(pop = n_distinct(p.ID)) |> 
   collect()
 
 tot_pop <- pop_lad |> 
@@ -201,7 +205,7 @@ tot_pop <- pop_lad |>
 summary_distance <- pp |>  
   filter(!is.na(dist)) |> 
   left_join(pop_lad, copy = T) |> 
-  group_by(mode, LAD_origin, scen) |> 
+  group_by(mode, ladnm, scen) |> 
   summarise(avgDistance = round(sum(dist) / first(pop), 1))
 
 pp_all=trips|> # to_duckdb() |> 
@@ -219,7 +223,7 @@ summary_distance_all <- pp_all |>
   filter(!is.na(dist)) |> 
   group_by(mode, scen) |>  
   summarise(avgDistance = round(sum(dist, na.rm = T) / tot_pop, 1)) |>  
-  mutate(LAD_origin = "All Locations")
+  mutate(ladnm = "All Locations")
 
 combined_distance <- bind_rows(summary_distance,summary_distance_all) 
 
