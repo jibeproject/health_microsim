@@ -28,6 +28,8 @@ get_summary <- function(SCEN_NAME,
   if (exposure_population == "") {
     print("Argument for `exposure_population` within region_folder must be defined, for example: input/health/pp_exposure_2021_base_140725.csv")
     stop()
+  } else {
+    exposure_population <- paste0(region_folder, "/", exposure_population)
   }
   
   print(microdata_folder)
@@ -104,7 +106,15 @@ get_summary <- function(SCEN_NAME,
         .
       )
     )) |> 
-    left_join(synth_pop |> dplyr::select(id, age, agegroup, gender, ladcd, lsoa21cd)) 
+    left_join(
+      synth_pop %>% dplyr::select(
+        dplyr::any_of(
+          unique(c("id", "age", "agegroup", "gender", regionIDs)
+          )
+        )
+      ),
+      by = "id"
+    )
   #|> 
   #   mutate(across(starts_with("c"), ~ ifelse(str_detect(., "killed"), "dead", .))) # Ali to update
   
@@ -112,16 +122,24 @@ get_summary <- function(SCEN_NAME,
   setDT(m)
   
   # Melt wide to long on all columns starting with "c"
-  long_data <- melt(m, id.vars = c("id", "age", "agegroup", "gender", "ladcd", "lsoa21cd"), 
-                    measure.vars = patterns("^c"), 
-                    variable.name = "name", value.name = "value")
+  id_vars <- intersect(names(m), c("id", "age", "agegroup", "gender", regionIDs))
+
+  long_data <- melt(
+    m,
+    id.vars = id_vars,
+    measure.vars = patterns("^c"),
+    variable.name = "name",
+    value.name = "value"
+  )
   
   # Cycle from column name
   long_data[, cycle := as.numeric(str_remove(name, "^c"))]
   
   # Split pipe-separated values and unlist into rows
-  long_data <- long_data[, .(value = unlist(strsplit(value, "\\|"))), 
-                         by = .(id, age, agegroup, gender, ladcd, lsoa21cd, name, cycle)]
+  region_cols <- intersect(names(long_data), regionIDs)
+  group_cols <- unique(c(intersect(names(long_data), c("id", "age", "agegroup", "gender")), region_cols, "name", "cycle"))
+
+  long_data <- long_data[, .(value = unlist(strsplit(value, "\\|"))), by = group_cols]
   
   # Trim whitespace and replace terms
   long_data[, value := str_trim(value)]
