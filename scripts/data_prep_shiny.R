@@ -14,30 +14,39 @@ suppressPackageStartupMessages(
 # === Data loading function ===
 get_summary <- function(SCEN_NAME, 
                         final_year = 2051, 
+                        zoneID = "oaID",
+                        regionIDs = c(),
                         microdata_folder = "microdata", 
-                        region_folder = "", 
+                        region_folder = "",
+                        exposure_population = "", 
                         group_vars = NULL, 
                         summarise = TRUE) {
   # final_year <- 2022
   # microdata_dir_name <- "microData"
   # 
   # SCEN_NAME <- "base"
+  if (exposure_population == "") {
+    print("Argument for `exposure_population` within region_folder must be defined, for example: input/health/pp_exposure_2021_base_140725.csv")
+    stop()
+  }
   
   print(microdata_folder)
   
   #browser()
   output_dir <- paste0(region_folder, "/scenOutput/", SCEN_NAME)
-  pop_dir_path <- paste0(output_dir, "/", microdata_folder)
-  file_path <- paste0(pop_dir_path, "/pp_healthDiseaseTracker_", final_year, ".csv")
+  microdata_dir <- paste0(output_dir, "/", microdata_folder)
+  healthDiseaseTracker_file_path <- paste0(microdata_dir, "/pp_healthDiseaseTracker_", final_year, ".csv")
   
   zones <- read_csv(paste0(region_folder, "/input/zoneSystem.csv"))
+  zones <- zones %>% rename(zone = !!rlang::sym(zoneID))
+  zones_sel <- zones %>% dplyr::select(dplyr::any_of(unique(c("zone", regionIDs))))
   
   
   # Read health tracker file
-  if (grepl("\\.csv$", file_path)) {
-    m <- read_csv(file_path)#arrow::open_csv_dataset(file_path) |> to_duckdb() |> collect()
+  if (grepl("\\.csv$", healthDiseaseTracker_file_path)) {
+    m <- read_csv(healthDiseaseTracker_file_path)#arrow::open_csv_dataset(file_path) |> to_duckdb() |> collect()
   } else {
-    m <- arrow::open_dataset(file_path)
+    m <- arrow::open_dataset(healthDiseaseTracker_file_path)
   }
   
   m$id <- as.numeric(m$id)
@@ -50,12 +59,12 @@ get_summary <- function(SCEN_NAME,
   # Load population files
   
 
-  pp_csv_files <- list.files(path = pop_dir_path, pattern = "^pp_\\d{4}\\.csv$", full.names = TRUE)
+  pp_csv_files <- list.files(path = microdata_dir, pattern = "^pp_\\d{4}\\.csv$", full.names = TRUE)
   newborn_data <- lapply(pp_csv_files, function(file) {
     read_csv(file) |> filter(age == 0)
   }) |> bind_rows()
   
-  dd_csv_files <- list.files(path = pop_dir_path, pattern = "^dd_\\d{4}\\.csv$", full.names = TRUE)
+  dd_csv_files <- list.files(path = microdata_dir, pattern = "^dd_\\d{4}\\.csv$", full.names = TRUE)
   dd_data <- lapply(dd_csv_files, read_csv) |> bind_rows()
   
   newborn_data <- newborn_data |> 
@@ -67,27 +76,23 @@ get_summary <- function(SCEN_NAME,
                           right = FALSE, 
                           include.lowest = TRUE)) |> 
     dplyr::select(id, age, agegroup, gender, zone) |> 
-    left_join(zones  |> rename(zone = oaID) |> dplyr::select(zone, ladcd, lsoa21cd)) |> 
+    left_join(zones_sel) |> 
     distinct()
   
-  # Exposure population
-  pop_path <- paste0(region_folder, "input/health/pp_exposure_2021_base_140725.csv")
+  # Exposure population  
+  if (!file.exists(exposure_population)) stop("Population exposure file does not exist: ", exposure_population)
   
-  if (!file.exists(pop_path)) stop("Population exposure file does not exist: ", pop_path)
-  
-  synth_pop_2021 <- readr::read_csv(pop_path) |>
+  synth_pop_base <- readr::read_csv(exposure_population) |>
     mutate(agegroup = cut(age, c(0, 25, 45, 65, 85, Inf), 
                           labels = c("0-24", "25-44", "45-64", "65-84", "85+"),
                           right = FALSE, 
                           include.lowest = TRUE))
   
-  synth_pop_2021 <- synth_pop_2021 |> 
+  synth_pop_base <- synth_pop_base |> 
     dplyr::select(id, age, agegroup, gender, zone) |> 
-    left_join(zones  |> 
-                rename(zone = oaID) |> 
-                dplyr::select(zone, ladcd, lsoa21cd))
+    left_join(zones_sel)
   
-  synth_pop <- bind_rows(synth_pop, synth_pop_2021)
+  synth_pop <- bind_rows(synth_pop, synth_pop_base)
   
   # # Filter out early dead and merge population info
   m <- m |> 
@@ -176,20 +181,51 @@ if (!is.na(region_folder)) {
   cat("No folder selected.\n")
 }
 
-fyear <- 2051
-
 ## === Prepare general data long ===
 
 if (grepl("manchester", tolower(basename(region_folder)))) {
+    exposure_population = "input/health/pp_exposure_2021_base_140725.csv"
+    fyear <- 2051
     all_data <- list(
-        base = get_summary("100%/base", summarise = FALSE, final_year = fyear, region_folder = region_folder) |> mutate(scen = "reference"),
+        base = get_summary("100%/base", 
+                        zoneID = "oaID",
+                        regionIDs = c("ladcd","lsoa21cd"),
+                        exposure_population = exposure_population,
+                        summarise = FALSE, 
+                        final_year = fyear, 
+                        region_folder = region_folder
+                ) |> 
+                mutate(scen = "reference"),
         #green = get_summary("green", summarise = FALSE, final_year = fyear, manchester_folder = manchester_folder) |> mutate(scen = "green"),
-        safeStreet = get_summary("100%/safeStreet", summarise = FALSE, final_year = fyear, region_folder = region_folder) |> mutate(scen = "safeStreet"),
+        safeStreet = get_summary("100%/safeStreet", 
+                        zoneID = "oaID",
+                        regionIDs = c("ladcd","lsoa21cd"),
+                        exposure_population = exposure_population,
+                        summarise = FALSE, 
+                        final_year = fyear, 
+                        region_folder = region_folder
+                      ) |> mutate(scen = "safeStreet"),
         #both = get_summary("both", summarise = FALSE, final_year = fyear, manchester_folder = manchester_folder) |> mutate(scen = "both")
     )
 } else if (grepl("melbourne", tolower(basename(region_folder))) | grepl("brunswick", tolower(basename(region_folder)))) {
+    exposure_population = "input/health/pp_exposure_2018_base_2025-10-29_Brunswick.csv"
+    fyear <- 2023 # this is just a single suburb test case with short run time for now; proof of concept
     all_data <- list(
-        base = get_summary("base", summarise = FALSE, final_year = fyear, region_folder = region_folder) |> mutate(scen = "reference"),
-        cycling = get_summary("cycling", summarise = FALSE, final_year = fyear, region_folder = region_folder) |> mutate(scen = "cycling"),
-    )
+        base = get_summary("base", 
+                zoneID = "SA1_7DIG16",
+                regionIDs = c(), # we don't yet have regions in zones in the same way as Manchester
+                exposure_population = exposure_population,
+                summarise = FALSE, 
+                final_year = fyear, 
+                region_folder = region_folder
+              ) |> mutate(scen = "reference"),
+        cycling = get_summary("cycling", 
+                    zoneID = "SA1_7DIG16",
+                    regionIDs = c(), 
+                    exposure_population = exposure_population,
+                    summarise = FALSE, 
+                    final_year = fyear, 
+                    region_folder = region_folder
+                  ) |> mutate(scen = "cycling"),
+)
 }
