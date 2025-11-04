@@ -225,13 +225,13 @@ if (grepl("manchester", tolower(basename(region_folder)))) {
                       ) |> mutate(scen = "safeStreet"),
         #both = get_summary("both", summarise = FALSE, final_year = fyear, manchester_folder = manchester_folder) |> mutate(scen = "both")
     )
-} else if (grepl("melbourne", tolower(basename(region_folder))) | grepl("brunswick", tolower(basename(region_folder)))) {
-    exposure_population = "input/health/pp_exposure_2018_base_2025-10-29_Brunswick.csv"
-    fyear <- 2023 # this is just a single suburb test case with short run time for now; proof of concept
+}else if (grepl("melbourne", tolower(basename(region_folder)))) {
+    exposure_population = "input/health/pp_exposure_2018_base.csv" # this file does not yet exist for melbourne
+    fyear <- 2051
     all_data <- list(
         base = get_summary("base", 
                 zoneID = "SA1_7DIG16",
-                regionIDs = c(), # we don't yet have regions in zones in the same way as Manchester
+                regionIDs = c("SA2_MAIN16"), 
                 exposure_population = exposure_population,
                 summarise = FALSE, 
                 final_year = fyear, 
@@ -239,11 +239,32 @@ if (grepl("manchester", tolower(basename(region_folder)))) {
               ) |> mutate(scen = "reference"),
         cycling = get_summary("cycling", 
                     zoneID = "SA1_7DIG16",
-                    regionIDs = c(), 
+                    regionIDs = c("SA2_MAIN16"), 
                     exposure_population = exposure_population,
                     summarise = FALSE, 
                     final_year = fyear, 
                     region_folder = region_folder
                   ) |> mutate(scen = "cycling"),
-)
+    )
+  } else if (grepl("brunswick", tolower(basename(region_folder)))) {
+    exposure_population = "input/health/pp_exposure_2018_base_2025-10-29_Brunswick.csv"
+    fyear <- 2023 # this is just a single suburb test case with short run time for now; proof of concept
+    all_data <- list(
+        base = get_summary("base", 
+                zoneID = "SA1_7DIG16",
+                regionIDs = c("SA2_MAIN16"), 
+                exposure_population = exposure_population,
+                summarise = FALSE, 
+                final_year = fyear, 
+                region_folder = region_folder
+              ) |> mutate(scen = "reference"),
+        cycling = get_summary("cycling", 
+                    zoneID = "SA1_7DIG16",
+                    regionIDs = c("SA2_MAIN16"), 
+                    exposure_population = exposure_population,
+                    summarise = FALSE, 
+                    final_year = fyear, 
+                    region_folder = region_folder
+                  ) |> mutate(scen = "cycling"),
+  )
 }
