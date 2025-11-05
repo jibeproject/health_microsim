@@ -250,33 +250,34 @@ if (grepl("manchester", tolower(basename(region_folder)))) {
                   ) |> mutate(scen = "cycling"),
     )
   } else if (grepl("brunswick", tolower(basename(region_folder)))) {
+    zoneID <- "SA1_7DIG16"
     exposure_population = "input/health/pp_exposure_2018_base_2025-10-29_Brunswick.csv"
-    fyear <- 2023 # this is just a single suburb test case with short run time for now; proof of concept
+    fyear <- 2030 # this is just a single suburb test case with short run time for now; proof of concept
     regionIDs <- c("SA2_MAIN16")
     all_data <- list(
         base = get_summary("base", 
-                zoneID = "SA1_7DIG16",
-                regionIDs = regionIDs, 
+                zoneID = zoneID,
+                regionIDs = regionIDs,
                 exposure_population = exposure_population,
-                summarise = FALSE, 
-                final_year = fyear, 
+                summarise = FALSE,
+                final_year = fyear,
                 region_folder = region_folder
-              ) |> mutate(scen = "reference")
-        # cycling = get_summary("cycling", 
-        #             zoneID = "SA1_7DIG16",
-        #             regionIDs = c("SA2_MAIN16"), 
-        #             exposure_population = exposure_population,
-        #             summarise = FALSE, 
-        #             final_year = fyear, 
-        #             region_folder = region_folder
-        #           ) |> mutate(scen = "cycling"),
+              ) |> mutate(scen = "reference"),
+        cycling = get_summary("cycling",
+                zoneID = zoneID,
+                regionIDs = regionIDs,
+                exposure_population = exposure_population,
+                summarise = FALSE,
+                final_year = fyear,
+                region_folder = region_folder
+              ) |> mutate(scen = "cycling")
   )
 }
 
 combined_all_data <- dplyr::bind_rows(all_data)
 partition_cols <- if (length(regionIDs) > 0) c("scen", tail(regionIDs, 1)) else "scen"
 dir.create("data", showWarnings = FALSE)
-out_dir <- file.path("data", region_name)
+out_dir <- file.path("data", paste(region_name, fyear, paste(partition_cols, collapse = "_")))
 dir.create(out_dir, recursive = TRUE, showWarnings = FALSE)
 
 out_path <- file.path(out_dir, "all_data.parquet")
@@ -293,5 +294,5 @@ write_ok <- tryCatch({
 })
 
 if (isTRUE(write_ok)) {
-  message("Parquet dataset for ", region_name, " to year ", fyear, " partitioned by ", paste(partition_cols, collapse = ", "), " saved to:\n", normalizePath(out_path))
+  message("Parquet dataset for ", region_name, " to year ", fyear, " partitioned by [", paste(partition_cols, collapse = ", "), "] saved to:\n", normalizePath(out_path))
 }
