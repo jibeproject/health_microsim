@@ -277,7 +277,7 @@ if (grepl("manchester", tolower(basename(region_folder)))) {
 combined_all_data <- dplyr::bind_rows(all_data)
 partition_cols <- if (length(regionIDs) > 0) c("scen", tail(regionIDs, 1)) else "scen"
 dir.create("data", showWarnings = FALSE)
-out_dir <- file.path("data", paste(region_name, fyear, paste(partition_cols, collapse = "_")))
+out_dir <- file.path("data", paste(region_name, fyear, paste(partition_cols, collapse = "_"), sep = "_"))
 dir.create(out_dir, recursive = TRUE, showWarnings = FALSE)
 
 out_path <- file.path(out_dir, "all_data.parquet")
