@@ -970,18 +970,22 @@ server <- function(input, output, session) {
       dplyr::ungroup() %>%
       dplyr::mutate(
         scen_lab = factor(scen_lab, levels = SCEN_LABS_ORDER[SCEN_LABS_ORDER %in% scen_lab]),
-        value_num = y * SCALING,
-        label_val = number_lab0(value_num)
+        value_num = y * SCALING
       )
-    
+
+    # determine facet grouping variables for percent calculation
     facet_vars <- character(0)
     if (regionID_name %in% other && "cause" %in% other) facet_vars <- c(regionID_name,"cause")
     else if (regionID_name %in% other) facet_vars <- regionID_name
     else if ("cause" %in% other) facet_vars <- "cause"
-    
+
+    # formatted label: count with comma (thousands separator)
+    bars <- bars %>%
+      dplyr::mutate(label_val = scales::comma(value_num))
+
     bars <- .add_label_pos(bars, value_col = "value_num", facet_vars = facet_vars)
     
-    p <- ggplot(bars, aes(x = scen_lab, y = value_num, fill = scen_lab)) +
+    p <- ggplot(bars, aes(x = scen_lab, y = value_num, fill = scen_lab, text = label_val)) +
       geom_col(width = 0.8) +
       geom_text(aes(y = label_pos, label = label_val), hjust = 0, size = 5.5) +
       scale_y_continuous(expand = expansion(mult = c(0.08, 0.05))) +
@@ -991,7 +995,7 @@ server <- function(input, output, session) {
     
     if ("gender" %in% other && !"cause" %in% other && !regionID_name %in% other) {
       pos <- position_dodge(width = 0.75)
-      p <- ggplot(bars, aes(x = scen_lab, y = value_num, fill = gender)) +
+      p <- ggplot(bars, aes(x = scen_lab, y = value_num, fill = gender, text = label_val)) +
         geom_col(position = pos, width = 0.75) +
         geom_text(aes(y = label_pos, label = label_val), position = pos, hjust = 0, size = 5.5) +
         scale_y_continuous(expand = expansion(mult = c(0.08, 0.05))) +
@@ -1002,7 +1006,7 @@ server <- function(input, output, session) {
       p <- p + facet_wrap(~ cause, scales = "free_x")
     } else if ("cause" %in% other && "gender" %in% other && !regionID_name %in% other) {
       pos <- position_dodge(width = 0.75)
-      p <- ggplot(bars, aes(x = scen_lab, y = value_num, fill = gender)) +
+      p <- ggplot(bars, aes(x = scen_lab, y = value_num, fill = gender, text = label_val)) +
         geom_col(position = pos, width = 0.75) +
         geom_text(aes(y = label_pos, label = label_val), position = pos, hjust = 0, size = 5.5) +
         scale_y_continuous(expand = expansion(mult = c(0.08, 0.05))) +
@@ -1047,25 +1051,25 @@ server <- function(input, output, session) {
   # ---- Renders (non-plotly with higher DPI) ----
   # Deaths
   output$plot_deaths_bar     <- renderPlot({ build_bar_plot(diff_deaths_v()) }, res = PLOT_RES_DPI)
-  output$plot_deaths_bar_ly  <- renderPlotly({ ggplotly(build_bar_plot(diff_deaths_v()),  tooltip = c("x","y","fill","label")) })
+  output$plot_deaths_bar_ly  <- renderPlotly({ ggplotly(build_bar_plot(diff_deaths_v()),  tooltip = c("x","y","fill","text")) })
   output$plot_deaths_time    <- renderPlot({ build_time_plot(diff_deaths_v()) }, res = PLOT_RES_DPI)
   output$plot_deaths_time_ly <- renderPlotly({ ggplotly(build_time_plot(diff_deaths_v()), tooltip = c("x","y","colour","linetype")) })
   
   # Life
   output$plot_life_bar     <- renderPlot({ build_bar_plot(diff_life_v()) }, res = PLOT_RES_DPI)
-  output$plot_life_bar_ly  <- renderPlotly({ ggplotly(build_bar_plot(diff_life_v()),  tooltip = c("x","y","fill","label")) })
+  output$plot_life_bar_ly  <- renderPlotly({ ggplotly(build_bar_plot(diff_life_v()),  tooltip = c("x","y","fill","text")) })
   output$plot_life_time    <- renderPlot({ build_time_plot(diff_life_v()) }, res = PLOT_RES_DPI)
   output$plot_life_time_ly <- renderPlotly({ ggplotly(build_time_plot(diff_life_v()), tooltip = c("x","y","colour","linetype")) })
   
   # Healthy
   output$plot_healthy_bar     <- renderPlot({ build_bar_plot(diff_healthy_v()) }, res = PLOT_RES_DPI)
-  output$plot_healthy_bar_ly  <- renderPlotly({ ggplotly(build_bar_plot(diff_healthy_v()),  tooltip = c("x","y","fill","label")) })
+  output$plot_healthy_bar_ly  <- renderPlotly({ ggplotly(build_bar_plot(diff_healthy_v()),  tooltip = c("x","y","fill","text")) })
   output$plot_healthy_time    <- renderPlot({ build_time_plot(diff_healthy_v()) }, res = PLOT_RES_DPI)
   output$plot_healthy_time_ly <- renderPlotly({ ggplotly(build_time_plot(diff_healthy_v()), tooltip = c("x","y","colour","linetype")) })
   
   # Diseases (filtered by region + cause keep)
   output$plot_diseases_bar     <- renderPlot({ build_bar_plot(diff_diseases_sel()) }, res = PLOT_RES_DPI)
-  output$plot_diseases_bar_ly  <- renderPlotly({ ggplotly(build_bar_plot(diff_diseases_sel()),  tooltip = c("x","y","fill","label")) })
+  output$plot_diseases_bar_ly  <- renderPlotly({ ggplotly(build_bar_plot(diff_diseases_sel()),  tooltip = c("x","y","fill","text")) })
   output$plot_diseases_time    <- renderPlot({ build_time_plot(diff_diseases_sel()) }, res = PLOT_RES_DPI)
   output$plot_diseases_time_ly <- renderPlotly({ ggplotly(build_time_plot(diff_diseases_sel()), tooltip = c("x","y","colour","linetype")) })
   
@@ -1265,7 +1269,7 @@ server <- function(input, output, session) {
     }
   })
   output$plot_avg    <- renderPlot({ build_avg_plot() }, res = PLOT_RES_DPI)
-  output$plot_avg_ly <- renderPlotly({ ggplotly(build_avg_plot(), tooltip = c("x","y","fill","label")) })
+  output$plot_avg_ly <- renderPlotly({ ggplotly(build_avg_plot(), tooltip = c("x","y","fill","text")) })
   output$dl_avg_png  <- downloadHandler(
     filename = function() "average_ages.png",
     content  = function(file) ggplot2::ggsave(file, build_avg_plot(), width = PNG_WIDTH_IN, height = PNG_HEIGHT_IN, units = "in", dpi = PNG_DPI, bg = "white")
