@@ -204,10 +204,12 @@ if (!is.na(region_folder)) {
 if (grepl("manchester", tolower(basename(region_folder)))) {
     exposure_population = "input/health/pp_exposure_2021_base_140725.csv"
     fyear <- 2051
+    zoneID = "oaID"
+    regionIDs <- c("ladcd","lsoa21cd")
     all_data <- list(
         base = get_summary("100%/base", 
-                        zoneID = "oaID",
-                        regionIDs = c("ladcd","lsoa21cd"),
+                        zoneID = zoneID,
+                        regionIDs = regionIDs,
                         exposure_population = exposure_population,
                         summarise = FALSE, 
                         final_year = fyear, 
@@ -216,8 +218,8 @@ if (grepl("manchester", tolower(basename(region_folder)))) {
                 mutate(scen = "reference"),
         #green = get_summary("green", summarise = FALSE, final_year = fyear, manchester_folder = manchester_folder) |> mutate(scen = "green"),
         safeStreet = get_summary("100%/safeStreet", 
-                        zoneID = "oaID",
-                        regionIDs = c("ladcd","lsoa21cd"),
+                        zoneID = zoneID,
+                        regionIDs = regionIDs,
                         exposure_population = exposure_population,
                         summarise = FALSE, 
                         final_year = fyear, 
@@ -228,10 +230,11 @@ if (grepl("manchester", tolower(basename(region_folder)))) {
 }else if (grepl("melbourne", tolower(basename(region_folder)))) {
     exposure_population = "input/health/pp_exposure_2018_base.csv" # this file does not yet exist for melbourne
     fyear <- 2051
+    regionIDs <- c("SA1_7DIG16","SA2_MAIN16")
     all_data <- list(
         base = get_summary("base", 
                 zoneID = "SA1_7DIG16",
-                regionIDs = c("SA2_MAIN16"), 
+                regionIDs = regionIDs, 
                 exposure_population = exposure_population,
                 summarise = FALSE, 
                 final_year = fyear, 
@@ -239,32 +242,35 @@ if (grepl("manchester", tolower(basename(region_folder)))) {
               ) |> mutate(scen = "reference"),
         cycling = get_summary("cycling", 
                     zoneID = "SA1_7DIG16",
-                    regionIDs = c("SA2_MAIN16"), 
+                    regionIDs = regionIDs, 
                     exposure_population = exposure_population,
                     summarise = FALSE, 
                     final_year = fyear, 
                     region_folder = region_folder
                   ) |> mutate(scen = "cycling"),
     )
+    arrow::write_dataset(all_data, paste0(region_folder, "data/all_data.parquet", partitioning = c("scen", tail(regionIDs,n=1))))
   } else if (grepl("brunswick", tolower(basename(region_folder)))) {
     exposure_population = "input/health/pp_exposure_2018_base_2025-10-29_Brunswick.csv"
     fyear <- 2023 # this is just a single suburb test case with short run time for now; proof of concept
+    regionIDs <- c("SA2_MAIN16")
     all_data <- list(
         base = get_summary("base", 
                 zoneID = "SA1_7DIG16",
-                regionIDs = c("SA2_MAIN16"), 
+                regionIDs = regionIDs, 
                 exposure_population = exposure_population,
                 summarise = FALSE, 
                 final_year = fyear, 
                 region_folder = region_folder
-              ) |> mutate(scen = "reference"),
-        cycling = get_summary("cycling", 
-                    zoneID = "SA1_7DIG16",
-                    regionIDs = c("SA2_MAIN16"), 
-                    exposure_population = exposure_population,
-                    summarise = FALSE, 
-                    final_year = fyear, 
-                    region_folder = region_folder
-                  ) |> mutate(scen = "cycling"),
+              ) |> mutate(scen = "reference")
+        # cycling = get_summary("cycling", 
+        #             zoneID = "SA1_7DIG16",
+        #             regionIDs = c("SA2_MAIN16"), 
+        #             exposure_population = exposure_population,
+        #             summarise = FALSE, 
+        #             final_year = fyear, 
+        #             region_folder = region_folder
+        #           ) |> mutate(scen = "cycling"),
   )
+  arrow::write_dataset(all_data, paste0(region_folder, "data/all_data.parquet", partitioning = c("scen", tail(regionIDs,n=1))))
 }
