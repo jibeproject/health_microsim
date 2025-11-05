@@ -548,7 +548,7 @@ all_genders   <- sort(unique(people_gender$gender))
 all_causes_asr <- sort(unique(c(unique(asr_overall_all$cause), "healthy_years")))
 
 ui <- fluidPage(
-  titlePanel("${study_region} Transport and Health model results"),
+  titlePanel(paste0(study_region, " Transport and Health model results")),
   sidebarLayout(
     sidebarPanel(
       width = 3,
@@ -563,8 +563,8 @@ ui <- fluidPage(
       selectInput("view_level", "View by:", choices = c("Overall","Gender", regionID_type),
                   selected = "Overall"),
       conditionalPanel(
-        "input.view_level == '${regionID_type}'",
-        selectizeInput("region_sel", "${regionID_type}(s):",
+        paste0("input.view_level == '", regionID_type, "'"),
+        selectizeInput("region_sel", paste0(regionID_type, "(s):"),
                        choices = all_regions_nm, multiple = TRUE,
                        options = list(placeholder = "Pick regions (optional)"))
       ),
@@ -1197,7 +1197,7 @@ server <- function(input, output, session) {
           scale_y_continuous(expand = expansion(mult = c(0.08, 0.05))) +
           coord_flip() +
           facet_grid(regionID_name ~ value_lab, scales = "free_x") +
-          labs(title = "Mean age at death (by ${regionID_type})", x = NULL, y = "Years") +
+          labs(title = paste0("Mean age at death (by ", regionID_type, ")"), x = NULL, y = "Years") +
           ppt_theme() + guides(fill = "none")
       }
       
@@ -1259,7 +1259,7 @@ server <- function(input, output, session) {
           scale_y_continuous(expand = expansion(mult = c(0.08, 0.05))) +
           coord_flip() +
           facet_wrap(~ regionID_name, scales = "free_x", ncol = 2, nrow = 5) +
-          labs(title = paste0("Mean age at onset (by ${regionID_type}) — ", cause), x = NULL, y = "Years") +
+          labs(title = paste0("Mean age at onset (by ", regionID_type, ") — ", cause), x = NULL, y = "Years") +
           ppt_theme() + guides(fill = "none")
       }
     }
@@ -1401,7 +1401,7 @@ server <- function(input, output, session) {
           geom_text(aes(y = lpos, label = number_lab0(age_std_rate)), position = pos, hjust = 0, size = 5.0) +
           scale_y_continuous(expand = expansion(mult = c(0.10, 0.06))) +
           coord_flip() +
-          labs(title = "ASR by ${regionID_type} (avg cycles 1–30)", x = NULL, y = "ASR per 100,000", fill = "Scenario") +
+          labs(title = paste0("ASR by ", regionID_type, " (avg cycles 1–30)"), x = NULL, y = "ASR per 100,000", fill = "Scenario") +
           ppt_theme()
       }
       
@@ -1441,7 +1441,7 @@ server <- function(input, output, session) {
         ggplot(dat, aes(x = cycle, y = age_std_rate, colour = scen_lab)) +
           geom_smooth(se = FALSE) +
           facet_grid(regionID_name ~ cause, scales = "free_y") +
-          labs(title = "ASR per cycle by ${regionID_type} (smoothed, cycles 1–30)",
+          labs(title = paste0("ASR per cycle by ", regionID_type, " (smoothed, cycles 1–30)"),
                x = "Cycle (year)", y = "ASR per 100,000", colour = "Scenario") +
           ppt_theme()
       }
