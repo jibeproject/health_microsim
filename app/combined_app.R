@@ -700,7 +700,7 @@ server <- function(input, output, session) {
         fs <- 3
       }
       
-      if(length(input$lad_sel)){
+      if(input$view_level == "LAD" && length(input$lad_sel)){
         tp <- tp |> 
           filter(LAD_origin %in% input$lad_sel)
       }
