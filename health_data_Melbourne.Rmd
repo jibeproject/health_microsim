@@ -249,10 +249,10 @@ interpolation to the original data.
 
 # GBD data for Melbourne. 
 gbd <- bind_rows(
-  read.csv(here("melbourne/health/original/GBD/gbd_incidence_2018_2019.csv")),
-  read.csv(here("melbourne/health/original/GBD/gbd_incidence_2020_2021.csv")),
-  read.csv(here("melbourne/health/original/GBD/gbd_prevalence_2018_2019.csv")),
-  read.csv(here("melbourne/health/original/GBD/gbd_prevalence_2020_2021.csv")))
+  read.csv(here("melbourne/preprocessing/health/original/GBD/gbd_incidence_2018_2019.csv")),
+  read.csv(here("melbourne/preprocessing/health/original/GBD/gbd_incidence_2020_2021.csv")),
+  read.csv(here("melbourne/preprocessing/health/original/GBD/gbd_prevalence_2018_2019.csv")),
+  read.csv(here("melbourne/preprocessing/health/original/GBD/gbd_prevalence_2020_2021.csv")))
 
 # Filter data to needed variables and remove strings from GBD age variable and create from_age and to_age needed for interpolation. 
 
@@ -2789,7 +2789,9 @@ write_csv(prev_melbourne,
 
 # Combine incidence and mortality as required for SILO/MITO
 
-SILO/MITO code requires all-cause mortality and disease incidence, disaggregated by age, sex and SA2 (and no other disaggregation), probability (and not rate), for age 0 to 100.
+SILO/MITO code requires all-cause mortality and disease incidence,
+disaggregated by age, sex and SA2 (and no other disaggregation),
+probability (and not rate), for age 0 to 100.
 
 Combine to meet these requirements, and save
 
