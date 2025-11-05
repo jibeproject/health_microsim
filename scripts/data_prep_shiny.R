@@ -191,7 +191,7 @@ get_summary <- function(SCEN_NAME,
 ## microdata_dir_name = "microData", 
 ## manchester_folder = "/media/ali/Expansion/backup_tabea/manchester-main")
 region_folder = tcltk::tk_choose.dir(caption = "Select a study region folder with SILO outputs")
-
+region_name = basename(region_folder)
 # Check if a folder was selected
 if (!is.na(region_folder)) {
   cat("Selected folder path:", region_folder, "\n")
@@ -249,7 +249,6 @@ if (grepl("manchester", tolower(basename(region_folder)))) {
                     region_folder = region_folder
                   ) |> mutate(scen = "cycling"),
     )
-    arrow::write_dataset(all_data, "data/all_data.parquet", partitioning = c("scen", tail(regionIDs,n=1)))
   } else if (grepl("brunswick", tolower(basename(region_folder)))) {
     exposure_population = "input/health/pp_exposure_2018_base_2025-10-29_Brunswick.csv"
     fyear <- 2023 # this is just a single suburb test case with short run time for now; proof of concept
@@ -272,5 +271,27 @@ if (grepl("manchester", tolower(basename(region_folder)))) {
         #             region_folder = region_folder
         #           ) |> mutate(scen = "cycling"),
   )
-  arrow::write_dataset(all_data, "data/all_data.parquet", partitioning = c("scen", tail(regionIDs,n=1)))
+}
+
+combined_all_data <- dplyr::bind_rows(all_data)
+partition_cols <- if (length(regionIDs) > 0) c("scen", tail(regionIDs, 1)) else "scen"
+dir.create("data", showWarnings = FALSE)
+out_dir <- file.path("data", region_name)
+dir.create(out_dir, recursive = TRUE, showWarnings = FALSE)
+
+out_path <- file.path(out_dir, "all_data.parquet")
+write_ok <- tryCatch({
+  arrow::write_dataset(
+    combined_all_data,
+    out_path,
+    partitioning = partition_cols
+  )
+  TRUE
+}, error = function(e) {
+  message("Failed to write parquet dataset: ", e$message)
+  FALSE
+})
+
+if (isTRUE(write_ok)) {
+  message("Parquet dataset for ", region_name, " to year ", fyear, " partitioned by ", paste(partition_cols, collapse = ", "), " saved to:\n", normalizePath(out_path))
 }
