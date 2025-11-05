@@ -249,7 +249,7 @@ if (grepl("manchester", tolower(basename(region_folder)))) {
                     region_folder = region_folder
                   ) |> mutate(scen = "cycling"),
     )
-    arrow::write_dataset(all_data, paste0(region_folder, "data/all_data.parquet", partitioning = c("scen", tail(regionIDs,n=1))))
+    arrow::write_dataset(all_data, "data/all_data.parquet", partitioning = c("scen", tail(regionIDs,n=1)))
   } else if (grepl("brunswick", tolower(basename(region_folder)))) {
     exposure_population = "input/health/pp_exposure_2018_base_2025-10-29_Brunswick.csv"
     fyear <- 2023 # this is just a single suburb test case with short run time for now; proof of concept
@@ -272,5 +272,5 @@ if (grepl("manchester", tolower(basename(region_folder)))) {
         #             region_folder = region_folder
         #           ) |> mutate(scen = "cycling"),
   )
-  arrow::write_dataset(all_data, paste0(region_folder, "data/all_data.parquet", partitioning = c("scen", tail(regionIDs,n=1))))
+  arrow::write_dataset(all_data, "data/all_data.parquet", partitioning = c("scen", tail(regionIDs,n=1)))
 }
