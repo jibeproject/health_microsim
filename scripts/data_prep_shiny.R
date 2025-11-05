@@ -296,3 +296,10 @@ write_ok <- tryCatch({
 if (isTRUE(write_ok)) {
   message("Parquet dataset for ", region_name, " to year ", fyear, " partitioned by [", paste(partition_cols, collapse = ", "), "] saved to:\n", normalizePath(out_path))
 }
+
+# Copy zoneSystem.csv to data folder
+file.copy(
+  file.path(region_folder, "input", "zoneSystem.csv"),
+  file.path(out_dir, "zoneSystem.csv"),
+  overwrite = TRUE
+)
