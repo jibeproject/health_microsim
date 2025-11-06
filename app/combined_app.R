@@ -16,7 +16,7 @@ pc <- qs::qread(here("temp/precomputed_mcr_wgd_100%V2.qs"))
 list2env(pc, envir = environment())
 SCALING <- 1L
 
-t <- qs::qread(here("temp/241025_trips.qs"))
+t <- qs::qread(here("temp/061125_trips.qs"))
 
 
 MIN_CYCLE <- 1
@@ -723,13 +723,6 @@ server <- function(input, output, session) {
                      legend.text = element_text(face = "bold"),
                      legend.title = element_text(face = "bold")
                    ) +
-                 # geom_text(
-                 #       aes(label = ifelse(pt > 2, paste0(round(pt, 1), "%"), "")),
-                 #       position = position_fill(vjust = 0.5),
-                 #       color = "white",
-                 #       size = 3
-                 #     ) +
-                 
                  geom_text(aes(label = ifelse(pt > 2, paste0(round(pt, 1), "%"), "")),
                            position = position_stack(vjust = .5),
                            size = fs) +
@@ -742,59 +735,6 @@ server <- function(input, output, session) {
                      fill = "Transport Mode"
                    )
                  )
-      
-      # facet_vars <- vars(scen)
-      # if (input$view_level != "Overall") {
-      #   group_vars <- c(group_vars[1], "gender", group_vars[-1])  # Insert gender after distance_bracket
-      #   facet_vars <- vars(scen, gender)
-      # }
-      
-      
-    
-      
-      # # Set grouping variables dynamically based on view_level
-      # group_vars <- c("distance_bracket", "scen", "mode")
-      # facet_vars <- vars(scen)
-      # if (input$view_level != "Overall") {
-      #   group_vars <- c(group_vars[1], "gender", group_vars[-1])  # Insert gender after distance_bracket
-      #   facet_vars <- vars(scen, gender)
-      # }
-      # 
-      # # Group and summarize the data
-      # dist <- t$distance |>
-      #   group_by(across(all_of(group_vars))) |>
-      #   reframe(percent = sum(percent)) |>
-      #   filter(scen %in% input$scen_sel)
-      # 
-      # # Create the plot with dynamic faceting
-      # ggplot(dist, aes(x = distance_bracket, y = percent, fill = mode)) +
-      #   geom_bar(stat = "identity", position = "fill") +
-      #   geom_text(
-      #     aes(label = ifelse(percent > 2, paste0(round(percent, 1), "%"), "")), 
-      #     position = position_fill(vjust = 0.5),
-      #     color = "white",
-      #     size = 3
-      #   ) +
-      #   labs(
-      #     title = "Transport Mode Share by Trip Distance",
-      #     y = "Proportion (%)",
-      #     x = "Distance (km)",
-      #     fill = "Transport Mode"
-      #   ) +
-      #   theme_minimal(base_size = 12) +
-      #   theme(
-      #     panel.grid.major = element_blank(),
-      #     panel.grid.minor = element_blank(),
-      #     axis.ticks.y = element_blank(),
-      #     plot.title = element_text(hjust = 0.5, face = "bold"),
-      #     axis.text.y = element_blank(),
-      #     axis.text.x = element_text(face = "bold"),
-      #     strip.placement = "outside",
-      #     strip.text = element_text(face = "bold"),
-      #     legend.text = element_text(face = "bold"),
-      #     legend.title = element_text(face = "bold")
-      #   ) +
-      #   facet_wrap(facet_vars, scales = "free_x")
     }
     
     else if (input$metrics_picker == "Combined Trip Distance by Modes") {
