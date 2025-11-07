@@ -101,8 +101,6 @@ knitr::opts_chunk$set(
     2025
 
     <https://opendatacommunities.org/resource?uri=http%3A%2F%2Fopendatacommunities.org%2Fdata%2Fsocietal-wellbeing%2Fimd2019%2Findices>
-    
-    TO DO: add new datasets Belen to list 
 
 ```{r data-prep}
 
@@ -364,7 +362,7 @@ population_weights_europe <- european_pop_2 %>%
 
 ```
 
-## Relative Risk by LSOA
+## Relative Risk 
 
 A relative mortality rate is produced for each area (lsoa), defined as
 the age-standardised mortality rate by sex for each lsoa relative to the
@@ -473,8 +471,7 @@ deaths_lad_eng_asdr <- compute_asdr(
 ) %>% rename(deaths_lad = deaths_geo)
 ```
 
-
-## deprivation data
+## Deprivation data
 
 ```{r}
 deprivation <- read_csv(here("manchester/health/original/ons/imd2019lsoa.csv"))
@@ -722,7 +719,6 @@ print(check_gm_total)
 
 # Smooth, calibration results in some jumps (need to check again after smooting it matches observed)
 
-library(dplyr)
 library(mgcv)
 
 # Takes about 50 minutes
@@ -769,8 +765,6 @@ england_lsoa21_syoa_smoothed <- england_lsoa21_syoa_cal %>%
 
 # Save calibrated outputs with imd
 
-#### ADD CODE TO SAVE
-
 manchester_lsoa21_syoa_cal <- england_lsoa21_syoa_smoothed %>%
   dplyr::filter(LAD22NM %in% gm_lads)
 
@@ -778,14 +772,10 @@ manchester_lsoa21_syoa_cal <- england_lsoa21_syoa_smoothed %>%
 
 #### Check with deaths counts per lad
 
-library(dplyr)
-
-# --- LAD names (as in your snippet)
 lad_names <- oa21_lookup %>%
   dplyr::select(LAD22CD, LAD22NM) %>%
   dplyr::distinct()
 
-# --- Population LSOA21 (NO weighting)  -------------------------
 pop21_syoa <- population_england_syoa %>%
   dplyr::mutate(age = as.integer(age)) %>%
   dplyr::inner_join(
@@ -800,9 +790,6 @@ pop21_syoa <- population_england_syoa %>%
     population
   )
 
-# --- Pick the smoothed rate, with safe fallbacks  ----------------
-# Expecting: england_lsoa21_syoa_smoothed with columns lsoa21cd, (gender or sex), age,
-#            and rate_smooth (preferred) or rate_cal or rate1000 (per 1000 persons).
 
 rates_sm <- england_lsoa21_syoa_smoothed %>%
   dplyr::mutate(
@@ -820,7 +807,7 @@ rates_sm <- england_lsoa21_syoa_smoothed %>%
   ) %>%
   dplyr::select(lsoa21cd, gender, age, rate_use)
 
-# --- Expected deaths by LAD × gender × age-band (using smoothed rate) --------
+# Expected deaths by LAD × gender × age-band (using smoothed rate) 
 exp_by_lad_gender_ageband_sm <- pop21_syoa %>%
   dplyr::mutate(age_band = as.character(age_to_band(age))) %>%
   dplyr::left_join(
@@ -831,7 +818,7 @@ exp_by_lad_gender_ageband_sm <- pop21_syoa %>%
   dplyr::group_by(LAD22CD, gender, age_band) %>%
   dplyr::summarise(assigned_sm = sum(exp_deaths_sm, na.rm = TRUE), .groups = "drop")
 
-# --- Compare to observed by LAD × gender × age-band --------------------------
+#  Compare to observed by LAD × gender × age-band
 check_by_lad_gender_age_sm <- obs_by_lad_age %>%
   dplyr::left_join(exp_by_lad_gender_ageband_sm, by = c("LAD22CD","gender","age_band")) %>%
   dplyr::mutate(
@@ -840,7 +827,7 @@ check_by_lad_gender_age_sm <- obs_by_lad_age %>%
     pct_diff    = dplyr::if_else(observed > 0, 100 * diff / observed, NA_real_)
   )
 
-# --- England total -----------------------------------------------------------
+#  England total
 check_england_total_sm <- check_by_lad_gender_age_sm %>%
   dplyr::summarise(
     observed   = sum(observed,   na.rm = TRUE),
@@ -854,7 +841,7 @@ check_england_total_sm <- check_by_lad_gender_age_sm %>%
   ) %>%
   dplyr::select(area, observed, assigned, diff, pct_diff)
 
-# --- Greater Manchester total ------------------------------------------------
+# Greater Manchester total
 check_gm_total_sm <- check_by_lad_gender_age_sm %>%
   dplyr::left_join(lad_names, by = "LAD22CD") %>%
   dplyr::filter(LAD22NM %in% gm_lads) %>%
@@ -983,9 +970,9 @@ standard rates compare with published ONS rates.
 
 ```{r}
 
-# Comparison using English weights. Belen note (07/11/2025) after checking results using english weights and Euro weights, data aligns with published estimates with Euro weights, so using those, using english weights seems to push all rates down. 
+# Comparison using English weights. Belen note (07/11/2025) after checking results using english weights and Euro weights, data aligns with published estimates with Euro weights, so using those, using english weights pushes all rates down. 
 
-# If you already computed English-weighted LAD ASDRs as `deaths_lad_eng_asdr` earlier:
+# Calculate LAD ASR using english weights
 
 deaths_lad_asdr_compare <- compute_asdr(
   df_deaths = deaths_lad %>% group_by(lad_code, lad_name, gender, age) %>%
@@ -1034,88 +1021,6 @@ comparison_table <- nomis_lad %>%
 
 print(comparison_table)
 
-```
-
-## Additional comparisons (Marina to add some explanation) (UP TO HERE)
-
-```{r}
-# Additional 
-
-england_lsoa_deaths_eu <- deaths_lsoa_eng_eu |>
-  left_join(msoa, join_by(lsoa_code == LSOA11CD)) |>
-  select(lsoa_code, lsoa_name, msoa_code = "MSOA11CD", lad_code = "LAD11CD",gender,population_lsoa, deaths_lsoa, stdrate) |>
-  distinct() |>
-  left_join(deaths_msoa_eng_eu |> select(msoa_code, stdrate_msoa = stdrate, deaths_msoa,gender), by= c("msoa_code","gender")) |>
-  left_join(deaths_lad_eng_eu |> select(lad_code, stdrate_lad = stdrate,gender), by=c("lad_code","gender")) %>%
-  group_by (gender) %>%
-  # Use MSOA rate if LSOA std rate is missing or has fewer than 10 deaths, and use LAD if msoa deaths are fewer than 20
-  mutate(stdrate_ave = with(.data, sum(stdrate*population_lsoa,na.rm = TRUE)/sum(population_lsoa)),
-         stdrate = ifelse(
-           is.na(stdrate) | deaths_lsoa < 10,   # if NA or fewer than 10 deaths at the lsoa level, use msoa
-           ifelse(
-             deaths_msoa > 20,             # if fewer than 20 deaths at the msoa level, use lad
-             stdrate_msoa,
-             stdrate_lad),
-           stdrate)) |>                    # if not NA and more than or equal to 10, use lsoa
-  mutate(RR = stdrate / stdrate_ave)
-
-# Adding level of deprivation
-
-england_deaths_socio_eu <- england_lsoa_deaths_eu %>%
-  left_join(deprivation, by = "lsoa_code")
-
-# For All
-mortality_socio_all_eu <- england_deaths_socio_eu %>%
-  group_by(imd_decile) %>%
-  summarise(
-    # Only calculate the weighted mean if both rate_area_100000 and population are available
-    ASR = sum(stdrate*population_lsoa, na.rm=TRUE)/sum(population_lsoa),
-    .groups = "drop"
-  )  %>%
-  ungroup()
-
-### Sex specific ASR
-
-mortality_socio_gender_eu <- england_deaths_socio_eu %>%
-  group_by(imd_decile, gender) %>%
-  summarise(
-    # Only calculate the weighted mean if both rate_area_100000 and population are available
-    ASR = sum(stdrate*population_lsoa, na.rm=TRUE)/sum(population_lsoa),
-    .groups = "drop"
-  )  %>%
-  ungroup()
-
-# lad of Greater Manchester Only
-
-deaths_lad_man_eu <- deaths_lad_eng_eu %>%
-  filter(
-    str_starts(lad_name, "Bolton") |
-      str_starts(lad_name, "Bury") |
-      str_starts(lad_name, "Manchester") |
-      str_starts(lad_name, "Oldham") |
-      str_starts(lad_name, "Rochdale") |
-      str_starts(lad_name, "Salford") |
-      str_starts(lad_name, "Stockport") |
-      str_starts(lad_name, "Tameside") |
-      str_starts(lad_name, "Trafford") |
-      str_starts(lad_name, "Wigan"))
-
-print(deaths_lad_man_eu)
-
-deaths_lad_man_eng <- deaths_lad_eng_asdr %>%
-  filter(
-    str_starts(lad_name, "Bolton") |
-      str_starts(lad_name, "Bury") |
-      str_starts(lad_name, "Manchester") |
-      str_starts(lad_name, "Oldham") |
-      str_starts(lad_name, "Rochdale") |
-      str_starts(lad_name, "Salford") |
-      str_starts(lad_name, "Stockport") |
-      str_starts(lad_name, "Tameside") |
-      str_starts(lad_name, "Trafford") |
-      str_starts(lad_name, "Wigan"))
-
-print(deaths_lad_man_eng)
 ```
 
 # Disease Incidence
@@ -1428,7 +1333,7 @@ for (i in 1:nrow(combinations)) {
 ### NAMES NEED TO MATCH CODE FOR HEALTH MODEL
 
 diseases <- readRDS(here("manchester/health/processed/manchester_diseases_lad.RDS"))
-allcause <- read.csv(here("manchester/health/processed/manchester_mortality_lsoa_070325.csv"))
+allcause <- read.csv(here("manchester/health/processed/manchester_lsoa21_mxrates_calibrated.csv"))
 lsoa_11to21 <- read.csv(here("manchester/health/original/ons/lsoa_2011_to_lsoa_2021.csv"))
 
 # Process data 
@@ -1438,9 +1343,9 @@ allcause<- allcause %>%
          measure = "deaths") %>%
   mutate(sex=case_when(sex == "Males" ~ "male",
                                   sex=="Females" ~ "female"),
-         location_code = lsoa_code, 
+         location_code = lsoa21cd, 
          age=as.numeric(age)) %>% 
-  dplyr::select(age, sex, location_code, cause, rate, measure) %>%
+  dplyr::select(age, sex, location_code, location_name, cause, rate, measure) %>%
   mutate(location_type = "lsoa")
 
 diseases <- diseases %>% 
