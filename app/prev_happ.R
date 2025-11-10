@@ -23,14 +23,401 @@ suppressPackageStartupMessages({
 
 options(scipen = 999)
 
-# ------------------- Inputs / Data -------------------------------------
-zones <- readr::read_csv(here("app/data/zoneSystem.csv"), show_col_types = FALSE)
-stopifnot(all(c("ladcd","ladnm") %in% names(zones)))
-lads <- zones |> distinct(ladcd, ladnm)
 
-# Adjust path if needed
-pc <- qs::qread(here("Y:/HealthImpact/Data/Country/UK/JIBE_health_output_data/211025/precomputed_mcr_wgd_100%V2.qs"))
-list2env(pc, envir = environment())
+# ------------------- Paths (interactive study region data folder selection) -------------------
+region_folder = tcltk::tk_choose.dir(caption = "Select data/[region] folder containing all_data.parquet")
+region_name = basename(region_folder)
+# Check if a folder was selected
+if (!is.na(region_folder)) {
+  cat("Selected folder path:", region_folder, "\n")
+} else {
+  cat("No folder selected.\n")
+}
+
+DATA_PATH  <- file.path(region_folder, "all_data.parquet")
+ZONES_CSV  <- file.path(region_folder, "zoneSystem.csv")
+
+if (grepl("manchester", tolower(basename(region_folder)))) {
+    study_region <- "Manchester"
+    regionID_code <- "regioncd"
+    regionID_name <- regionID_name
+    regionID_type <- "region"
+    SCEN_LABS_ORDER <- c("Safer Streets & Greening", "Greening", "Safer Streets")
+} else if (grepl("melbourne", tolower(basename(region_folder)))) {
+    study_region <- "Melbourne"
+    regionID_code <- "SA2_MAIN16"
+    regionID_name <- "SA2_MAIN16_NAME"
+    regionID_type <- "SA2"
+    SCEN_LABS_ORDER <- c("Reference", "Cycling")
+} else if (grepl("brunswick", tolower(basename(region_folder)))) {
+    study_region <- "Brunswick"
+    regionID_code <- "SA2_MAIN16"
+    regionID_name <- "SA2_NAME_2016"
+    regionID_type <- "SA2"
+    SCEN_LABS_ORDER <- c("Reference", "Cycling")
+} else {
+  stop("Unknown region folder selected: ", region_folder)
+}
+
+regionIDs <- c(regionID_code, regionID_name)
+
+
+if (!dir.exists(DATA_PATH)) {
+  stop("Data path does not exist: ", DATA_PATH, "\nPlease ensure data_prep_shiny.R has been successfully run prior to processing.")
+}
+
+if (!file.exists(ZONES_CSV)) {
+  stop("Zones CSV does not exist: ", ZONES_CSV)
+}
+
+# Local cache folder (relative to app)
+DATA_DIR <- "data"
+if (!dir.exists(DATA_DIR))
+  dir.create(DATA_DIR, recursive = TRUE, showWarnings = FALSE)
+
+USE_ALL_DATA_CACHE  <- TRUE   # cache the big parquet as an Arrow dataset dir
+if (!exists("SCALING")) SCALING <- 5L
+
+# ------------------- Load zones (tiny) ------------------------------
+zones    <- readr::read_csv(ZONES_CSV, show_col_types = FALSE)
+stopifnot(all(regionIDs %in% names(zones)))
+regions <- zones |> distinct(!!rlang::sym(regionID_code), !!rlang::sym(regionID_name))
+
+# ------------------- Load all_data with optional cache --------------
+all_data_cache_path <- file.path(DATA_DIR, "all_data.parquet")
+
+if (USE_ALL_DATA_CACHE && dir.exists(all_data_cache_path)) {
+  message("Loading all_data from cache: ", all_data_cache_path)
+  all_data <- arrow::open_dataset(all_data_cache_path) |> collect()
+} else {
+  message("Reading parquet from: ", DATA_PATH)
+  all_data <- arrow::open_dataset(DATA_PATH) |> collect()
+  if (USE_ALL_DATA_CACHE) {
+    message("Saving all_data cache: ", all_data_cache_path)
+    arrow::write_dataset(all_data, all_data_cache_path)
+  }
+}
+
+
+
+# ------------------- Precompute (robust cache) -----------------------
+precomp_path <- file.path(DATA_DIR, "precomputed_v1.qs")
+death_values <- c("dead","dead_car","dead_bike","dead_walk")
+
+# Set Sys.setenv(REBUILD_CACHE="1") before run to force rebuild
+REBUILD_CACHE <- identical(Sys.getenv("REBUILD_CACHE"), "0")
+
+# Only RAW mean ages (rename to mean_age)
+REQUIRED_PC <- c(
+  # population
+  "people_overall","people_gender","people_region",
+  # diffs
+  "deaths_overall","deaths_gender","deaths_region",
+  "diseases_overall","diseases_gender","diseases_region",
+  "healthy_overall","healthy_gender","healthy_region",
+  "lifey_overall","lifey_gender","lifey_region",
+  # mean-age sources + RAW mean age tables (renamed columns)
+  "incidence_src","inc_death_src",
+  "mean_age_dead_by_scen_val",
+  "mean_age_dead_by_scen_val_gender",
+  "mean_age_dead_by_scen_val_region",
+  "mean_age_onset_by_scen_val",
+  "mean_age_onset_by_scen_val_gender",
+  "mean_age_onset_by_scen_val_region",
+  # ASR
+  "asr_overall_all","asr_overall_avg_1_30",
+  "asr_gender_all","asr_gender_all_avg_1_30",
+  "asr_region_all_per_cycle","asr_region_all_avg_1_30",
+  "asr_healthy_years_overall","asr_healthy_years_overall_avg_1_30"
+)
+
+cache_ok <- FALSE
+if (file.exists(precomp_path) && !REBUILD_CACHE) {
+  message("Loading precomputed tables from cache: ", precomp_path)
+  pc <- tryCatch(qs::qread(precomp_path), error = function(e) NULL)
+  if (!is.null(pc)) {
+    list2env(pc, envir = environment())
+    missing_names <- setdiff(REQUIRED_PC, names(pc))
+    nulls <- names(Filter(is.null, pc))
+    if (length(missing_names) == 0 && length(nulls) == 0) cache_ok <- TRUE
+    if (!cache_ok) {
+      message("Cache incomplete/stale; will rebuild (missing: ",
+              paste(c(missing_names, nulls), collapse = ", "), ").")
+    }
+  }
+}
+
+if (!cache_ok) {
+  message("Building precomputed tables …")
+  
+  # ---- Core event sets ----
+  # First-onset for all non-death/healthy/null/depression causes
+  incidence_all <- all_data |>
+    filter(!grepl("dead|healthy|null|depression", value)) |>
+    group_by(id, scen, value) |>
+    slice_min(order_by = cycle, n = 1, with_ties = FALSE) |>
+    ungroup()
+  
+  # New episodes of depression (first time within id,scen)
+  incidence_depression <- all_data |>
+    filter(value == "depression") |>
+    arrange(id, scen, cycle) |>
+    group_by(id, scen) |>
+    mutate(is_new = is.na(lag(value)) | lag(value) != "depression") |>
+    filter(is_new) |>
+    ungroup()
+  
+  incidence_deaths <- all_data |> filter(value %in% death_values)
+  
+  incidence <- bind_rows(
+    incidence_all,
+    incidence_depression,
+    incidence_deaths
+  ) |>
+    add_agegroups() |>
+    left_join(regions, by = regionID_code)
+  
+  # ---- Population (at risk) ----
+  people_raw <- all_data |>
+    add_agegroups() |>
+    # use dynamic grouping so a string column name (regionID_code) is handled safely
+    group_by(across(all_of(c("agegroup_cycle", "gender", "cycle", "scen", regionID_code)))) |>
+    summarise(pop = n_distinct(id[!grepl("dead|null", value)]), .groups = "drop") |>
+    left_join(regions, by = regionID_code)
+  
+  people_overall <- people_raw |>
+    group_by(agegroup_cycle, scen, cycle) |>
+    summarise(pop = sum(pop, na.rm = TRUE), .groups = "drop")
+  
+  people_gender <- people_raw |>
+    group_by(agegroup_cycle, scen, cycle, gender) |>
+    summarise(pop = sum(pop, na.rm = TRUE), .groups = "drop")
+  
+  people_region <- people_raw |>
+    # dynamic grouping: regionID_name is a string containing the actual column name (e.g. "regionID_name")
+    group_by(across(all_of(c("agegroup_cycle", "scen", "cycle", regionID_name)))) |>
+    summarise(pop = sum(pop, na.rm = TRUE), .groups = "drop")
+  
+  # ---- Healthy & Life years ----
+  healthy_total_cycle <- all_data |>
+    filter(value == "healthy") |>
+    group_by(scen, cycle) |>
+    summarise(value = n_distinct(id), .groups = "drop")
+  
+  life_years_cycle <- all_data |>
+    filter(!grepl("dead", value)) |>
+    group_by(scen, cycle) |>
+    summarise(value = n_distinct(id), .groups = "drop")
+  
+  # ---- Death counts ----
+  inc_death <- incidence |> filter(value %in% death_values)
+  deaths_overall_raw <- inc_death |> group_by(scen, cycle) |>
+    summarise(value = dplyr::n(), .groups = "drop")
+  deaths_gender_raw  <- inc_death |> group_by(scen, cycle, gender) |>
+    summarise(value = dplyr::n(), .groups = "drop")
+  deaths_region_raw     <- inc_death |> 
+    group_by(across(all_of(c("scen", "cycle", regionID_name)))) |>
+    summarise(value = dplyr::n(), .groups = "drop")
+  
+  # ---- Disease counts (keep cause) ----
+  diseases_all_cycle <- incidence |>
+    filter(!grepl("dead|healthy|null", value)) |>
+    rename(cause = value) |>
+    group_by(cause, scen, cycle) |>
+    summarise(value = dplyr::n(), .groups = "drop")
+  
+  # ---- Differences vs reference ----
+  deaths_overall <- diff_vs_reference(deaths_overall_raw)
+  deaths_gender  <- diff_vs_reference(deaths_gender_raw, by = "gender")
+  deaths_region  <- diff_vs_reference(deaths_region_raw,   by = regionID_name)
+  
+  diseases_overall <- diff_vs_reference(diseases_all_cycle, by = "cause")
+  diseases_gender  <- incidence |>
+    filter(!value %in% c("dead","healthy","null")) |>
+    rename(cause = value) |>
+    group_by(cause, scen, cycle, gender) |>
+    summarise(value = dplyr::n(), .groups = "drop") |>
+    diff_vs_reference(by = c("gender","cause"))
+  diseases_region     <- incidence |>
+    filter(!value %in% c("dead","healthy","null")) |>
+    rename(cause = value) |>
+    group_by(across(all_of(c("cause", "scen", "cycle", regionID_name)))) |>
+    summarise(value = dplyr::n(), .groups = "drop") |>
+    diff_vs_reference(by = c(regionID_name,"cause"))
+  
+  healthy_overall  <- healthy_total_cycle |> diff_vs_reference()
+  healthy_gender   <- all_data |> filter(value == "healthy") |>
+    group_by(scen, cycle, gender) |> summarise(value = n_distinct(id), .groups = "drop") |>
+    diff_vs_reference(by = "gender")
+  healthy_region      <- all_data |> filter(value == "healthy") |>
+    left_join(regions, by = regionID_code) |>
+    group_by(across(all_of(c("scen", "cycle", regionID_name)))) |> summarise(value = n_distinct(id), .groups = "drop") |>
+    diff_vs_reference(by = regionID_name)
+  
+  lifey_overall <- life_years_cycle |> diff_vs_reference()
+  lifey_gender  <- all_data |> filter(!grepl("dead", value)) |>
+    group_by(scen, cycle, gender) |> summarise(value = n_distinct(id), .groups = "drop") |>
+    diff_vs_reference(by = "gender")
+  lifey_region     <- all_data |> filter(!grepl("dead", value)) |>
+    left_join(regions, by = regionID_code) |>
+    group_by(across(all_of(c("scen", "cycle", regionID_name)))) |> summarise(value = n_distinct(id), .groups = "drop") |>
+    diff_vs_reference(by = regionID_name)
+  
+  # ---- Mean age (RAW only; rename to mean_age) ----
+  inc_death_src <- incidence |>
+    filter(value %in% death_values) |>
+    select(scen, value, age_cycle, gender, all_of(regionID_name))
+  
+  incidence_src <- incidence |>
+    filter(!value %in% c("healthy","null") & !value %in% death_values) |>
+    select(scen, value, age_cycle, gender, all_of(regionID_name))
+  
+  mean_age_dead_by_scen_val        <- inc_death_src |> group_by(scen, value) |>
+    summarise(mean_age = mean(age_cycle), .groups="drop")
+  mean_age_dead_by_scen_val_gender <- inc_death_src |> group_by(scen, value, gender) |>
+    summarise(mean_age = mean(age_cycle), .groups="drop")
+  mean_age_dead_by_scen_val_region    <- inc_death_src |> group_by(across(all_of(c("scen", "value", regionID_name)))) |>
+    summarise(mean_age = mean(age_cycle), .groups="drop")
+  
+  mean_age_onset_by_scen_val        <- incidence_src |> group_by(scen, value) |>
+    summarise(mean_age = mean(age_cycle), .groups="drop")
+  mean_age_onset_by_scen_val_gender <- incidence_src |> group_by(scen, value, gender) |>
+    summarise(mean_age = mean(age_cycle), .groups="drop")
+  mean_age_onset_by_scen_val_region    <- incidence_src |> group_by(across(all_of(c("scen", "value", regionID_name)))) |>
+    summarise(mean_age = mean(age_cycle), .groups="drop")
+  
+  # ---- ASR (age-standardised rates) ----
+  ref_weights_overall <- people_raw |>
+    filter(scen == "reference", cycle == 0) |>
+    group_by(agegroup_cycle) |>
+    summarise(pop = sum(pop), .groups = "drop") |>
+    mutate(weight = pop / sum(pop)) |>
+    select(agegroup_cycle, weight)
+  
+  ref_weights_gender <- people_raw |>
+    filter(scen == "reference", cycle == 0) |>
+    group_by(agegroup_cycle, gender) |>
+    summarise(pop = sum(pop), .groups = "drop") |>
+    group_by(gender) |> mutate(weight = pop / sum(pop)) |> ungroup() |>
+    select(agegroup_cycle, gender, weight)
+  
+  W_OVERALL <- align_age_levels(ref_weights_overall, people_raw$agegroup_cycle)
+  W_GENDER  <- ref_weights_gender |>
+    mutate(agegroup_cycle = factor(as.character(agegroup_cycle),
+                                   levels = get_age_levels(people_raw$agegroup_cycle)))
+  
+  calc_asr <- function(data_cases, causes, people, ref_weights,
+                       group_vars = character(), avg_cycles = NULL, min_cycle = MIN_CYCLE) {
+    base_groups    <- c("agegroup_cycle", "scen", "cycle")
+    all_group_cols <- unique(c(base_groups, group_vars))
+    join_vars      <- intersect(names(ref_weights), c("agegroup_cycle", "gender"))
+    purrr::map_dfr(causes, function(cause) {
+      crude_counts <- data_cases |>
+        filter(value == cause, cycle >= min_cycle) |>
+        group_by(across(all_of(all_group_cols))) |>
+        summarise(cases = dplyr::n(), .groups = "drop")
+      pop_counts <- people |>
+        filter(cycle >= min_cycle) |>
+        group_by(across(all_of(all_group_cols))) |>
+        summarise(pop = sum(pop, na.rm = TRUE), .groups = "drop")
+      crude_rates <- crude_counts |>
+        left_join(pop_counts, by = all_group_cols) |>
+        mutate(crude_rate = if_else(pop > 0, cases / pop * 1e5, NA_real_)) |>
+        filter(!is.na(crude_rate))
+      std_rates <- crude_rates |>
+        left_join(ref_weights, by = join_vars) |>
+        filter(!is.na(weight)) |>
+        mutate(rate_w = crude_rate * weight)
+      sum_groups <- unique(c("scen", "cycle", group_vars))
+      asr_per_cycle <- std_rates |>
+        group_by(across(all_of(sum_groups))) |>
+        summarise(age_std_rate = sum(rate_w), .groups = "drop") |>
+        mutate(cause = cause, .before = 1)
+      if (is.null(avg_cycles)) return(asr_per_cycle)
+      asr_per_cycle |>
+        filter(cycle %in% avg_cycles) |>
+        group_by(across(all_of(setdiff(sum_groups, "cycle"))), cause) |>
+        summarise(age_std_rate = mean(age_std_rate, na.rm = TRUE), .groups = "drop") |>
+        mutate(cycle = paste0("avg_", paste(range(avg_cycles), collapse = "-")), .after = "scen")
+    })
+  }
+  
+  calc_asr_from_counts <- function(counts_df, people, ref_weights,
+                                   group_vars = character(), scale = 1e5,
+                                   avg_cycles = NULL, cause_name = "metric",
+                                   min_cycle = MIN_CYCLE) {
+    group_cols <- unique(c("agegroup_cycle", "scen", "cycle", group_vars))
+    join_vars  <- intersect(names(ref_weights), c("agegroup_cycle", "gender"))
+    counts_df <- counts_df |>
+      filter(cycle >= min_cycle) |>
+      group_by(across(all_of(group_cols))) |>
+      summarise(num = sum(num, na.rm = TRUE), .groups = "drop")
+    pop_counts <- people |>
+      filter(cycle >= min_cycle) |>
+      group_by(across(all_of(group_cols))) |>
+      summarise(pop = sum(pop, na.rm = TRUE), .groups = "drop")
+    rates <- counts_df |>
+      left_join(pop_counts, by = group_cols) |>
+      mutate(rate = if_else(pop > 0, num / pop * scale, NA_real_)) |>
+      filter(!is.na(rate))
+    std <- rates |> left_join(ref_weights, by = join_vars) |>
+      filter(!is.na(weight)) |> mutate(rate_w = rate * weight)
+    sum_groups <- unique(c("scen", "cycle", group_vars))
+    out <- std |>
+      group_by(across(all_of(sum_groups))) |>
+      summarise(age_std_rate = sum(rate_w), .groups = "drop") |>
+      mutate(cause = cause_name, .before = 1)
+    if (is.null(avg_cycles)) return(out)
+    out |>
+      filter(cycle %in% avg_cycles) |>
+      group_by(across(all_of(setdiff(sum_groups, "cycle"))), cause) |>
+      summarise(age_std_rate = mean(age_std_rate, na.rm = TRUE), .groups = "drop") |>
+      mutate(cycle = paste0("avg_", paste(range(avg_cycles), collapse = "-")), .after = "scen")
+  }
+  
+  healthy_age_counts <- all_data |>
+    add_agegroups() |>
+    filter(value == "healthy", cycle >= MIN_CYCLE) |>
+    group_by(agegroup_cycle, scen, cycle) |>
+    summarise(num = n_distinct(id), .groups = "drop")
+  
+  all_causes <- incidence |>
+    distinct(value) |> pull(value) |> setdiff(c("healthy","null"))
+  
+  asr_overall_all <- calc_asr(incidence, all_causes, people_raw, W_OVERALL,
+                              group_vars = character(), avg_cycles = NULL, min_cycle = MIN_CYCLE)
+  asr_overall_avg_1_30 <- calc_asr(incidence, all_causes, people_raw, W_OVERALL,
+                                   group_vars = character(), avg_cycles = MIN_CYCLE:MAX_CYCLE, min_cycle = MIN_CYCLE)
+  asr_gender_all <- calc_asr(incidence, all_causes, people_raw, W_GENDER,
+                             group_vars = "gender", avg_cycles = NULL, min_cycle = MIN_CYCLE)
+  asr_gender_all_avg_1_30 <- calc_asr(incidence, all_causes, people_raw, W_GENDER,
+                                      group_vars = "gender", avg_cycles = MIN_CYCLE:MAX_CYCLE, min_cycle = MIN_CYCLE)
+  asr_region_all_per_cycle <- calc_asr(incidence, all_causes, people_raw, W_OVERALL,
+                                    group_vars = regionID_code, avg_cycles = NULL, min_cycle = MIN_CYCLE) |>
+    left_join(regions, by = regionID_code)
+  asr_region_all_avg_1_30 <- calc_asr(incidence, all_causes, people_raw, W_OVERALL,
+                                   group_vars = regionID_code, avg_cycles = MIN_CYCLE:MAX_CYCLE, min_cycle = MIN_CYCLE) |>
+    left_join(regions, by = regionID_code)
+  
+  asr_healthy_years_overall <- calc_asr_from_counts(
+    healthy_age_counts, people_raw, W_OVERALL,
+    group_vars = character(), scale = 1e5, avg_cycles = NULL,
+    cause_name = "healthy_years", min_cycle = MIN_CYCLE
+  )
+  asr_healthy_years_overall_avg_1_30 <- calc_asr_from_counts(
+    healthy_age_counts, people_raw, W_OVERALL,
+    group_vars = character(), scale = 1e5, avg_cycles = MIN_CYCLE:MAX_CYCLE,
+    cause_name = "healthy_years", min_cycle = MIN_CYCLE
+  )
+  
+  # ---- Save everything the app needs ----
+  pc <- mget(REQUIRED_PC)
+  message("Saving precomputed cache: ", precomp_path)
+  qs::qsave(pc, precomp_path)
+  list2env(pc, envir = environment())
+}
+
+# ------------------- Constants ----------------------------------------
 
 MIN_CYCLE <- 1
 MAX_CYCLE <- 30
@@ -144,7 +531,7 @@ all_scenarios <- sort(unique(people_overall$scen))
 all_scenarios_lab <- stats::setNames(all_scenarios, scen_label(all_scenarios))
 pop_cycles    <- sort(unique(people_overall$cycle))
 trend_cycles  <- sort(unique(asr_overall_all$cycle))
-all_lads_nm   <- sort(unique(zones$ladnm))
+all_regions_nm   <- sort(unique(zones[[regionID_name]]))
 all_causes_asr <- sort(unique(c(unique(asr_overall_all$cause), "healthy_years")))
 all_disease_causes <- sort(unique(as.character(diseases_overall$cause)))
 
@@ -156,13 +543,13 @@ ui <- fluidPage(
       checkboxInput("use_plotly", "Interactive (Plotly)", value = TRUE),
       selectInput("scen_sel", "Scenarios:", choices = all_scenarios_lab,
                   selected = all_scenarios, multiple = TRUE),
-      selectInput("view_level", "View by:", choices = c("Overall","Gender","LAD"),
+      selectInput("view_level", "View by:", choices = c("Overall","Gender", regionID_type),
                   selected = "Overall"),
       conditionalPanel(
-        "input.view_level == 'LAD'",
-        selectizeInput("lad_sel", "LAD(s):",
-                       choices = all_lads_nm, multiple = TRUE,
-                       options = list(placeholder = "Pick LADs (optional)"))
+        paste0("input.view_level == '", regionID_type, "'"),
+        selectizeInput("region_sel", paste0(regionID_type, "(s):"),
+                       choices = all_regions_nm, multiple = TRUE,
+                       options = list(placeholder = paste0("Pick ", regionID_type, "(s) (optional)")))
       ),
       tags$hr(),
       tabsetPanel(
@@ -354,16 +741,16 @@ server <- function(input, output, session) {
         list(data = dat, facet = "gender", y = "pop", y_lab = "Population count")
       }
       
-    } else { # LAD
-      dat <- people_lad |>
+    } else { # Region
+      dat <- people_region |>
         filter(scen %in% input$scen_sel, cycle %in% input$pop_cycles)
-      if (length(input$lad_sel)) dat <- dplyr::filter(dat, ladnm %in% input$lad_sel)
+      if (length(input$region_sel)) dat <- dplyr::filter(dat, regionID_name %in% input$region_sel)
       dat <- mutate(dat, scen_lab = scen_label(scen))
       if (isTRUE(input$pop_share)) {
-        tmp <- pop_share(dat, c("cycle","scen","ladnm")) |> mutate(scen_lab = scen_label(scen))
-        list(data = tmp, facet = "ladnm", y = "share", y_lab = "Share of pop.")
+        tmp <- pop_share(dat, c("cycle","scen",regionID_name)) |> mutate(scen_lab = scen_label(scen))
+        list(data = tmp, facet = regionID_name, y = "share", y_lab = "Share of pop.")
       } else {
-        list(data = dat, facet = "ladnm", y = "pop", y_lab = "Population count")
+        list(data = dat, facet = regionID_name, y = "pop", y_lab = "Population count")
       }
     }
   })
@@ -392,30 +779,30 @@ server <- function(input, output, session) {
     validate(need(length(scen_keep) > 0, "Select at least one non-reference scenario."))
     minc <- input$diff_min_cycle; view <- input$view_level; cumu <- isTRUE(input$diff_cumulative)
     
-    dl  <- deaths_lad
-    dil <- diseases_lad
-    hl  <- healthy_lad
-    ll  <- lifey_lad
-    if (length(input$lad_sel)){
-      dl  <- dplyr::filter(dl,  ladnm %in% input$lad_sel)
-      dil <- dplyr::filter(dil, ladnm %in% input$lad_sel)
-      hl  <- dplyr::filter(hl,  ladnm %in% input$lad_sel)
-      ll  <- dplyr::filter(ll,  ladnm %in% input$lad_sel)
+    dl  <- deaths_region
+    dil <- diseases_region
+    hl  <- healthy_region
+    ll  <- lifey_region
+    if (length(input$region_sel)){
+      dl  <- dplyr::filter(dl,  .data[[regionID_name]] %in% input$region_sel)
+      dil <- dplyr::filter(dil, .data[[regionID_name]] %in% input$region_sel)
+      hl  <- dplyr::filter(hl,  .data[[regionID_name]] %in% input$region_sel)
+      ll  <- dplyr::filter(ll,  .data[[regionID_name]] %in% input$region_sel)
     }
     
     pick <- switch(input$metric_kind,
-                   deaths   = list(Overall=deaths_overall,  Gender=deaths_gender,  LAD=dl,  label="Premature deaths avoided"),
-                   diseases = list(Overall=diseases_overall,Gender=diseases_gender,LAD=dil, label="Δ Diseases"),
-                   healthy  = list(Overall=healthy_overall, Gender=healthy_gender, LAD=hl,  label="Life years without major NCDs"),
-                   life     = list(Overall=lifey_overall,   Gender=lifey_gender,   LAD=ll,  label="Life years gained")
+                   deaths   = list(Overall=deaths_overall,  Gender=deaths_gender,  region=dl,  label="Premature deaths avoided"),
+                   diseases = list(Overall=diseases_overall,Gender=diseases_gender,region=dil, label="Δ Diseases"),
+                   healthy  = list(Overall=healthy_overall, Gender=healthy_gender, region=hl,  label="Life years without major NCDs"),
+                   life     = list(Overall=lifey_overall,   Gender=lifey_gender,   region=ll,  label="Life years gained")
     )
     base <- pick[[view]]
     
     # Choose grouping strategy
     if (input$metric_kind == "diseases") {
-      by <- switch(view, Overall="cause", Gender=c("cause","gender"), LAD=c("cause","ladnm"))
+      by <- switch(view, Overall="cause", Gender=c("cause","gender"), region=c("cause",regionID_name))
     } else {
-      by <- switch(view, Overall=character(0), Gender="gender", LAD="ladnm")
+      by <- switch(view, Overall=character(0), Gender="gender", region=regionID_name)
     }
     
     df <- base |>
@@ -441,7 +828,7 @@ server <- function(input, output, session) {
     by <- c()
     if ("cause"  %in% names(d)) by <- c(by, "cause")
     if ("gender" %in% names(d)) by <- c(by, "gender")
-    if ("ladnm"  %in% names(d)) by <- c(by, "ladnm")
+    if (regionID_name  %in% names(d)) by <- c(by, regionID_name)
     
     metric_lab <- unique(d$metric)[1]
     
@@ -476,11 +863,11 @@ server <- function(input, output, session) {
     
     has_cause  <- "cause"  %in% names(ds)
     has_gender <- "gender" %in% names(ds)
-    has_lad    <- "ladnm"  %in% names(ds)
+    has_region    <- regionID_name  %in% names(ds)
     
     facet_cols <- character(0)
     if (has_cause)  facet_cols <- c(facet_cols, "cause")
-    if (has_lad)    facet_cols <- c(facet_cols, "ladnm")
+    if (has_region)    facet_cols <- c(facet_cols, regionID_name)
     if (has_gender) facet_cols <- c(facet_cols, "gender")
     
     ds <- compute_bar_labels(ds, value_col = "cumulative_value", facet_cols = facet_cols)
@@ -512,10 +899,10 @@ server <- function(input, output, session) {
         guides(fill = "none")
     }
     
-    if (has_lad && has_cause) {
-      p <- p + facet_grid(ladnm ~ cause, scales = "free_y")
-    } else if (has_lad) {
-      p <- p + facet_wrap(~ ladnm, nrow = 2, scales = "free_y")
+    if (has_region && has_cause) {
+      p <- p + facet_grid(regionnm ~ cause, scales = "free_y")
+    } else if (has_region) {
+      p <- p + facet_wrap(~ regionnm, nrow = 2, scales = "free_y")
     } else if (has_cause) {
       p <- p + facet_wrap(~ cause, ncol = 4, scales = "free_y")
     }
@@ -544,10 +931,10 @@ server <- function(input, output, session) {
         scale_gender_linetype() +
         labs(title = ttl, x = "Cycle (year)", y = ylab, colour = "Scenario", linetype = "Gender") +
         theme_clean_base()
-    } else if ("ladnm" %in% names(d)) {
+    } else if (regionID_name %in% names(d)) {
       ggplot(d, aes(x = cycle, y = y, colour = scen_lab)) +
         geom_smooth(se = FALSE) + add_zero_line() +
-        facet_wrap(~ ladnm, nrow = 2, scales = "free_y") +
+        facet_wrap(~ regionnm, nrow = 2, scales = "free_y") +
         labs(title = ttl, x = "Cycle (year)", y = ylab, colour = "Scenario") +
         theme_clean_base()
     } else {
@@ -566,8 +953,8 @@ server <- function(input, output, session) {
     
     by <- if ("gender" %in% names(d)) {
       if ("cause" %in% names(d)) c("cause","gender") else "gender"
-    } else if ("ladnm" %in% names(d)) {
-      if ("cause" %in% names(d)) c("cause","ladnm") else "ladnm"
+    } else if (regionID_name %in% names(d)) {
+      if ("cause" %in% names(d)) c("cause",regionID_name) else regionID_name
     } else {
       if ("cause" %in% names(d)) "cause" else character(0)
     }
@@ -624,11 +1011,11 @@ server <- function(input, output, session) {
           mutate(scen = scen_label(scen)) |>
           rename(mean_age_raw_years = mean_age_raw)
       } else {
-        tmp <- mean_age_dead_raw_by_scen_val_lad
-        if (length(input$lad_sel) > 0) tmp <- filter(tmp, ladnm %in% input$lad_sel)
+        tmp <- mean_age_dead_raw_by_scen_val_region
+        if (length(input$region_sel) > 0) tmp <- filter(tmp, regionnm %in% input$region_sel)
         tmp |>
           filter(value %in% causes) |>
-          arrange(scen, ladnm, value) |>
+          arrange(scen, regionnm, value) |>
           mutate(scen = scen_label(scen)) |>
           rename(mean_age_raw_years = mean_age_raw)
       }
@@ -651,11 +1038,11 @@ server <- function(input, output, session) {
           mutate(scen = scen_label(scen)) |>
           select(scen, gender, value, mean_age_raw_years = mean_age_raw)
       } else {
-        tmp <- mean_age_onset_raw_by_scen_val_lad
-        if (length(input$lad_sel) > 0) tmp <- filter(tmp, ladnm %in% input$lad_sel)
+        tmp <- mean_age_onset_raw_by_scen_val_region
+        if (length(input$region_sel) > 0) tmp <- filter(tmp, regionnm %in% input$region_sel)
         tmp |>
           filter(value == cause) |>
-          arrange(scen, ladnm) |>
+          arrange(scen, regionnm) |>
           mutate(scen = scen_label(scen)) |>
           rename(mean_age_raw_years = mean_age_raw)
       }
@@ -668,8 +1055,8 @@ server <- function(input, output, session) {
   asr_overall_avg_1_30              <<- to_chr_cause(asr_overall_avg_1_30)
   asr_gender_all                    <<- to_chr_cause(asr_gender_all)
   asr_gender_all_avg_1_30           <<- to_chr_cause(asr_gender_all_avg_1_30)
-  asr_lad_all_per_cycle             <<- to_chr_cause(asr_lad_all_per_cycle)
-  asr_lad_all_avg_1_30              <<- to_chr_cause(asr_lad_all_avg_1_30)
+  asr_region_all_per_cycle             <<- to_chr_cause(asr_region_all_per_cycle)
+  asr_region_all_avg_1_30              <<- to_chr_cause(asr_region_all_avg_1_30)
   asr_healthy_years_overall         <<- to_chr_cause(asr_healthy_years_overall)
   asr_healthy_years_overall_avg_1_30<<- to_chr_cause(asr_healthy_years_overall_avg_1_30)
   
@@ -729,21 +1116,21 @@ server <- function(input, output, session) {
                              expand = expansion(mult = c(0.05, 0.05))) +
           theme_clean_base()
         
-      } else { # LAD
-        df <- asr_lad_all_avg_1_30 |>
+      } else { # region
+        df <- asr_region_all_avg_1_30 |>
           filter(cause %in% causes, scen %in% scen_keep)
-        if (length(input$lad_sel)) df <- dplyr::filter(df, ladnm %in% input$lad_sel)
+        if (length(input$region_sel)) df <- dplyr::filter(df, .data[[regionID_name]] %in% input$region_sel)
         df <- df |>
           mutate(scen_lab = scen_label(scen)) |>
-          compute_bar_labels(value_col = "age_std_rate", facet_cols = "ladnm")
+          compute_bar_labels(value_col = "age_std_rate", facet_cols = regionID_name)
         
         pos <- position_dodge2(width = 0.8, padding = 0.08, preserve = "single")
-        ggplot(df, aes(x = reorder(ladnm, age_std_rate), y = age_std_rate, fill = scen_lab)) +
+        ggplot(df, aes(x = reorder(regionnm, age_std_rate), y = age_std_rate, fill = scen_lab)) +
           geom_col(position = pos, width = 0.8) +
           geom_text(aes(label = number(age_std_rate, accuracy = 0.1), hjust = label_hjust),
                     position = pos, vjust = 0.5, colour = "black", fontface = "bold", size = 3.6, show.legend = FALSE) +
           coord_flip(clip = "off") +
-          labs(title = paste0("ASR by LAD (avg cycles 1–30) — ", causes[1]),
+          labs(title = paste0("ASR by region (avg cycles 1–30) — ", causes[1]),
                x = NULL, y = "ASR per 100,000", fill = "Scenario") +
           scale_y_continuous(labels = label_number(accuracy = 1, big.mark = ","),
                              expand = expansion(mult = c(0.05, 0.05))) +
@@ -774,14 +1161,14 @@ server <- function(input, output, session) {
           theme_clean_base()
         
       } else {
-        dat <- asr_lad_all_per_cycle |>
+        dat <- asr_region_all_per_cycle |>
           filter(cause %in% causes, cycle >= MIN_CYCLE, scen %in% scen_keep)
-        if (length(input$lad_sel)) dat <- dplyr::filter(dat, ladnm %in% input$lad_sel)
+        if (length(input$region_sel)) dat <- dplyr::filter(dat, regionnm %in% input$region_sel)
         dat <- mutate(dat, scen_lab = scen_label(scen))
         ggplot(dat, aes(x = cycle, y = age_std_rate, colour = scen_lab)) +
           geom_smooth(se = FALSE) +
-          facet_grid(ladnm ~ cause, scales = "free_y") +
-          labs(title = "ASR per cycle by LAD (smoothed, cycles 1–30)",
+          facet_grid(regionnm ~ cause, scales = "free_y") +
+          labs(title = "ASR per cycle by region (smoothed, cycles 1–30)",
                x = "Cycle (year)", y = "ASR per 100,000", colour = "Scenario") +
           theme_clean_base()
       }
@@ -810,16 +1197,16 @@ server <- function(input, output, session) {
                      lifey  = lifey_gender,
                      healthy= healthy_gender
                    ),
-                   "LAD" = list(
-                     deaths = deaths_lad,
-                     lifey  = lifey_lad,
-                     healthy= healthy_lad
+                   "region" = list(
+                     deaths = deaths_region,
+                     lifey  = lifey_region,
+                     healthy= healthy_region
                    )
     )
     
-    # Optional LAD filter
-    if (view == "LAD" && length(input$lad_sel)) {
-      tbls <- lapply(tbls, \(d) d |> filter(ladnm %in% input$lad_sel))
+    # Optional region filter
+    if (view == "region" && length(input$region_sel)) {
+      tbls <- lapply(tbls, \(d) d |> filter(regionnm %in% input$region_sel))
     }
     
     # Stack three metrics with their labels
@@ -840,7 +1227,7 @@ server <- function(input, output, session) {
     by <- switch(view,
                  "Overall" = c(),
                  "Gender"  = c("gender"),
-                 "LAD"     = c("ladnm")
+                 "region"     = c(regionID_name)
     )
     
     long |>
@@ -884,8 +1271,8 @@ server <- function(input, output, session) {
     
     if (view == "Gender") {
       base + facet_wrap(~ gender, nrow = 1, drop = TRUE)
-    } else if (view == "LAD") {
-      base + facet_wrap(~ ladnm, nrow = 2, scales = "free_y")
+    } else if (view == "region") {
+      base + facet_wrap(~ regionnm, nrow = 2, scales = "free_y")
     } else base
   })
   
@@ -897,7 +1284,7 @@ server <- function(input, output, session) {
     df |>
       transmute(
         Scenario = scen_lab,
-        Group    = dplyr::coalesce(as.character(get0("gender", ifnotfound = NULL)), as.character(get0("ladnm", ifnotfound = NULL))),
+        Group    = dplyr::coalesce(as.character(get0("gender", ifnotfound = NULL)), as.character(get0(regionID_name, ifnotfound = NULL))),
         Metric   = metric,
         Value    = round(y, 2),
         Final_Cycle = cycle
@@ -914,7 +1301,7 @@ server <- function(input, output, session) {
     } else if (tab == "Differences vs reference") {
       d <- diff_long()
       if (isTRUE(input$diff_cumulative)) {
-        by <- if ("gender" %in% names(d)) "gender" else if ("ladnm" %in% names(d)) "ladnm" else character(0)
+        by <- if ("gender" %in% names(d)) "gender" else if (regionID_name %in% names(d)) regionID_name else character(0)
         d |>
           group_by(across(all_of(c("scen", by)))) |>
           slice_max(order_by = cycle, n = 1, with_ties = FALSE) |>
@@ -939,7 +1326,7 @@ server <- function(input, output, session) {
             filter(cause %in% input$asr_causes, scen %in% input$scen_sel) |>
             mutate(scen = scen_label(scen))
         } else {
-          asr_lad_all_avg_1_30 |>
+          asr_region_all_avg_1_30 |>
             filter(cause %in% input$asr_causes, scen %in% input$scen_sel) |>
             mutate(scen = scen_label(scen))
         }
@@ -953,7 +1340,7 @@ server <- function(input, output, session) {
             filter(cause %in% input$asr_causes, cycle >= MIN_CYCLE, scen %in% input$scen_sel) |>
             mutate(scen = scen_label(scen))
         } else {
-          asr_lad_all_per_cycle |>
+          asr_region_all_per_cycle |>
             filter(cause %in% input$asr_causes, cycle >= MIN_CYCLE, scen %in% input$scen_sel) |>
             mutate(scen = scen_label(scen))
         }
@@ -961,7 +1348,7 @@ server <- function(input, output, session) {
     } else if (tab == "Impact summary") {
       impact_summary() |>
         mutate(scen = scen_lab) |>
-        select(scen, gender = any_of("gender"), ladnm = any_of("ladnm"),
+        select(scen, gender = any_of("gender"), regionnm = any_of(regionID_name),
                metric, value = y, final_cycle = cycle)
     }
   })
