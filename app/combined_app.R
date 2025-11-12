@@ -78,7 +78,6 @@ ui <- fluidPage(
   sidebarLayout(
     sidebarPanel(
       width = 3,
-      checkboxInput("use_plotly", "Interactive (Plotly)", value = TRUE),
       selectInput("scen_sel", "Scenarios:", choices = all_scenarios,
                   selected = all_scenarios, multiple = TRUE),
       selectInput("view_level", "View by:", choices = c("Overall","Gender","LAD"),
@@ -166,8 +165,7 @@ ui <- fluidPage(
         ),
         tabPanel(
           "Differences vs reference",
-          conditionalPanel("input.use_plotly", plotlyOutput("plot_diffly", height = "50vh")),
-          conditionalPanel("!input.use_plotly", plotOutput("plot_diff", height = "50vh")),
+          plotlyOutput("plot_diffly", height = "50vh"),
           tags$hr(),
           h5("Summary (cumulative at latest cycle, or sum if non-cumulative)"),
           DT::dataTableOutput("table_diff_summary")
@@ -175,8 +173,7 @@ ui <- fluidPage(
         tabPanel("Average onset ages", tableOutput("table_avg")),
         tabPanel(
           "ASR",
-          conditionalPanel("input.use_plotly", plotlyOutput("plot_asrly", height = "85vh")),
-          conditionalPanel("!input.use_plotly", plotOutput("plot_asr", height = "85vh"))
+          plotlyOutput("plot_asrly", height = "85vh"))
         ),
         tabPanel(
           "Population",
@@ -250,7 +247,6 @@ server <- function(input, output, session) {
       base + facet_wrap(~ cycle, nrow = 1)
     }
   })
-  output$plot_pop   <- renderPlot({ build_pop_plot() })
   output$plot_poply <- renderPlotly({ ggplotly(build_pop_plot(), tooltip = c("x","y","fill")) })
   
   # ---------- Differences vs reference ----------
@@ -318,7 +314,6 @@ server <- function(input, output, session) {
         theme_clean()
     }
   })
-  output$plot_diff   <- renderPlot({ build_diff_plot() })
   output$plot_diffly <- renderPlotly({ ggplotly(build_diff_plot(), tooltip = c("x","y","colour","linetype")) })
   
 
@@ -549,7 +544,7 @@ server <- function(input, output, session) {
       }
     }
   })
-  output$plot_asr   <- renderPlot({ build_asr_plot() })
+  
   output$plot_asrly <- renderPlotly({ ggplotly(build_asr_plot(), tooltip = c("x","y","colour","fill","linetype")) })
   
   # ---------- CSV download ----------
