@@ -173,12 +173,11 @@ ui <- fluidPage(
         tabPanel("Average onset ages", tableOutput("table_avg")),
         tabPanel(
           "ASR",
-          plotlyOutput("plot_asrly", height = "85vh"))
+          uiOutput("plot_asrly", height = "85vh")
         ),
         tabPanel(
           "Population",
-          conditionalPanel("input.use_plotly", plotlyOutput("plot_poply", height = "85vh")),
-          conditionalPanel("!input.use_plotly", plotOutput("plot_pop", height = "85vh"))
+          plotlyOutput("plot_poply", height = "85vh")
         )
         
       )
@@ -462,15 +461,29 @@ server <- function(input, output, session) {
         df <- bind_rows(asr_overall_avg_1_30, asr_healthy_years_overall_avg_1_30) |>
           filter(cause %in% causes)
         req(nrow(df) > 0)
-        ggplot(df, aes(x = scen, y = age_std_rate, fill = scen)) +
-          geom_col(width = 0.8) +
-          geom_text(aes(label = number(age_std_rate, accuracy = 0.1)), hjust = -0.12, size = 3) +
-          scale_y_continuous(expand = expansion(mult = c(0, 0.14))) +
-          coord_flip(clip = "off") +
-          facet_wrap(vars(cause), scales = "free_x", ncol = 4) +
-          labs(title = "ASR (avg cycles 1–30)", x = NULL, y = "ASR per 100,000") +
-          theme_clean() + guides(fill = "none") +
-          theme(plot.margin = margin(5.5, 18, 5.5, 5.5))
+        
+        df |>
+          filter(scen %in% input$scen_sel) |> 
+          group_by(cause, scen) |> 
+          reframe(age_std_rate = mean(age_std_rate)) |> 
+          pivot_wider(names_from = scen, values_from = age_std_rate) |> 
+          gt() |> 
+          opt_interactive(use_filters = T,
+                          use_sorting = F,
+                          use_compact_mode = T) |> 
+          fmt_number(
+            columns = where(is.numeric),
+            decimals = 2
+          )
+        # ggplot(df, aes(x = scen, y = age_std_rate, fill = scen)) +
+        #   geom_col(width = 0.8) +
+        #   geom_text(aes(label = number(age_std_rate, accuracy = 0.1)), hjust = -0.12, size = 3) +
+        #   scale_y_continuous(expand = expansion(mult = c(0, 0.14))) +
+        #   coord_flip(clip = "off") +
+        #   facet_wrap(vars(cause), scales = "free_x", ncol = 4) +
+        #   labs(title = "ASR (avg cycles 1–30)", x = NULL, y = "ASR per 100,000") +
+        #   theme_clean() + guides(fill = "none") +
+        #   theme(plot.margin = margin(5.5, 18, 5.5, 5.5))
       } else if (input$view_level == "Gender") {
         df <- asr_gender_all_avg_1_30 |> filter(cause %in% causes)
         req(nrow(df) > 0)
@@ -545,7 +558,23 @@ server <- function(input, output, session) {
     }
   })
   
-  output$plot_asrly <- renderPlotly({ ggplotly(build_asr_plot(), tooltip = c("x","y","colour","fill","linetype")) })
+  # output$plot_asrly <- renderPlotly({ ggplotly(build_asr_plot(), tooltip = c("x","y","colour","fill","linetype")) })
+  
+  output$plot_asrly <- renderUI({
+    plot_obj <- build_asr_plot()
+    if (inherits(plot_obj, "ggplot")) {
+      output$plot_asrly <- renderPlotly({
+        ggplotly(plot_obj, tooltip = c("x", "y", "colour", "fill", "linetype"))
+      })
+      plotlyOutput("plot_asrly")
+    } else if (inherits(plot_obj, "gt_tbl")) {
+      output$asr_gt <- render_gt({
+        plot_obj
+      })
+      gt_output("asr_gt")
+    }
+  })
+  
   
   # ---------- CSV download ----------
   current_table <- reactive({
