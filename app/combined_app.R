@@ -68,10 +68,7 @@ pop_cycles    <- sort(unique(people_overall$cycle))
 trend_cycles  <- sort(unique(asr_overall_all$cycle))
 all_lads_nm   <- sort(unique(people_lad$ladnm))
 all_genders   <- sort(unique(people_gender$gender))
-all_causes_asr <- sort(unique(c(
-  unique(asr_overall_all$cause),
-  "healthy_years"
-)))
+all_causes_asr <- asr_overall_all |> filter(!grepl("dead|sev", cause)) |> distinct(cause) |> pull()
 
 ui <- fluidPage(
   titlePanel("Travel and Health Explorer"),
@@ -454,16 +451,16 @@ server <- function(input, output, session) {
   asr_healthy_years_overall_avg_1_30 <- to_chr_cause(asr_healthy_years_overall_avg_1_30)
   
   build_asr_plot <- reactive({
-    req(input$asr_mode, input$asr_causes)
+    req(input$asr_mode, input$asr_causes, input$view_level, input$scen_sel)
     causes <- input$asr_causes
+    scens <- input$scen_sel
     if (input$asr_mode == "avg") {
       if (input$view_level == "Overall") {
         df <- bind_rows(asr_overall_avg_1_30, asr_healthy_years_overall_avg_1_30) |>
-          filter(cause %in% causes)
+          filter(cause %in% causes, scen %in% scens)
         req(nrow(df) > 0)
         
         df |>
-          filter(scen %in% input$scen_sel) |> 
           group_by(cause, scen) |> 
           reframe(age_std_rate = mean(age_std_rate)) |> 
           pivot_wider(names_from = scen, values_from = age_std_rate) |> 
@@ -485,19 +482,39 @@ server <- function(input, output, session) {
         #   theme_clean() + guides(fill = "none") +
         #   theme(plot.margin = margin(5.5, 18, 5.5, 5.5))
       } else if (input$view_level == "Gender") {
-        df <- asr_gender_all_avg_1_30 |> filter(cause %in% causes)
+        df <- asr_gender_all_avg_1_30 |> 
+          filter(cause %in% causes, scen %in% scens)
         req(nrow(df) > 0)
-        pos <- position_dodge2(width = 0.75, padding = 0.05, preserve = "single")
-        ggplot(df, aes(x = scen, y = age_std_rate, fill = gender)) +
-          geom_col(position = pos, width = 0.75) +
-          geom_text(aes(label = number(age_std_rate, accuracy = 0.1)), position = pos, hjust = -0.12, size = 3) +
-          scale_y_continuous(expand = expansion(mult = c(0, 0.14))) +
-          coord_flip(clip = "off") +
-          facet_wrap(vars(cause), scales = "free_x", ncol = 4) +
-          labs(title = "ASR by gender (avg cycles 1–30)", x = NULL, y = "ASR per 100,000", fill = "Gender") +
-          theme_clean() + theme(plot.margin = margin(5.5, 18, 5.5, 5.5))
+        
+        
+        df |> 
+          mutate(gender = case_when(gender == 1 ~ "Male",
+                                                    gender == 2 ~ "Female")) |> 
+          group_by(cause, gender, scen) |> 
+          reframe(age_std_rate = mean(age_std_rate)) |> 
+          pivot_wider(names_from = scen, values_from = age_std_rate) |> 
+          gt() |> 
+          opt_interactive(use_filters = T,
+                          use_sorting = F,
+                          use_compact_mode = T) |> 
+          fmt_number(
+            columns = where(is.numeric),
+            decimals = 2
+          )
+        
+        # pos <- position_dodge2(width = 0.75, padding = 0.05, preserve = "single")
+        # ggplot(df, aes(x = scen, y = age_std_rate, fill = gender)) +
+        #   geom_col(position = pos, width = 0.75) +
+        #   geom_text(aes(label = number(age_std_rate, accuracy = 0.1)), position = pos, hjust = -0.12, size = 3) +
+        #   scale_y_continuous(expand = expansion(mult = c(0, 0.14))) +
+        #   coord_flip(clip = "off") +
+        #   facet_wrap(vars(cause), scales = "free_x", ncol = 4) +
+        #   labs(title = "ASR by gender (avg cycles 1–30)", x = NULL, y = "ASR per 100,000", fill = "Gender") +
+        #   theme_clean() + theme(plot.margin = margin(5.5, 18, 5.5, 5.5))
       } else {
-        df <- asr_lad_all_avg_1_30 |> filter(cause %in% causes)
+        df <- asr_lad_all_avg_1_30 |> 
+          filter(cause %in% causes, scen %in% scens)
+          
         if (length(input$lad_sel)) df <- df |> filter(ladnm %in% input$lad_sel)
         req(nrow(df) > 0)
         top_ids <- df |>
@@ -506,15 +523,29 @@ server <- function(input, output, session) {
           distinct(ladnm)
         dplot <- df |> filter(ladnm %in% top_ids$ladnm)
         req(nrow(dplot) > 0)
-        pos <- position_dodge2(width = 0.8, padding = 0.08, preserve = "single")
-        ggplot(dplot, aes(x = reorder(ladnm, age_std_rate), y = age_std_rate, fill = scen)) +
-          geom_col(position = pos, width = 0.8) +
-          geom_text(aes(label = number(age_std_rate, accuracy = 0.1)), position = pos, hjust = -0.10, size = 2.6) +
-          scale_y_continuous(expand = expansion(mult = c(0, 0.16))) +
-          coord_flip(clip = "off") +
-          labs(title = paste0("ASR by LAD (avg cycles 1–30) — ", causes[1]),
-               x = NULL, y = "ASR per 100,000", fill = "Scenario") +
-          theme_clean() + theme(plot.margin = margin(5.5, 18, 5.5, 5.5))
+        
+        dplot |> 
+          group_by(cause, ladnm, scen) |> 
+          reframe(age_std_rate = mean(age_std_rate)) |> 
+          pivot_wider(names_from = scen, values_from = age_std_rate) |> 
+          gt() |> 
+          opt_interactive(use_filters = T,
+                          use_sorting = F,
+                          use_compact_mode = T) |> 
+          fmt_number(
+            columns = where(is.numeric),
+            decimals = 2
+          )
+        
+        # pos <- position_dodge2(width = 0.8, padding = 0.08, preserve = "single")
+        # ggplot(dplot, aes(x = reorder(ladnm, age_std_rate), y = age_std_rate, fill = scen)) +
+        #   geom_col(position = pos, width = 0.8) +
+        #   geom_text(aes(label = number(age_std_rate, accuracy = 0.1)), position = pos, hjust = -0.10, size = 2.6) +
+        #   scale_y_continuous(expand = expansion(mult = c(0, 0.16))) +
+        #   coord_flip(clip = "off") +
+        #   labs(title = paste0("ASR by LAD (avg cycles 1–30) — ", causes[1]),
+        #        x = NULL, y = "ASR per 100,000", fill = "Scenario") +
+        #   theme_clean() + theme(plot.margin = margin(5.5, 18, 5.5, 5.5))
       }
     } else {
       if (input$view_level == "Overall") {
@@ -564,7 +595,7 @@ server <- function(input, output, session) {
     plot_obj <- build_asr_plot()
     if (inherits(plot_obj, "ggplot")) {
       output$plot_asrly <- renderPlotly({
-        ggplotly(plot_obj, tooltip = c("x", "y", "colour", "fill", "linetype"))
+        ggplotly(plot_obj)#, tooltip = c("x", "y", "colour", "fill", "linetype"))
       })
       plotlyOutput("plot_asrly")
     } else if (inherits(plot_obj, "gt_tbl")) {
