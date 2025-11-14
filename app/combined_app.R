@@ -17,6 +17,7 @@ list2env(pc, envir = environment())
 SCALING <- 1L
 
 t <- qs::qread(here("temp/061125_trips.qs"))
+exp <- qs::qread(here("temp/091125/exp.qs"))
 
 
 MIN_CYCLE <- 1
@@ -144,7 +145,7 @@ ui <- fluidPage(
           selectInput("asr_mode", "ASR view:",
                       choices = c("Average 1-30 (bars)"="avg","Over time (smoothed)"="trend")),
           selectizeInput("asr_causes", "Causes:", choices = all_causes_asr,
-                         selected = c("coronary_heart_disease","stroke","healthy_years"),
+                         selected = c("coronary_heart_disease","stroke"),
                          multiple = TRUE)#,
         )
       ),
@@ -159,6 +160,10 @@ ui <- fluidPage(
         tabPanel(
           "Travel Behaviour",
           plotlyOutput("out_mshare", height = "85vh")
+        ),
+        tabPanel(
+          "Exposures",
+          gt_output("plot_exp")
         ),
         tabPanel(
           "Differences vs reference",
@@ -460,10 +465,17 @@ server <- function(input, output, session) {
           filter(cause %in% causes, scen %in% scens)
         req(nrow(df) > 0)
         
-        df |>
+        sdf <- df |>
           group_by(cause, scen) |> 
           reframe(age_std_rate = mean(age_std_rate)) |> 
           pivot_wider(names_from = scen, values_from = age_std_rate) |> 
+          rowwise() |> 
+          mutate(
+            row_min = min(c_across(where(is.numeric)), na.rm = TRUE),
+            row_max = max(c_across(where(is.numeric)), na.rm = TRUE)
+          )
+        
+          sdf |> 
           gt() |> 
           opt_interactive(use_filters = T,
                           use_sorting = F,
@@ -842,6 +854,12 @@ server <- function(input, output, session) {
 
     
   })
+  
+  # In your server function
+  output$plot_exp <- render_gt({
+    exp   # exp should be a gt table prepared earlier
+  })
+  
   
 
 }
