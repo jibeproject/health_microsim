@@ -10,9 +10,10 @@ suppressPackageStartupMessages({
   library(here)
   library(qs)
   library(DT)
+  library(gt)
 })
 
-pc <- qs::qread(here("temp/precomputed_mcr_wgd_100%V2.qs"))
+pc <- qs::qread(here("temp/precomputed_mcr_wogd_100%V3.qs"))
 list2env(pc, envir = environment())
 SCALING <- 1L
 
@@ -855,9 +856,141 @@ server <- function(input, output, session) {
     
   })
   
-  # In your server function
+  # # In your server function
+  # output$plot_exp <- render_gt({
+  #   view <- input$view_level
+  #   if (view == "Overall") 
+  #     lexp <- exp |> filter(grepl("Overall", grouping))
+  #   
+  #   col_fun <- col_numeric(palette = c("lightpink", "lightgreen"), domain = c(0, 1))
+  #   # Pivot the data so that each row is defined by grouping, variable, and quantile,
+  #   # Pivot data so that each row represents (grouping, variable, quantile)
+  #   wide_df <- lexp |>
+  #     pivot_wider(
+  #       id_cols = c(grouping, variable, quantile),
+  #       names_from = scen,
+  #       values_from = value
+  #     )
+  #   
+  #   # Dynamically detect the scenario columns
+  #   scen_cols <- setdiff(names(wide_df), c("grouping", "variable", "quantile"))
+  #   
+  #   # Compute normalized columns
+  #   norm_df <- wide_df |>
+  #     rowwise() |>
+  #     mutate(
+  #       row_min = min(c_across(all_of(scen_cols)), na.rm = TRUE),
+  #       row_max = max(c_across(all_of(scen_cols)), na.rm = TRUE)
+  #     ) |>
+  #     mutate(across(
+  #       all_of(scen_cols),
+  #       function(x) if_else(row_max == row_min, 0.5, (x - row_min) / (row_max - row_min)),
+  #       .names = "{.col}_norm"
+  #     )) |>
+  #     ungroup()
+  #   
+  #   # Now safely construct HTML columns without using glue inside across()
+  #   for (scen in scen_cols) {
+  #     norm_col <- paste0(scen, "_norm")
+  #     html_col <- paste0(scen, "_html")
+  #     norm_df[[html_col]] <- mapply(function(val, norm) {
+  #       color <- col_fun(norm)
+  #       sprintf("<div style='background-color:%s'>%s</div>", color, round(val, 2))
+  #     }, norm_df[[scen]], norm_df[[norm_col]])
+  #   }
+  #   
+  #   html_cols <- paste0(scen_cols, "_html")
+  #   
+  #   gt_tbl <- norm_df |>
+  #     select(grouping, variable, quantile, all_of(html_cols)) |>
+  #     gt(groupname_col = "grouping") |>
+  #     cols_label(
+  #       reference_1_html = "V1: Reference",
+  #       reference_2_html = "V2: Reference",
+  #       both_1_html = "V1: Greening + Safer Streets",
+  #       both_2_html = "V2: Greening + Safer Streets",
+  #       green_1_html = "V1: Greening",
+  #       green_2_html = "V2: Greening",
+  #       safeStreet_1_html = "V1: Safer Streets",
+  #       safeStreet_2_html = "V2: Safer Streets",
+  #       goDutch_2_html = "V2: Go Dutch"
+  #     ) |>
+  #     fmt_markdown(columns = all_of(html_cols)) |>
+  #     tab_options(table.font.size = "small") |>
+  #     opt_interactive(use_filters = T,
+  #                     use_sorting = F,
+  #                     use_compact_mode = T)
+  #   
+  #   
+  #   gt_tbl
+  #   
+  #   
+  #   #exp   # exp should be a gt table prepared earlier
+  # })
+  
+  
   output$plot_exp <- render_gt({
-    exp   # exp should be a gt table prepared earlier
+    req(input$view_level)  # Ensure input is available
+    
+    view <- input$view_level
+    
+    # Handle missing or non-"Overall" selections
+    lexp <- if (view == "Overall") {
+      exp |> filter(grepl("Overall", grouping))
+    } else {
+      exp |> filter(grouping == view)
+    }
+    
+    # Ensure data isn’t empty
+    req(nrow(lexp) > 0)
+    
+    col_fun <- col_numeric(palette = c("lightpink", "lightgreen"), domain = c(0, 1))
+    
+    wide_df <- exp |>
+      pivot_wider(
+        #id_cols = c(grouping, variable),
+        names_from = scen,
+        values_from = value
+      )
+    
+    scen_cols <- setdiff(names(wide_df), c("grouping", "variable", "stat"))
+    
+    norm_df <- wide_df |>
+      rowwise() |>
+      mutate(
+        row_min = min(c_across(all_of(scen_cols)), na.rm = TRUE),
+        row_max = max(c_across(all_of(scen_cols)), na.rm = TRUE)
+      ) |>
+      mutate(across(
+        all_of(scen_cols),
+        function(x) if_else(row_max == row_min, 0.5, (x - row_min) / (row_max - row_min)),
+        .names = "{.col}_norm"
+      )) |>
+      ungroup()
+    
+    # Create html-colored cell content
+    for (scen in scen_cols) {
+      norm_col <- paste0(scen, "_norm")
+      html_col <- paste0(scen, "_html")
+      norm_df[[html_col]] <- mapply(function(val, norm) {
+        color <- col_fun(norm)
+        sprintf("<div style='background-color:%s; padding:2px;'>%s</div>", color, round(val, 2))
+      }, norm_df[[scen]], norm_df[[norm_col]], SIMPLIFY = TRUE)
+    }
+    
+    html_cols <- paste0(scen_cols, "_html")
+    
+    gt_tbl <- norm_df |>
+      dplyr::select(grouping, variable, stat, all_of(html_cols)) |>
+      gt(groupname_col = "grouping") |>
+      cols_label(!!!setNames(html_cols, html_cols)) |>
+      fmt_markdown(columns = all_of(html_cols)) |>
+      tab_options(table.font.size = "small") |>
+      opt_interactive(use_filters = TRUE,
+                      use_sorting = FALSE,
+                      use_compact_mode = TRUE)
+    
+    gt_tbl
   })
   
   
