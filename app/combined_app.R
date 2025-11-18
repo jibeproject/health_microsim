@@ -70,7 +70,7 @@ pop_cycles    <- sort(unique(people_overall$cycle))
 trend_cycles  <- sort(unique(asr_overall_all$cycle))
 all_lads_nm   <- sort(unique(people_lad$ladnm))
 all_genders   <- sort(unique(people_gender$gender))
-all_causes_asr <- asr_overall_all |> filter(!grepl("dead|sev", cause)) |> distinct(cause) |> pull()
+all_causes_asr <- asr_overall_all |> filter(!grepl("sev", cause)) |> distinct(cause) |> pull()
 
 ui <- fluidPage(
   titlePanel("Travel and Health Explorer"),
@@ -937,16 +937,23 @@ server <- function(input, output, session) {
     # Handle missing or non-"Overall" selections
     lexp <- if (view == "Overall") {
       exp |> filter(grepl("Overall", grouping))
-    } else {
-      exp |> filter(grouping == view)
+    } else if (view == "Gender") {
+        exp |> filter(grepl("Gender", grouping))
+    } else if  (view == "LAD") {
+      exp |> filter(grepl("LAD", grouping))
     }
+    
+    if (view == "LAD" && length(input$lad_sel)) {
+      lexp <- lexp |> filter(grepl(paste(input$lad_sel, collapse = "|"), grouping))
+    } 
+    
     
     # Ensure data isn’t empty
     req(nrow(lexp) > 0)
     
     col_fun <- col_numeric(palette = c("lightpink", "lightgreen"), domain = c(0, 1))
     
-    wide_df <- exp |>
+    wide_df <- lexp |>
       pivot_wider(
         #id_cols = c(grouping, variable),
         names_from = scen,
