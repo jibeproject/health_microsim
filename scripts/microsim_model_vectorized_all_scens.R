@@ -20,13 +20,13 @@ FILE_PATH_HPC <- FALSE
 options(future.globals.maxSize = +Inf)
 
 # Set sample_pro to be greater than zero
-sample_prop <- 0.001
+sample_prop <- 0.1
 
 # Number of cycles/years the simulation works
-n.c <- 1
+n.c <- 5
 
 # Define INJURY RISK to incorporate injury risks (both injuries and fatalities caused by injuries)
-INJURY_RISK <- TRUE
+INJURY_RISK <- FALSE
 
 for (scen in c("base"))#, "safestreet", "green", "both"))
 {
@@ -176,7 +176,7 @@ for (scen in c("base"))#, "safestreet", "green", "both"))
                                         rename(zone = oaID) |> 
                                         dplyr::select(zone, ladcd, lsoa21cd))
   
-  if (sample_prop > 0){
+  if (sample_prop > 0 && sample_prop < 1){
     synth_pop <- synth_pop  |> 
       group_by(agegroup, gender, ladcd) |> 
       sample_frac(sample_prop)
@@ -272,81 +272,84 @@ for (scen in c("base"))#, "safestreet", "green", "both"))
   
   rm(td)
   
-  # Create a list of diseases from teh burden data
-  diseases <- unique(hd$cause)
+  # Create a list of diseases from the burden data, while removing myeloma
+  diseases <- hd |> distinct(cause) |>  
+    filter(cause != "myeloma") |> pull()
+  
   
   if (INJURY_RISK){
     diseases <- append(diseases, c("severeFatalInjuryCar", "severeFatalInjuryBike", "severeFatalInjuryWalk"))
   }
   
-  get_injury_risk <- function()[
-    for (String mode : modes) {
-      // Set base scenario values
-      if (scenario.equals("base")) {
-        switch (mode) {
-          case "Bike":
-            modeFactors.put(mode, 2.301601915);
-          break;
-          case "Car":
-            modeFactors.put(mode, 2.01235657546337);
-          break;
-          case "Walk":
-            modeFactors.put(mode, 0.741037452);
-          break;
-        }
-      } else if(scenario.equals("safeStreet")){
-        switch (mode) {
-          case "Bike":
-            modeFactors.put(mode, 1.583259223);
-          break;
-          case "Car":
-            modeFactors.put(mode, 2.056126119);
-          break;
-          case "Walk":
-            modeFactors.put(mode, 0.734002674);
-          break;
-        }
-      } else if(scenario.equals("green")){
-        switch (mode) {
-          case "Bike":
-            modeFactors.put(mode, 2.373450201);
-          break;
-          case "Car":
-            modeFactors.put(mode, 2.019559765);
-          break;
-          case "Walk":
-            modeFactors.put(mode, 0.720561993);
-          break;
-        }
-      } else if(scenario.equals("both")){
-        switch (mode) {
-          case "Bike":
-            modeFactors.put(mode, 1.605557743);
-          break;
-          case "Car":
-            modeFactors.put(mode, 2.060215446);
-          break;
-          case "Walk":
-            modeFactors.put(mode, 0.714050054);
-          break;
-        }
-      } else if(scenario.equals("goDutch")){
-        switch (mode) {
-          case "Bike":
-            modeFactors.put(mode, 1.0);
-          break;
-          case "Car":
-            modeFactors.put(mode, 1.0);
-          break;
-          case "Walk":
-            modeFactors.put(mode, 1.0);
-          break;
-        }
-      } else {
-        // Set other scenarios to 0
-        modeFactors.put(mode, 1.0);
-      }
-  ]
+  # get_injury_risk <- function(){
+  #   for (String mode : modes) {
+  #     // Set base scenario values
+  #     if (scenario.equals("base")) {
+  #       switch (mode) {
+  #         case "Bike":
+  #           modeFactors.put(mode, 2.301601915);
+  #         break;
+  #         case "Car":
+  #           modeFactors.put(mode, 2.01235657546337);
+  #         break;
+  #         case "Walk":
+  #           modeFactors.put(mode, 0.741037452);
+  #         break;
+  #       }
+  #     } else if(scenario.equals("safeStreet")){
+  #       switch (mode) {
+  #         case "Bike":
+  #           modeFactors.put(mode, 1.583259223);
+  #         break;
+  #         case "Car":
+  #           modeFactors.put(mode, 2.056126119);
+  #         break;
+  #         case "Walk":
+  #           modeFactors.put(mode, 0.734002674);
+  #         break;
+  #       }
+  #     } else if(scenario.equals("green")){
+  #       switch (mode) {
+  #         case "Bike":
+  #           modeFactors.put(mode, 2.373450201);
+  #         break;
+  #         case "Car":
+  #           modeFactors.put(mode, 2.019559765);
+  #         break;
+  #         case "Walk":
+  #           modeFactors.put(mode, 0.720561993);
+  #         break;
+  #       }
+  #     } else if(scenario.equals("both")){
+  #       switch (mode) {
+  #         case "Bike":
+  #           modeFactors.put(mode, 1.605557743);
+  #         break;
+  #         case "Car":
+  #           modeFactors.put(mode, 2.060215446);
+  #         break;
+  #         case "Walk":
+  #           modeFactors.put(mode, 0.714050054);
+  #         break;
+  #       }
+  #     } else if(scenario.equals("goDutch")){
+  #       switch (mode) {
+  #         case "Bike":
+  #           modeFactors.put(mode, 1.0);
+  #         break;
+  #         case "Car":
+  #           modeFactors.put(mode, 1.0);
+  #         break;
+  #         case "Walk":
+  #           modeFactors.put(mode, 1.0);
+  #         break;
+  #       }
+  #     } else {
+  #       // Set other scenarios to 0
+  #       modeFactors.put(mode, 1.0);
+  #     }
+  #   }
+  # }
   
   # Vectorized version of get_state
   get_state_vectorized <- function(rd, cycle, cause, cm, ind_spec_rate) {
@@ -358,7 +361,7 @@ for (scen in c("base"))#, "safestreet", "green", "both"))
     # cause_risk = risk_factors
     
     risk_factors <- 1
-    print(cause)
+    # print(cause)
     prev_state <- as.character(cm[, 1])
     curr_state <- as.character(cm[, 2])
     current_age <- (as.numeric(rd[, "age"]) + cycle)
@@ -396,23 +399,23 @@ for (scen in c("base"))#, "safestreet", "green", "both"))
       personRR <- getRRA
       
       
-      double injuryRisk = ((PersonHealth) person).getWeeklyAccidentRisk("severeFatalInjury" + mode);
-      
-      // adjust injury risk by applying age/gender relative risks + finalCalibration to fit link based stats
-      double personalRR = getCasualtyRR_byAge_Gender(person.getGender(), person.getAge(), mode, (HealthDataContainerImpl) dataContainer);
-      
-      double carShare = ((HealthDataContainerImpl) dataContainer).getCarShareInjurydata().get(ageGroup).get(person.getGender()).shareDriver;
-      
-      if (mode.equals("Car")){
-        injuryRisk = injuryRisk * (personalRR * carShare + averageCarRR * (1-carShare)) * calibrationFactors.getCalibrationFactor(properties.main.scenarioName, mode) ;
-      }
-      else{
-        injuryRisk = injuryRisk * personalRR * calibrationFactors.getCalibrationFactor(properties.main.scenarioName, mode) ;
-      }
+    #   double injuryRisk = ((PersonHealth) person).getWeeklyAccidentRisk("severeFatalInjury" + mode);
+    #   
+    #   // adjust injury risk by applying age/gender relative risks + finalCalibration to fit link based stats
+    #   double personalRR = getCasualtyRR_byAge_Gender(person.getGender(), person.getAge(), mode, (HealthDataContainerImpl) dataContainer);
+    #   
+    #   double carShare = ((HealthDataContainerImpl) dataContainer).getCarShareInjurydata().get(ageGroup).get(person.getGender()).shareDriver;
+    #   
+    #   if (mode.equals("Car")){
+    #     injuryRisk = injuryRisk * (personalRR * carShare + averageCarRR * (1-carShare)) * calibrationFactors.getCalibrationFactor(properties.main.scenarioName, mode) ;
+    #   }
+    #   else{
+    #     injuryRisk = injuryRisk * personalRR * calibrationFactors.getCalibrationFactor(properties.main.scenarioName, mode) ;
+    #   }
     }
     
     # print(paste(cycle, cause, rr_index))
-    # print(summary(dis_prob))
+    
     #all_cause_prob <- as.numeric(rd[, "all_cause_mortality"])
     
     
@@ -422,6 +425,9 @@ for (scen in c("base"))#, "safestreet", "green", "both"))
     # Pre-compute conditions
     already_dead <- (!is.na(curr_state) & (grepl("dead", prev_state) | grepl("dead", curr_state)) | current_age >= 100) # | (all_cause_prob == 0)
     transition_condition <- !already_dead & !is.na(dis_prob) & (runif(length(dis_prob)) < dis_prob)
+    
+    # print(summary(transition_condition))
+    # print(summary(dis_prob))
     
     # Handle all-cause mortality
     if (cause == "all_cause_mortality") {
@@ -546,8 +552,8 @@ for (scen in c("base"))#, "safestreet", "green", "both"))
           cm = cm,
           ind_spec_rate = filtered_rates
         )
-        print(length(rdf))
-        print(length(m[, incyc + 1]))
+        #print(length(rdf))
+        #print(length(m[, incyc + 1]))
         #browser()
         
         # Update states in bulk
@@ -560,7 +566,7 @@ for (scen in c("base"))#, "safestreet", "green", "both"))
   
   # Run the simulation
   tic()
-  m2 <- run_simulation(synth_pop, m, hd, disease_risks, n.c, diseases, inj_probs = agp)
+  sim_output <- run_simulation(synth_pop, m, hd, disease_risks, n.c, diseases, inj_probs = agp)
   toc()
 
 
@@ -569,7 +575,7 @@ for (scen in c("base"))#, "safestreet", "green", "both"))
   # Create individual states, while ignoring the all_cause_mortality state as dead state already captures it
   l <- data.frame(states = c('dead', diseases |> str_subset(pattern = "all_cause_mortality", negate = TRUE)), freq = 0, c = 0)
   for (ind in 1:n.c){
-    df <- unlist(strsplit(m[, ind], " ")) |>
+    df <- unlist(strsplit(sim_output[, ind], " ")) |>
       as.data.frame()
     names(df) <- 'states'
     tbl <- df |>
@@ -595,7 +601,7 @@ for (scen in c("base"))#, "safestreet", "green", "both"))
                      labs(x = "Years", y = "Frequency (%)", title = paste(SCEN_SHORT_NAME, "State transitions over the years")))
 
 
-  m |> as.data.frame() |>
+  sim_output |> as.data.frame() |>
     rownames_to_column("id") |>
     pivot_longer(cols = -c(id)) |>
     mutate(unpacked = str_split(value, " ")) |>
@@ -605,7 +611,7 @@ for (scen in c("base"))#, "safestreet", "green", "both"))
     mutate(value = str_replace_all(value, fixed("parkinson’s_disease"), "parkinson")) |>
     group_by(name, value)|>
     summarise(nv = dplyr::n(),
-              freq = round(100 * nv / nrow(m), 1)) |>
+              freq = round(100 * nv / nrow(sim_output), 1)) |>
     filter(nv > 0) |>
     pivot_wider(id_cols = value,
                 names_from = name, values_from = nv) |> print()
@@ -647,22 +653,22 @@ for (scen in c("base"))#, "safestreet", "green", "both"))
 
   }
 
-  plotly::ggplotly(ggplot(prep_trans_df(m, measure = "freq"),
+  plotly::ggplotly(ggplot(prep_trans_df(sim_output, measure = "freq"),
                           aes(x = name, y = value, color = cause, group = cause) ) +
                      geom_point() +
                      geom_line() +
                      labs(title = paste(SCEN_SHORT_NAME, "Disease freq over time"), x = "years", y = "freq (%) "))
 
 
-  plotly::ggplotly(ggplot(prep_trans_df(m, measure = "nv"),
+  plotly::ggplotly(ggplot(prep_trans_df(sim_output, measure = "nv"),
                           aes(x = name, y = value, color = cause, group = cause) ) +
                      geom_point() +
                      geom_line() +
                      labs(title = paste(SCEN_SHORT_NAME, "Disease count over time"), x = "years", y = "count (n) "))
   
 
-  df <- as.data.frame(m)
-  df$id <- rownames(m)
+  df <- as.data.frame(sim_output)
+  df$id <- rownames(sim_output)
 
 
   # if (FILE_PATH_HPC) {
@@ -678,4 +684,5 @@ for (scen in c("base"))#, "safestreet", "green", "both"))
   #   arrow::write_dataset(df, paste0("manchester/health/processed/", SCEN_SHORT_NAME, "_dis_inter_", DISEASE_RISK, "_state_trans-n.c-", n.c, "-n.i-", n.i, "-n.d-", length(diseases), ".parquet"))
   # }
   
-}
+
+  }
