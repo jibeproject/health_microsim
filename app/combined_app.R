@@ -947,6 +947,10 @@ server <- function(input, output, session) {
       lexp <- lexp |> filter(grepl(paste(input$lad_sel, collapse = "|"), grouping))
     } 
     
+    if (length(input$scen_sel)) {
+      lexp <- lexp |> filter(grepl(paste(input$scen_sel, collapse = "|"), scen))
+    }
+    
     
     # Ensure data isn’t empty
     req(nrow(lexp) > 0)
