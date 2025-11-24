@@ -485,15 +485,6 @@ server <- function(input, output, session) {
             columns = where(is.numeric),
             decimals = 2
           )
-        # ggplot(df, aes(x = scen, y = age_std_rate, fill = scen)) +
-        #   geom_col(width = 0.8) +
-        #   geom_text(aes(label = number(age_std_rate, accuracy = 0.1)), hjust = -0.12, size = 3) +
-        #   scale_y_continuous(expand = expansion(mult = c(0, 0.14))) +
-        #   coord_flip(clip = "off") +
-        #   facet_wrap(vars(cause), scales = "free_x", ncol = 4) +
-        #   labs(title = "ASR (avg cycles 1–30)", x = NULL, y = "ASR per 100,000") +
-        #   theme_clean() + guides(fill = "none") +
-        #   theme(plot.margin = margin(5.5, 18, 5.5, 5.5))
       } else if (input$view_level == "Gender") {
         df <- asr_gender_all_avg_1_30 |> 
           filter(cause %in% causes, scen %in% scens)
@@ -515,15 +506,6 @@ server <- function(input, output, session) {
             decimals = 2
           )
         
-        # pos <- position_dodge2(width = 0.75, padding = 0.05, preserve = "single")
-        # ggplot(df, aes(x = scen, y = age_std_rate, fill = gender)) +
-        #   geom_col(position = pos, width = 0.75) +
-        #   geom_text(aes(label = number(age_std_rate, accuracy = 0.1)), position = pos, hjust = -0.12, size = 3) +
-        #   scale_y_continuous(expand = expansion(mult = c(0, 0.14))) +
-        #   coord_flip(clip = "off") +
-        #   facet_wrap(vars(cause), scales = "free_x", ncol = 4) +
-        #   labs(title = "ASR by gender (avg cycles 1–30)", x = NULL, y = "ASR per 100,000", fill = "Gender") +
-        #   theme_clean() + theme(plot.margin = margin(5.5, 18, 5.5, 5.5))
       } else {
         df <- asr_lad_all_avg_1_30 |> 
           filter(cause %in% causes, scen %in% scens)
@@ -550,15 +532,6 @@ server <- function(input, output, session) {
             decimals = 2
           )
         
-        # pos <- position_dodge2(width = 0.8, padding = 0.08, preserve = "single")
-        # ggplot(dplot, aes(x = reorder(ladnm, age_std_rate), y = age_std_rate, fill = scen)) +
-        #   geom_col(position = pos, width = 0.8) +
-        #   geom_text(aes(label = number(age_std_rate, accuracy = 0.1)), position = pos, hjust = -0.10, size = 2.6) +
-        #   scale_y_continuous(expand = expansion(mult = c(0, 0.16))) +
-        #   coord_flip(clip = "off") +
-        #   labs(title = paste0("ASR by LAD (avg cycles 1–30) — ", causes[1]),
-        #        x = NULL, y = "ASR per 100,000", fill = "Scenario") +
-        #   theme_clean() + theme(plot.margin = margin(5.5, 18, 5.5, 5.5))
       }
     } else {
       if (input$view_level == "Overall") {
@@ -585,12 +558,6 @@ server <- function(input, output, session) {
         if (length(input$lad_sel)) {
           dat <- dat |> filter(ladnm %in% input$lad_sel)
         } 
-        # else {
-        #   top_ids <- dat |> filter(cause == causes[1], scen == "reference") |>
-        #     group_by(ladnm) |> summarise(m = mean(age_std_rate, na.rm = TRUE), .groups = "drop") |>
-        #     slice_max(order_by = m, n = min(9, dplyr::n())) |> pull(ladnm)
-        #   dat <- dat |> filter(ladnm %in% top_ids)
-        # }
         req(nrow(dat) > 0)
         ggplot(dat, aes(x = cycle, y = age_std_rate, colour = scen)) +
           geom_smooth(se = FALSE) +
@@ -601,8 +568,6 @@ server <- function(input, output, session) {
       }
     }
   })
-  
-  # output$plot_asrly <- renderPlotly({ ggplotly(build_asr_plot(), tooltip = c("x","y","colour","fill","linetype")) })
   
   output$plot_asrly <- renderUI({
     plot_obj <- build_asr_plot()
@@ -654,6 +619,27 @@ server <- function(input, output, session) {
           asr_lad_all_per_cycle |> filter(cause %in% input$asr_causes, cycle >= MIN_CYCLE)
         }
       }
+    }else if (tab == "Exposures"){
+      
+      view <- input$view_level
+      # Handle missing or non-"Overall" selections
+      lexp <- if (view == "Overall") {
+        exp |> filter(grepl("Overall", grouping))
+      } else if (view == "Gender") {
+        exp |> filter(grepl("Gender", grouping))
+      } else if  (view == "LAD") {
+        exp |> filter(grepl("LAD", grouping))
+      }
+      
+      if (view == "LAD" && length(input$lad_sel)) {
+        lexp <- lexp |> filter(grepl(paste(input$lad_sel, collapse = "|"), grouping))
+      } 
+      
+      if (length(input$scen_sel)) {
+        lexp <- lexp |> filter(grepl(paste(input$scen_sel, collapse = "|"), scen))
+      }
+      
+      lexp
     }
   })
   output$download_csv <- downloadHandler(
@@ -663,14 +649,6 @@ server <- function(input, output, session) {
   
   
   output$out_zm <- renderPlotly({
-    
-    # req(input$in_scens)
-    # req(input$in_cities)
-    # req(input$in_level)
-    # req(input$in_measure)
-    # # req(input$in_CIs)
-    # req(input$in_pathways)
-    # req(!is.null(input$in_strata))
     
     t$zero_mode <- t$zero_mode |> mutate(scen = case_when(scen == "both" ~ "Greening + Safe Streets",
                                                           scen == "safeStreet" ~ "Safer Streets",
@@ -856,101 +834,10 @@ server <- function(input, output, session) {
     
   })
   
-  # # In your server function
-  # output$plot_exp <- render_gt({
-  #   view <- input$view_level
-  #   if (view == "Overall") 
-  #     lexp <- exp |> filter(grepl("Overall", grouping))
-  #   
-  #   col_fun <- col_numeric(palette = c("lightpink", "lightgreen"), domain = c(0, 1))
-  #   # Pivot the data so that each row is defined by grouping, variable, and quantile,
-  #   # Pivot data so that each row represents (grouping, variable, quantile)
-  #   wide_df <- lexp |>
-  #     pivot_wider(
-  #       id_cols = c(grouping, variable, quantile),
-  #       names_from = scen,
-  #       values_from = value
-  #     )
-  #   
-  #   # Dynamically detect the scenario columns
-  #   scen_cols <- setdiff(names(wide_df), c("grouping", "variable", "quantile"))
-  #   
-  #   # Compute normalized columns
-  #   norm_df <- wide_df |>
-  #     rowwise() |>
-  #     mutate(
-  #       row_min = min(c_across(all_of(scen_cols)), na.rm = TRUE),
-  #       row_max = max(c_across(all_of(scen_cols)), na.rm = TRUE)
-  #     ) |>
-  #     mutate(across(
-  #       all_of(scen_cols),
-  #       function(x) if_else(row_max == row_min, 0.5, (x - row_min) / (row_max - row_min)),
-  #       .names = "{.col}_norm"
-  #     )) |>
-  #     ungroup()
-  #   
-  #   # Now safely construct HTML columns without using glue inside across()
-  #   for (scen in scen_cols) {
-  #     norm_col <- paste0(scen, "_norm")
-  #     html_col <- paste0(scen, "_html")
-  #     norm_df[[html_col]] <- mapply(function(val, norm) {
-  #       color <- col_fun(norm)
-  #       sprintf("<div style='background-color:%s'>%s</div>", color, round(val, 2))
-  #     }, norm_df[[scen]], norm_df[[norm_col]])
-  #   }
-  #   
-  #   html_cols <- paste0(scen_cols, "_html")
-  #   
-  #   gt_tbl <- norm_df |>
-  #     select(grouping, variable, quantile, all_of(html_cols)) |>
-  #     gt(groupname_col = "grouping") |>
-  #     cols_label(
-  #       reference_1_html = "V1: Reference",
-  #       reference_2_html = "V2: Reference",
-  #       both_1_html = "V1: Greening + Safer Streets",
-  #       both_2_html = "V2: Greening + Safer Streets",
-  #       green_1_html = "V1: Greening",
-  #       green_2_html = "V2: Greening",
-  #       safeStreet_1_html = "V1: Safer Streets",
-  #       safeStreet_2_html = "V2: Safer Streets",
-  #       goDutch_2_html = "V2: Go Dutch"
-  #     ) |>
-  #     fmt_markdown(columns = all_of(html_cols)) |>
-  #     tab_options(table.font.size = "small") |>
-  #     opt_interactive(use_filters = T,
-  #                     use_sorting = F,
-  #                     use_compact_mode = T)
-  #   
-  #   
-  #   gt_tbl
-  #   
-  #   
-  #   #exp   # exp should be a gt table prepared earlier
-  # })
-  
-  
   output$plot_exp <- render_gt({
     req(input$view_level)  # Ensure input is available
     
-    view <- input$view_level
-    
-    # Handle missing or non-"Overall" selections
-    lexp <- if (view == "Overall") {
-      exp |> filter(grepl("Overall", grouping))
-    } else if (view == "Gender") {
-        exp |> filter(grepl("Gender", grouping))
-    } else if  (view == "LAD") {
-      exp |> filter(grepl("LAD", grouping))
-    }
-    
-    if (view == "LAD" && length(input$lad_sel)) {
-      lexp <- lexp |> filter(grepl(paste(input$lad_sel, collapse = "|"), grouping))
-    } 
-    
-    if (length(input$scen_sel)) {
-      lexp <- lexp |> filter(grepl(paste(input$scen_sel, collapse = "|"), scen))
-    }
-    
+    lexp <- current_table()
     
     # Ensure data isn’t empty
     req(nrow(lexp) > 0)
