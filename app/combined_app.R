@@ -978,17 +978,18 @@ server <- function(input, output, session) {
     # Create html-colored cell content
     for (scen in scen_cols) {
       norm_col <- paste0(scen, "_norm")
-      html_col <- paste0(scen, "_html")
-      norm_df[[html_col]] <- mapply(function(val, norm) {
+      #html_col <- paste0(scen, "_html")
+      norm_df[[scen]] <- mapply(function(val, norm) {
         color <- col_fun(norm)
         sprintf("<div style='background-color:%s; padding:2px;'>%s</div>", color, round(val, 2))
       }, norm_df[[scen]], norm_df[[norm_col]], SIMPLIFY = TRUE)
     }
     
-    html_cols <- paste0(scen_cols, "_html")
+    html_cols <- scen_cols
     
     gt_tbl <- norm_df |>
       dplyr::select(grouping, variable, stat, all_of(html_cols)) |>
+      #rename_at(vars(everything()), ~ sub("_html$", "", .x)) |> 
       gt(groupname_col = "grouping") |>
       cols_label(!!!setNames(html_cols, html_cols)) |>
       fmt_markdown(columns = all_of(html_cols)) |>
