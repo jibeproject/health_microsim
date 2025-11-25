@@ -24,6 +24,8 @@ exp <- qs::qread(here("temp/091125/exp.qs"))
 MIN_CYCLE <- 1
 MAX_CYCLE <- 30
 
+col_fun <- col_numeric(palette = c("lightpink", "lightgreen"), domain = c(0, 1))
+
 # ------------------- Helpers -------------------------------------------
 add_zero_line <- function() geom_hline(yintercept = 0, linewidth = 0.3)
 
@@ -466,45 +468,22 @@ server <- function(input, output, session) {
           filter(cause %in% causes, scen %in% scens)
         req(nrow(df) > 0)
         
-        sdf <- df |>
+        df |>
           group_by(cause, scen) |> 
           reframe(age_std_rate = mean(age_std_rate)) |> 
-          pivot_wider(names_from = scen, values_from = age_std_rate) |> 
-          rowwise() |> 
-          mutate(
-            row_min = min(c_across(where(is.numeric)), na.rm = TRUE),
-            row_max = max(c_across(where(is.numeric)), na.rm = TRUE)
-          )
+          pivot_wider(names_from = scen, values_from = age_std_rate) 
         
-          sdf |> 
-          gt() |> 
-          opt_interactive(use_filters = T,
-                          use_sorting = F,
-                          use_compact_mode = T) |> 
-          fmt_number(
-            columns = where(is.numeric),
-            decimals = 2
-          )
       } else if (input$view_level == "Gender") {
         df <- asr_gender_all_avg_1_30 |> 
           filter(cause %in% causes, scen %in% scens)
         req(nrow(df) > 0)
-        
         
         df |> 
           mutate(gender = case_when(gender == 1 ~ "Male",
                                                     gender == 2 ~ "Female")) |> 
           group_by(cause, gender, scen) |> 
           reframe(age_std_rate = mean(age_std_rate)) |> 
-          pivot_wider(names_from = scen, values_from = age_std_rate) |> 
-          gt() |> 
-          opt_interactive(use_filters = T,
-                          use_sorting = F,
-                          use_compact_mode = T) |> 
-          fmt_number(
-            columns = where(is.numeric),
-            decimals = 2
-          )
+          pivot_wider(names_from = scen, values_from = age_std_rate)
         
       } else {
         df <- asr_lad_all_avg_1_30 |> 
@@ -522,15 +501,7 @@ server <- function(input, output, session) {
         dplot |> 
           group_by(cause, ladnm, scen) |> 
           reframe(age_std_rate = mean(age_std_rate)) |> 
-          pivot_wider(names_from = scen, values_from = age_std_rate) |> 
-          gt() |> 
-          opt_interactive(use_filters = T,
-                          use_sorting = F,
-                          use_compact_mode = T) |> 
-          fmt_number(
-            columns = where(is.numeric),
-            decimals = 2
-          )
+          pivot_wider(names_from = scen, values_from = age_std_rate)
         
       }
     } else {
@@ -576,9 +547,48 @@ server <- function(input, output, session) {
         ggplotly(plot_obj)#, tooltip = c("x", "y", "colour", "fill", "linetype"))
       })
       plotlyOutput("plot_asrly")
-    } else if (inherits(plot_obj, "gt_tbl")) {
+    } else {#if (inherits(plot_obj, "gt_tbl")) {
       output$asr_gt <- render_gt({
-        plot_obj
+        
+        req(nrow(plot_obj) > 0)
+        
+        scen_cols <- setdiff(names(plot_obj), c("cause", "gender", "ladnm"))
+        
+        norm_df <- plot_obj |>
+          rowwise() |>
+          mutate(
+            row_min = min(c_across(all_of(scen_cols)), na.rm = TRUE),
+            row_max = max(c_across(all_of(scen_cols)), na.rm = TRUE)
+          ) |>
+          mutate(across(
+            all_of(scen_cols),
+            function(x) if_else(row_max == row_min, 0.5, (x - row_min) / (row_max - row_min)),
+            .names = "{.col}_norm"
+          )) |>
+          ungroup()
+        
+        # Create html-colored cell content
+        for (scen in scen_cols) {
+          norm_col <- paste0(scen, "_norm")
+          #html_col <- paste0(scen, "_html")
+          norm_df[[scen]] <- mapply(function(val, norm) {
+            color <- col_fun(norm)
+            sprintf("<div style='background-color:%s; padding:2px;'>%s</div>", color, round(val, 2))
+          }, norm_df[[scen]], norm_df[[norm_col]], SIMPLIFY = TRUE)
+        }
+        
+        html_cols <- scen_cols
+        
+        gt_tbl <- norm_df |>
+          dplyr::select(cause, any_of(c("gender", "ladnm")), all_of(html_cols)) |>
+          gt() |>
+          cols_label(!!!setNames(html_cols, html_cols)) |>
+          fmt_markdown(columns = all_of(html_cols)) |>
+          tab_options(table.font.size = "small") |>
+          opt_interactive(use_filters = TRUE,
+                          use_sorting = FALSE,
+                          use_compact_mode = TRUE)
+        
       })
       gt_output("asr_gt")
     }
@@ -707,8 +717,6 @@ server <- function(input, output, session) {
           mutate(tt = sum(trip_count)) |> 
           ungroup() |> 
           mutate(pt = trip_count/tt * 100)
-        
-        #"Gender","LAD"
         
       }else if(input$view_level == "Gender"){
         tp <- t$trips_percentage_combined |> 
@@ -842,7 +850,7 @@ server <- function(input, output, session) {
     # Ensure data isn’t empty
     req(nrow(lexp) > 0)
     
-    col_fun <- col_numeric(palette = c("lightpink", "lightgreen"), domain = c(0, 1))
+    # col_fun <- col_numeric(palette = c("lightpink", "lightgreen"), domain = c(0, 1))
     
     wide_df <- lexp |>
       pivot_wider(
