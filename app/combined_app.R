@@ -175,7 +175,8 @@ ui <- fluidPage(
           h5("Summary (cumulative at latest cycle, or sum if non-cumulative)"),
           gt_output("table_diff_summary")
         ),
-        tabPanel("Average onset ages", gt_output("table_avg")),
+        tabPanel("Average onset ages", 
+                 gt_output("table_avg")),
         tabPanel(
           "ASR",
           uiOutput("plot_asrly", height = "85vh")
@@ -349,7 +350,7 @@ server <- function(input, output, session) {
     
     if (isTRUE(input$diff_cumulative)) {
       
-      d |> 
+      d <- d |> 
         group_by(across(all_of(c("scen", by)))) |>
         slice_max(order_by = cycle, n = 1, with_ties = FALSE) |>
         ungroup() |>
@@ -360,10 +361,11 @@ server <- function(input, output, session) {
           cumulative_value = y,
           cumulative_value_scaled = y * SCALING
         ) |>
-        arrange(scen, across(all_of(by))) |> 
-          # 
-          # get_normalized_table(dt |> 
-          #                      pivot_wider(names_from = scen, values_from = mean_age_raw_years)) |>
+        arrange(scen, across(all_of(by)))
+      
+        get_normalized_table(d |> 
+                               dplyr::select(-any_of(c("cumulative_value_scaled", "final_cycle"))) |> 
+                               pivot_wider(names_from = scen, values_from = cumulative_value)) |>
         dplyr::select(-matches("min|max|norm")) |> 
         gt() |>
         tab_options(table.font.size = "small") |>
@@ -374,7 +376,7 @@ server <- function(input, output, session) {
         
         #DT::datatable(options = list(pageLength = 10, autoWidth = TRUE))
     } else {
-      d |> 
+      d <- d |> 
         group_by(across(all_of(c("scen", by)))) |>
         summarise(
           final_cycle = max(cycle, na.rm = TRUE),
@@ -387,6 +389,10 @@ server <- function(input, output, session) {
           .before = 1
         ) |>
         arrange(scen, across(all_of(by))) |>
+        
+        get_normalized_table(d |> 
+                               dplyr::select(-any_of(c("cumulative_value_scaled", "final_cycle"))) |> 
+                               pivot_wider(names_from = scen, values_from = cumulative_value)) |> 
         dplyr::select(-matches("min|max|norm")) |> 
         gt() |>
         tab_options(table.font.size = "small") |>
@@ -579,6 +585,8 @@ server <- function(input, output, session) {
     
     if (length(input$scen_sel))
       scen_cols <- input$scen_sel
+    
+    scen_cols <- intersect(scen_cols, names(df))
     
     norm_df <- df |>
       rowwise() |>
