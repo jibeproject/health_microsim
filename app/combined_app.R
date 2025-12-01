@@ -173,7 +173,7 @@ ui <- fluidPage(
           plotlyOutput("plot_diffly", height = "50vh"),
           tags$hr(),
           h5("Summary (cumulative at latest cycle, or sum if non-cumulative)"),
-          DT::dataTableOutput("table_diff_summary")
+          gt_output("table_diff_summary")
         ),
         tabPanel("Average onset ages", gt_output("table_avg")),
         tabPanel(
@@ -321,7 +321,7 @@ server <- function(input, output, session) {
   output$plot_diffly <- renderPlotly({ ggplotly(build_diff_plot())})#, tooltip = c("x","y","colour","linetype")) })
   
 
-  output$table_diff_summary <- DT::renderDT({
+  output$table_diff_summary <- renderUI({
     d <- diff_long()
     req(nrow(d) > 0)
     
@@ -348,6 +348,7 @@ server <- function(input, output, session) {
     metric_lab <- unique(d$metric)[1]
     
     if (isTRUE(input$diff_cumulative)) {
+      
       d |> 
         group_by(across(all_of(c("scen", by)))) |>
         slice_max(order_by = cycle, n = 1, with_ties = FALSE) |>
@@ -359,8 +360,19 @@ server <- function(input, output, session) {
           cumulative_value = y,
           cumulative_value_scaled = y * SCALING
         ) |>
-        arrange(scen, across(all_of(by))) |>
-        DT::datatable(options = list(pageLength = 10, autoWidth = TRUE))
+        arrange(scen, across(all_of(by))) |> 
+          # 
+          # get_normalized_table(dt |> 
+          #                      pivot_wider(names_from = scen, values_from = mean_age_raw_years)) |>
+        dplyr::select(-matches("min|max|norm")) |> 
+        gt() |>
+        tab_options(table.font.size = "small") |>
+        opt_interactive(use_filters = TRUE,
+                        use_sorting = FALSE,
+                        use_compact_mode = TRUE)
+      
+        
+        #DT::datatable(options = list(pageLength = 10, autoWidth = TRUE))
     } else {
       d |> 
         group_by(across(all_of(c("scen", by)))) |>
@@ -375,7 +387,13 @@ server <- function(input, output, session) {
           .before = 1
         ) |>
         arrange(scen, across(all_of(by))) |>
-        DT::datatable(options = list(pageLength = 10, autoWidth = TRUE))
+        dplyr::select(-matches("min|max|norm")) |> 
+        gt() |>
+        tab_options(table.font.size = "small") |>
+        opt_interactive(use_filters = TRUE,
+                        use_sorting = FALSE,
+                        use_compact_mode = TRUE)
+        # DT::datatable(options = list(pageLength = 10, autoWidth = TRUE))
     }
   })
   
