@@ -13,12 +13,12 @@ suppressPackageStartupMessages({
   library(gt)
 })
 
-pc <- qs::qread(here("temp/precomputed_mcr_wogd_100%V3.qs"))
+pc <- qs::qread(here("temp/processed_data/shiny_app_data/precomputed_mcr_wogd_100%V3.qs"))
 list2env(pc, envir = environment())
 SCALING <- 1L
 
-t <- qs::qread(here("temp/061125_trips.qs"))
-exp <- qs::qread(here("temp/091125/exp.qs"))
+t <- qs::qread(here("temp/processed_data/shiny_app_data/061125_trips.qs"))
+exp <- qs::qread(here("temp/processed_data/shiny_app_data/exp.qs"))  
 
 
 MIN_CYCLE <- 1
@@ -175,7 +175,7 @@ ui <- fluidPage(
           h5("Summary (cumulative at latest cycle, or sum if non-cumulative)"),
           DT::dataTableOutput("table_diff_summary")
         ),
-        tabPanel("Average onset ages", tableOutput("table_avg")),
+        tabPanel("Average onset ages", gt_output("table_avg")),
         tabPanel(
           "ASR",
           uiOutput("plot_asrly", height = "85vh")
@@ -318,7 +318,7 @@ server <- function(input, output, session) {
         theme_clean()
     }
   })
-  output$plot_diffly <- renderPlotly({ ggplotly(build_diff_plot(), tooltip = c("x","y","colour","linetype")) })
+  output$plot_diffly <- renderPlotly({ ggplotly(build_diff_plot())})#, tooltip = c("x","y","colour","linetype")) })
   
 
   output$table_diff_summary <- DT::renderDT({
@@ -394,26 +394,28 @@ server <- function(input, output, session) {
     }
   })
   
-  output$table_avg <- renderTable({
+  output$table_avg <- renderUI({
     view <- input$view_level
+    dt <- NULL
+    
     if (input$avg_kind == "death") {
       causes <- input$avg_death_causes; req(causes)
       if (view == "Overall") {
-        mean_age_dead_raw_by_scen_val |>
+        dt <- mean_age_dead_raw_by_scen_val |>
           filter(value %in% causes) |>
           left_join(mean_age_dead_weight_by_scen_val |> filter(value %in% causes),
                     by = c("scen","value")) |>
           arrange(scen, value) |>
           rename(mean_age_raw_years = mean_age_raw)
       } else if (view == "Gender") {
-        mean_age_dead_raw_by_scen_val_gender |>
+        dt <- mean_age_dead_raw_by_scen_val_gender |>
           filter(value %in% causes) |>
           left_join(mean_age_dead_weight_by_scen_val_gender |> filter(value %in% causes),
                     by = c("scen","value","gender")) |>
           arrange(scen, gender, value) |>
           rename(mean_age_raw_years = mean_age_raw)
       } else {
-        mean_age_dead_raw_by_scen_val_lad |>
+        dt <- mean_age_dead_raw_by_scen_val_lad |>
           (\(df) if(length(input$lad_sel) > 0) filter(df, ladnm %in% input$lad_sel) else df)() |>
           filter(value %in% causes) |>
           arrange(scen, ladnm, value) |>
@@ -422,7 +424,7 @@ server <- function(input, output, session) {
     } else {
       cause <- input$avg_cause; req(cause)
       if (view == "Overall") {
-        mean_age_onset_raw_by_scen_val |>
+        dt <- mean_age_onset_raw_by_scen_val |>
           filter(value == cause) |>
           left_join(mean_age_onset_weight_by_scen_val |> filter(value == cause),
                     by = c("scen","value")) |>
@@ -430,7 +432,7 @@ server <- function(input, output, session) {
           select(scen, value,
                  mean_age_raw_years = mean_age_raw)
       } else if (view == "Gender") {
-        mean_age_onset_raw_by_scen_val_gender |>
+        dt <- mean_age_onset_raw_by_scen_val_gender |>
           filter(value == cause) |>
           left_join(mean_age_onset_weight_by_scen_val_gender |> filter(value == cause),
                     by = c("scen","value","gender")) |>
@@ -438,13 +440,27 @@ server <- function(input, output, session) {
           select(scen, gender, value,
                  mean_age_raw_years = mean_age_raw)
       } else {
-        mean_age_onset_raw_by_scen_val_lad |>
+        dt <- mean_age_onset_raw_by_scen_val_lad |>
           (\(df) if(length(input$lad_sel) > 0) filter(df, ladnm %in% input$lad_sel) else df)() |>
           filter(value == cause) |>
           arrange(scen, ladnm) |>
           rename(mean_age_raw_years = mean_age_raw)
       }
     }
+    
+    dt <- dt |> dplyr::select(-any_of(c("mean_age_weighted")))
+    
+    if (length(input$scen_sel))
+      dt <- dt |> filter(grepl(paste(input$scen_sel, collapse = "|"), scen))
+    
+    get_normalized_table(dt |> 
+                            pivot_wider(names_from = scen, values_from = mean_age_raw_years)) |>
+      dplyr::select(-matches("min|max|norm")) |> 
+      gt() |>
+      tab_options(table.font.size = "small") |>
+      opt_interactive(use_filters = TRUE,
+                      use_sorting = FALSE,
+                      use_compact_mode = TRUE)
   })
   
   # ---------- ASR ----------
@@ -540,6 +556,37 @@ server <- function(input, output, session) {
     }
   })
   
+  get_normalized_table <- function(df){
+    scen_cols <- all_scenarios
+    
+    if (length(input$scen_sel))
+      scen_cols <- input$scen_sel
+    
+    norm_df <- df |>
+      rowwise() |>
+      mutate(
+        row_min = min(c_across(all_of(scen_cols)), na.rm = TRUE),
+        row_max = max(c_across(all_of(scen_cols)), na.rm = TRUE)
+      ) |>
+      mutate(across(
+        all_of(scen_cols),
+        function(x) if_else(row_max == row_min, 0.5, (x - row_min) / (row_max - row_min)),
+        .names = "{.col}_norm"
+      )) |>
+      ungroup()
+    
+    # Create html-colored cell content
+    for (scen in scen_cols) {
+      norm_col <- paste0(scen, "_norm")
+      norm_df[[scen]] <- mapply(function(val, norm) {
+        color <- col_fun(norm)
+        sprintf("<div style='background-color:%s; padding:2px;'>%s</div>", color, round(val, 2))
+      }, norm_df[[scen]], norm_df[[norm_col]], SIMPLIFY = TRUE)
+    }
+    
+    return(norm_df)
+  }
+  
   output$plot_asrly <- renderUI({
     plot_obj <- build_asr_plot()
     if (inherits(plot_obj, "ggplot")) {
@@ -550,40 +597,15 @@ server <- function(input, output, session) {
     } else {#if (inherits(plot_obj, "gt_tbl")) {
       output$asr_gt <- render_gt({
         
+        
         req(nrow(plot_obj) > 0)
         
-        scen_cols <- setdiff(names(plot_obj), c("cause", "gender", "ladnm"))
-        
-        norm_df <- plot_obj |>
-          rowwise() |>
-          mutate(
-            row_min = min(c_across(all_of(scen_cols)), na.rm = TRUE),
-            row_max = max(c_across(all_of(scen_cols)), na.rm = TRUE)
-          ) |>
-          mutate(across(
-            all_of(scen_cols),
-            function(x) if_else(row_max == row_min, 0.5, (x - row_min) / (row_max - row_min)),
-            .names = "{.col}_norm"
-          )) |>
-          ungroup()
-        
-        # Create html-colored cell content
-        for (scen in scen_cols) {
-          norm_col <- paste0(scen, "_norm")
-          #html_col <- paste0(scen, "_html")
-          norm_df[[scen]] <- mapply(function(val, norm) {
-            color <- col_fun(norm)
-            sprintf("<div style='background-color:%s; padding:2px;'>%s</div>", color, round(val, 2))
-          }, norm_df[[scen]], norm_df[[norm_col]], SIMPLIFY = TRUE)
-        }
-        
-        html_cols <- scen_cols
-        
-        gt_tbl <- norm_df |>
-          dplyr::select(cause, any_of(c("gender", "ladnm")), all_of(html_cols)) |>
+        gt_tbl <- get_normalized_table(plot_obj) |>
+          dplyr::select(-matches("min|max|norm")) |> 
+          #dplyr::select(cause, any_of(c("gender", "ladnm")), all_of(html_cols)) |>
           gt() |>
-          cols_label(!!!setNames(html_cols, html_cols)) |>
-          fmt_markdown(columns = all_of(html_cols)) |>
+          #cols_label(!!!setNames(html_cols, html_cols)) |>
+          #fmt_markdown(columns = all_of(html_cols)) |>
           tab_options(table.font.size = "small") |>
           opt_interactive(use_filters = TRUE,
                           use_sorting = FALSE,
