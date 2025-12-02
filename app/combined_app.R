@@ -11,14 +11,20 @@ suppressPackageStartupMessages({
   library(qs)
   library(DT)
   library(gt)
+  library(gtExtras)
 })
 
-pc <- qs::qread(here("temp/processed_data/shiny_app_data/precomputed_mcr_wogd_100%V3.qs"))
+pc <- qs::qread(here("temp/precomputed_mcr_wogd_100%V3.qs"))
+#pc <- qs::qread(here("temp/processed_data/shiny_app_data/precomputed_mcr_wogd_100%V3.qs"))
 list2env(pc, envir = environment())
 SCALING <- 1L
 
-t <- qs::qread(here("temp/processed_data/shiny_app_data/061125_trips.qs"))
-exp <- qs::qread(here("temp/processed_data/shiny_app_data/exp.qs"))  
+
+t <- qs::qread(here("temp/061125_trips.qs"))
+exp <- qs::qread(here("temp/091125/exp.qs"))
+
+#t <- qs::qread(here("temp/processed_data/shiny_app_data/061125_trips.qs"))
+#exp <- qs::qread(here("temp/processed_data/shiny_app_data/exp.qs"))  
 
 
 MIN_CYCLE <- 1
@@ -104,6 +110,13 @@ ui <- fluidPage(
         )
       ),
       
+      
+      conditionalPanel(
+        condition = "input.main_tabs == 'Differences vs reference'",
+        checkboxInput("diff_table", "Table", FALSE)
+      ),
+      
+      
       tags$hr(),
       tabsetPanel(
         id = "control_tabs", type = "pills",
@@ -173,7 +186,7 @@ ui <- fluidPage(
           plotlyOutput("plot_diffly", height = "50vh"),
           tags$hr(),
           h5("Summary (cumulative at latest cycle, or sum if non-cumulative)"),
-          gt_output("table_diff_summary")
+          uiOutput("table_diff_summary")
         ),
         tabPanel("Average onset ages", 
                  gt_output("table_avg")),
@@ -321,8 +334,8 @@ server <- function(input, output, session) {
   })
   output$plot_diffly <- renderPlotly({ ggplotly(build_diff_plot())})#, tooltip = c("x","y","colour","linetype")) })
   
-
-  output$table_diff_summary <- renderUI({
+  # Define a function to process and return the processed data
+  get_processed_data <- function() {
     d <- diff_long()
     req(nrow(d) > 0)
     
@@ -332,8 +345,7 @@ server <- function(input, output, session) {
       } else {
         "gender"
       }
-    }
-    else if ("ladnm" %in% names(d)) {
+    } else if ("ladnm" %in% names(d)) {
       if ("cause" %in% names(d)) {
         c("cause", "ladnm")
       } else {
@@ -342,7 +354,8 @@ server <- function(input, output, session) {
     } else {
       if ("cause" %in% names(d)) {
         "cause"
-      }else {character(0)
+      } else {
+        character(0)
       }
     }
     
@@ -363,18 +376,6 @@ server <- function(input, output, session) {
         ) |>
         arrange(scen, across(all_of(by)))
       
-        get_normalized_table(d |> 
-                               dplyr::select(-any_of(c("cumulative_value_scaled", "final_cycle"))) |> 
-                               pivot_wider(names_from = scen, values_from = cumulative_value)) |>
-        dplyr::select(-matches("min|max|norm")) |> 
-        gt() |>
-        tab_options(table.font.size = "small") |>
-        opt_interactive(use_filters = TRUE,
-                        use_sorting = FALSE,
-                        use_compact_mode = TRUE)
-      
-        
-        #DT::datatable(options = list(pageLength = 10, autoWidth = TRUE))
     } else {
       d <- d |> 
         group_by(across(all_of(c("scen", by)))) |>
@@ -388,22 +389,338 @@ server <- function(input, output, session) {
           cumulative_value_scaled = cumulative_value * SCALING,
           .before = 1
         ) |>
-        arrange(scen, across(all_of(by))) |>
+        arrange(scen, across(all_of(by)))
         
-        get_normalized_table(d |> 
-                               dplyr::select(-any_of(c("cumulative_value_scaled", "final_cycle"))) |> 
-                               pivot_wider(names_from = scen, values_from = cumulative_value)) |> 
-        dplyr::select(-matches("min|max|norm")) |> 
-        gt() |>
-        tab_options(table.font.size = "small") |>
-        opt_interactive(use_filters = TRUE,
-                        use_sorting = FALSE,
-                        use_compact_mode = TRUE)
-        # DT::datatable(options = list(pageLength = 10, autoWidth = TRUE))
+    }
+    
+    list(raw = d, by = by, metric_lab = metric_lab)
+  }
+  
+  # Use the function in renderUI
+  output$table_diff_summary <- renderUI({
+    data <- get_processed_data()
+    
+    if (isTRUE(input$diff_table)) {
+      gt_output("diff_summary_gt")
+    } else {
+      plotlyOutput("diff_summary_plot")
     }
   })
   
+  # Use the function in render_gt
+  output$diff_summary_gt <- render_gt({
+    data <- get_processed_data()
+    cumdf <- data$raw
+    by <- data$by
+    
+    get_normalized_table(
+      cumdf |>
+        dplyr::select(-any_of(c("cumulative_value_scaled", "final_cycle"))) |>
+        tidyr::pivot_wider(names_from = scen, values_from = cumulative_value)
+    ) |>
+      dplyr::select(-matches("min|max|norm")) |>
+      gt::gt() |>
+      gt::tab_options(table.font.size = "small") |>
+      opt_interactive(
+        use_filters = TRUE,
+        use_sorting = FALSE,
+        use_compact_mode = TRUE
+      )
+  })
   
+  # Use the function in renderPlot
+  output$diff_summary_plot <- renderPlotly({
+    data <- get_processed_data()
+    cumdf <- data$raw
+    
+    plotly::ggplotly(ggplot(cumdf) +
+      aes(x = cumulative_value, y = cause, fill = scen) +
+      geom_bar(
+        stat = "summary",
+        fun = "mean",
+        position = "dodge2"
+      ) +
+      scale_fill_hue(direction = 1) +
+      theme_minimal()
+    )
+  })
+  
+  
+  # output$table_diff_summary <- renderUI({
+  #   d <- diff_long()
+  #   req(nrow(d) > 0)
+  #   
+  #   by <- if ("gender" %in% names(d)) {
+  #     if ("cause" %in% names(d)) {
+  #       c("cause", "gender")
+  #     } else {
+  #       "gender"
+  #     }
+  #   } else if ("ladnm" %in% names(d)) {
+  #     if ("cause" %in% names(d)) {
+  #       c("cause", "ladnm")
+  #     } else {
+  #       "ladnm"
+  #     }
+  #   } else {
+  #     if ("cause" %in% names(d)) {
+  #       "cause"
+  #     } else {
+  #       character(0)
+  #     }
+  #   }
+  #   
+  #   metric_lab <- unique(d$metric)[1]
+  #   
+  #   cumdf <- d |>
+  #     group_by(across(all_of(c("scen", by)))) |>
+  #     slice_max(order_by = cycle, n = 1, with_ties = FALSE) |>
+  #     ungroup() |>
+  #     transmute(
+  #       metric = metric_lab, scen,
+  #       !!!(if (length(by)) rlang::syms(by) else NULL),
+  #       final_cycle = cycle,
+  #       cumulative_value = y,
+  #       cumulative_value_scaled = y * SCALING
+  #     ) |>
+  #     arrange(scen, across(all_of(by)))
+  #   
+  #   if (isTRUE(input$diff_table)) {
+  #     gt_output("diff_summary_gt")
+  #   } else {
+  #     plotOutput("diff_summary_plot")
+  #   }
+  # })
+  # 
+  # output$diff_summary_gt <- render_gt({
+  #   d <- diff_long()
+  #   req(nrow(d) > 0)
+  #   
+  #   by <- if ("gender" %in% names(d)) {
+  #     if ("cause" %in% names(d)) {
+  #       c("cause", "gender")
+  #     } else {
+  #       "gender"
+  #     }
+  #   } else if ("ladnm" %in% names(d)) {
+  #     if ("cause" %in% names(d)) {
+  #       c("cause", "ladnm")
+  #     } else {
+  #       "ladnm"
+  #     }
+  #   } else {
+  #     if ("cause" %in% names(d)) {
+  #       "cause"
+  #     } else {
+  #       character(0)
+  #     }
+  #   }
+  #   
+  #   metric_lab <- unique(d$metric)[1]
+  #   
+  #   cumdf <- d |>
+  #     group_by(across(all_of(c("scen", by)))) |>
+  #     slice_max(order_by = cycle, n = 1, with_ties = FALSE) |>
+  #     ungroup() |>
+  #     transmute(
+  #       metric = metric_lab, scen,
+  #       !!!(if (length(by)) rlang::syms(by) else NULL),
+  #       final_cycle = cycle,
+  #       cumulative_value = y,
+  #       cumulative_value_scaled = y * SCALING
+  #     ) |>
+  #     arrange(scen, across(all_of(by)))
+  #   
+  #   get_normalized_table(
+  #     cumdf |>
+  #       dplyr::select(-any_of(c("cumulative_value_scaled", "final_cycle"))) |>
+  #       tidyr::pivot_wider(names_from = scen, values_from = cumulative_value)
+  #   ) |>
+  #     dplyr::select(-matches("min|max|norm")) |>
+  #     gt::gt() |>
+  #     gt::tab_options(table.font.size = "small") |>
+  #     opt_interactive(
+  #       use_filters = TRUE,
+  #       use_sorting = FALSE,
+  #       use_compact_mode = TRUE
+  #     )
+  # })
+  # 
+  # output$diff_summary_plot <- renderPlot({
+  #   d <- diff_long()
+  #   req(nrow(d) > 0)
+  #   
+  #   by <- if ("gender" %in% names(d)) {
+  #     if ("cause" %in% names(d)) {
+  #       c("cause", "gender")
+  #     } else {
+  #       "gender"
+  #     }
+  #   } else if ("ladnm" %in% names(d)) {
+  #     if ("cause" %in% names(d)) {
+  #       c("cause", "ladnm")
+  #     } else {
+  #       "ladnm"
+  #     }
+  #   } else {
+  #     if ("cause" %in% names(d)) {
+  #       "cause"
+  #     } else {
+  #       character(0)
+  #     }
+  #   }
+  #   
+  #   metric_lab <- unique(d$metric)[1]
+  #   
+  #   cumdf <- d |>
+  #     group_by(across(all_of(c("scen", by)))) |>
+  #     slice_max(order_by = cycle, n = 1, with_ties = FALSE) |>
+  #     ungroup() |>
+  #     transmute(
+  #       metric = metric_lab, scen,
+  #       !!!(if (length(by)) rlang::syms(by) else NULL),
+  #       final_cycle = cycle,
+  #       cumulative_value = y,
+  #       cumulative_value_scaled = y * SCALING
+  #     ) |>
+  #     arrange(scen, across(all_of(by)))
+  #   
+  #   ggplot(cumdf) +
+  #     aes(x = cumulative_value, y = cause, fill = scen) +
+  #     geom_bar(
+  #       stat = "summary",
+  #       fun = "mean",
+  #       position = "dodge2"
+  #     ) +
+  #     scale_fill_hue(direction = 1) +
+  #     theme_minimal()
+  # })
+  
+  
+
+  # output$table_diff_summary <- renderUI({
+  #   if (isTRUE(input$diff_table)) {
+  #     gt_output("diff_tbl")
+  #   } else {
+  #     plotOutput("diff_plt")
+  #   }
+  # })
+  # 
+  # # render the gt table
+  # output$diff_tbl <- render_gt({
+  #   get_diff_tbl()
+  # })
+  # 
+  # # render the plot
+  # output$diff_plt <- renderPlot({
+  #   get_diff_plt()
+  # })
+  # 
+  # 
+  # # gt table object
+  # get_diff_tbl <- reactive({
+  #   gt(head(mtcars))
+  # })
+  # 
+  # 
+  # 
+  # 
+  # output$table_diff_summary <- renderUI({
+  #   d <- diff_long()
+  #   req(nrow(d) > 0)
+  #   
+  #   by <- if ("gender" %in% names(d)) {
+  #     if ("cause" %in% names(d)) {
+  #       c("cause", "gender")
+  #     } else {
+  #       "gender"
+  #     }
+  #   }
+  #   else if ("ladnm" %in% names(d)) {
+  #     if ("cause" %in% names(d)) {
+  #       c("cause", "ladnm")
+  #     } else {
+  #       "ladnm"
+  #     }
+  #   } else {
+  #     if ("cause" %in% names(d)) {
+  #       "cause"
+  #     }else {character(0)
+  #     }
+  #   }
+  #   
+  #   metric_lab <- unique(d$metric)[1]
+  #   
+  #   if (isTRUE(input$diff_cumulative)) {
+  #     
+  #     cumdf <- d |> 
+  #       group_by(across(all_of(c("scen", by)))) |>
+  #       slice_max(order_by = cycle, n = 1, with_ties = FALSE) |>
+  #       ungroup() |>
+  #       transmute(
+  #         metric = metric_lab, scen,
+  #         !!!(if (length(by)) rlang::syms(by) else NULL),
+  #         final_cycle = cycle,
+  #         cumulative_value = y,
+  #         cumulative_value_scaled = y * SCALING
+  #       ) |>
+  #       arrange(scen, across(all_of(by)))
+  #     
+  #     if (isTRUE(input$diff_table)){
+  #       get_normalized_table(d |>
+  #                              dplyr::select(-any_of(c("cumulative_value_scaled", "final_cycle"))) |>
+  #                              pivot_wider(names_from = scen, values_from = cumulative_value)) |>
+  #         dplyr::select(-matches("min|max|norm")) |>
+  #         gt() |>
+  #         tab_options(table.font.size = "small") |>
+  #         opt_interactive(use_filters = TRUE,
+  #                         use_sorting = FALSE,
+  #                         use_compact_mode = TRUE)
+  #     }else if (!isTRUE(input$diff_table)){
+  #       
+  #       #print(head(cumdf))
+  #       
+  #       #plotOutput("diff_plot")
+  #       
+  #       ggplot(cumdf) +
+  #         aes(x = cumulative_value, y = cause, fill = scen) +
+  #         geom_bar(
+  #           stat = "summary",
+  #           fun = "mean",
+  #           position = "dodge2"
+  #         ) +
+  #         scale_fill_hue(direction = 1) +
+  #         theme_minimal()
+  #     }
+  #     
+  #   } else {
+  #     noncumdf <- d |> 
+  #       group_by(across(all_of(c("scen", by)))) |>
+  #       summarise(
+  #         final_cycle = max(cycle, na.rm = TRUE),
+  #         cumulative_value = sum(diff, na.rm = TRUE), 
+  #         .groups = "drop"
+  #       ) |>
+  #       mutate(
+  #         metric = metric_lab, 
+  #         cumulative_value_scaled = cumulative_value * SCALING,
+  #         .before = 1
+  #       ) |>
+  #       arrange(scen, across(all_of(by)))
+  #     
+  #     get_normalized_table(noncumdf |> 
+  #                            dplyr::select(-any_of(c("cumulative_value_scaled", "final_cycle"))) |> 
+  #                            pivot_wider(names_from = scen, values_from = cumulative_value)) |> 
+  #       dplyr::select(-matches("min|max|norm")) |> 
+  #       gt() |>
+  #       tab_options(table.font.size = "small") |>
+  #       opt_interactive(use_filters = TRUE,
+  #                       use_sorting = FALSE,
+  #                       use_compact_mode = TRUE)
+  #     # DT::datatable(options = list(pageLength = 10, autoWidth = TRUE))
+  #   }
+  # })
+        
   # ---------- Average ages (death / onset) ----------
   output$avg_cause_ui <- renderUI({
     if (input$avg_kind == "onset") {
