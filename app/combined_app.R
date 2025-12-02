@@ -287,12 +287,10 @@ server <- function(input, output, session) {
     
     
     pick <- switch(input$metric_kind,
-                   deaths   = list(Overall=deaths_overall,  Gender=deaths_gender,  LAD=dl,
-                                   #ifelse(length(input$lad_sel), deaths_lad |> filter(ladnm %in% input$lad_sel), deaths_lad),
-                                   label="Δ Deaths"),
-                   diseases = list(Overall=diseases_overall,Gender=diseases_gender,LAD=dil,label="Δ Diseases"),
+                   deaths   = list(Overall=deaths_overall, Gender=deaths_gender,  LAD=dl, label="Δ Deaths"),
+                   diseases = list(Overall=diseases_overall, Gender=diseases_gender, LAD=dil,label="Δ Diseases"),
                    healthy  = list(Overall=healthy_overall, Gender=healthy_gender, LAD=hl,label="Δ Healthy years"),
-                   life     = list(Overall=lifey_overall,   Gender=lifey_gender,   LAD=ll,  label="Δ Life years"))
+                   life     = list(Overall=lifey_overall, Gender=lifey_gender, LAD=ll,  label="Δ Life years"))
     base <- pick[[view]]
     if (input$metric_kind == "diseases")
       by <- switch(view, Overall="cause", Gender=c("cause", "gender"), LAD=c("cause", "ladnm"))
@@ -433,6 +431,10 @@ server <- function(input, output, session) {
     data <- get_processed_data()
     cumdf <- data$raw
     
+    print(data$metric_lab)
+    # browser()
+
+    if (grepl("Diseases", data$metric_lab)){
     plotly::ggplotly(ggplot(cumdf) +
       aes(x = cumulative_value, y = cause, fill = scen) +
       geom_bar(
@@ -443,6 +445,16 @@ server <- function(input, output, session) {
       scale_fill_hue(direction = 1) +
       theme_minimal()
     )
+    }else{
+      
+      plotly::ggplotly(ggplot(cumdf, aes(x = scen, y = cumulative_value, fill = scen)) +
+        geom_col(position = "dodge") +
+        labs(title = paste("Cumulative Values by Scenario and ", data$metric_lab),
+             x = "Scenario", y = "Cumulative Value") +
+        theme_minimal()
+      )
+      
+    }
   })
   
   
