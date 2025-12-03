@@ -184,10 +184,10 @@ ui <- fluidPage(
         ),
         tabPanel(
           "Differences vs reference",
-          plotlyOutput("plot_diffly", height = "50vh"),
+          plotlyOutput("plot_diffly", height = "35vh"),
           tags$hr(),
           h5("Summary (cumulative at latest cycle, or sum if non-cumulative)"),
-          uiOutput("table_diff_summary")
+          uiOutput("table_diff_summary", height = "35vh")
         ),
         tabPanel("Average onset ages", 
                  gt_output("table_avg")),
