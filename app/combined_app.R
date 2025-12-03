@@ -33,6 +33,7 @@ MAX_CYCLE <- 30
 
 col_fun <- col_numeric(palette = c("lightpink", "lightgreen"), domain = c(0, 1))
 
+
 # ------------------- Helpers -------------------------------------------
 add_zero_line <- function() geom_hline(yintercept = 0, linewidth = 0.3)
 
@@ -161,11 +162,16 @@ ui <- page_sidebar(
           condition = "input.main_tabs == 'ASR'",
           h2("ASR"),
           selectInput("asr_mode", "ASR view:",
-                      choices = c("Average 1-30 (bars)"="avg","Over time (smoothed)"="trend")),
+                      choices = c("Average 1-30 (bars)"="avg","Over time (smoothed)"="trend"))
+        ),
+        conditionalPanel(
+          condition = "input.main_tabs == 'ASR' || (input.main_tabs == 'Differences vs reference' && 
+          input.metric_kind == 'diseases')",
           selectizeInput("asr_causes", "Causes:", choices = all_causes_asr,
                          selected = c("coronary_heart_disease","stroke"),
                          multiple = TRUE)#,
         )
+        
       ),
       tags$hr(),
       downloadButton("download_csv", "Download current table (CSV)")
@@ -191,7 +197,7 @@ ui <- page_sidebar(
           uiOutput("plot_asrly", height = "85vh")
         ),
     nav_panel("Population",
-          plotlyOutput("plot_poply", height = "85vh")
+          plotlyOutput("plot_poply")#, height = "85vh")
         )
         
       )
@@ -215,26 +221,47 @@ server <- function(input, output, session) {
     }
   })
   
+  
+  set_ag <- function(df){
+    
+    # Define the correct order of age groups
+    age_levels <- c("0-4", "5-9", "10-14", "15-19", "20-24", "25-29", "30-34", 
+                    "35-39", "40-44", "45-49", "50-54", "55-59", "60-64", 
+                    "65-69", "70-74", "75-79", "80-84", "85-89", "90-94", 
+                    "95-99", "100+")
+    
+    # Convert to ordered factor
+    df$agegroup_cycle <- factor(df$agegroup_cycle, levels = age_levels, ordered = TRUE)
+    
+    return(df)
+  }
   # ---------- Population ----------
   pop_data <- reactive({
     req(input$pop_cycles, input$scen_sel)
     view <- input$view_level
+    
+    
+    
     if (view == "Overall") {
-      dat <- people_overall |> filter(scen %in% input$scen_sel, cycle %in% input$pop_cycles)
+      dat <- set_ag(people_overall) |> filter(scen %in% input$scen_sel, cycle %in% input$pop_cycles)
       if (isTRUE(input$pop_share)) {
         list(data = pop_share(dat, c("cycle","scen")), y = "share", y_lab = "Share of pop.")
       } else {
         list(data = dat, y = "pop", y_lab = "Population count")
       }
     } else if (view == "Gender") {
-      dat <- people_gender |> filter(scen %in% input$scen_sel, cycle %in% input$pop_cycles)
+      dat <- set_ag(people_gender) |> 
+        filter(scen %in% input$scen_sel, cycle %in% input$pop_cycles) |> 
+        mutate(gender = case_when(gender == 1 ~ "Male",
+                                  gender == 2 ~ "Female"))
       if (isTRUE(input$pop_share)) {
-        list(data = pop_share(dat, c("cycle","scen","gender")), facet = "gender", y = "share", y_lab = "Share of pop.")
+        list(data = pop_share(dat, c("cycle","scen","gender")), 
+             facet = "gender", y = "share", y_lab = "Share of pop.")
       } else {
         list(data = dat, facet = "gender", y = "pop", y_lab = "Population count")
       }
     } else {
-      dat <- people_lad |> filter(scen %in% input$scen_sel, cycle %in% input$pop_cycles)
+      dat <- set_ag(people_lad) |> filter(scen %in% input$scen_sel, cycle %in% input$pop_cycles)
       if (length(input$lad_sel)) dat <- dat |> filter(ladnm %in% input$lad_sel)
       if (isTRUE(input$pop_share)) {
         list(data = pop_share(dat, c("cycle","scen","ladnm")), facet = "ladnm", y = "share", y_lab = "Share of pop.")
@@ -263,7 +290,7 @@ server <- function(input, output, session) {
   
   # ---------- Differences vs reference ----------
   diff_long <- reactive({
-    req(input$metric_kind, input$view_level, input$diff_min_cycle)
+    req(input$metric_kind, input$view_level, input$diff_min_cycle, input$asr_causes)
     scen_keep <- setdiff(input$scen_sel, "reference")
     validate(need(length(scen_keep) > 0, "Select at least one non-reference scenario."))
     minc <- input$diff_min_cycle; view <- input$view_level; cumu <- isTRUE(input$diff_cumulative)
@@ -277,12 +304,21 @@ server <- function(input, output, session) {
       dil <- dil |> filter(ladnm %in% input$lad_sel)
       hl <- hl |> filter(ladnm %in% input$lad_sel)
       ll <- ll |> filter(ladnm %in% input$lad_sel)
+
     }
     
+    do <- diseases_overall
+    dg <- diseases_gender
+    
+    if (length(input$asr_causes)){
+      do <- do |> filter(cause %in% input$asr_causes)
+      dg <- dg |> filter(cause %in% input$asr_causes)
+      dil <- dil |> filter(cause %in% input$asr_causes)
+    }
     
     pick <- switch(input$metric_kind,
                    deaths   = list(Overall=deaths_overall, Gender=deaths_gender,  LAD=dl, label="Δ Deaths"),
-                   diseases = list(Overall=diseases_overall, Gender=diseases_gender, LAD=dil,label="Δ Diseases"),
+                   diseases = list(Overall=do, Gender=dg, LAD=dil,label="Δ Diseases"),
                    healthy  = list(Overall=healthy_overall, Gender=healthy_gender, LAD=hl,label="Δ Healthy years"),
                    life     = list(Overall=lifey_overall, Gender=lifey_gender, LAD=ll,  label="Δ Life years"),
                    imp_fac  = list(Overall = plyr::rbind.fill(lifey_overall |> mutate(factor = "Δ Life years"),
@@ -290,18 +326,20 @@ server <- function(input, output, session) {
                                                               deaths_overall |> mutate(factor = "Δ Deaths")), 
                                    Gender=plyr::rbind.fill(lifey_gender  |> mutate(factor = "Δ Life years"),
                                                            healthy_gender   |> mutate(factor = "Δ Healthy years"),
-                                                           deaths_gender |> mutate(metri = "Δ Deaths")), 
+                                                           deaths_gender |> mutate(factor = "Δ Deaths")), 
                                    LAD=plyr::rbind.fill(ll |> mutate(factor = "Δ Life years"),
                                                         hl |> mutate(factor = "Δ Healthy years"),
                                                         dl |> mutate(factor = "Δ Deaths")),  
                                    label="Δ Impact factor"))
     base <- pick[[view]]
-    if (input$metric_kind == "diseases")
+    if (input$metric_kind == "diseases"){
       by <- switch(view, Overall="cause", Gender=c("cause", "gender"), LAD=c("cause", "ladnm"))
-    else if (input$metric_kind == "imp_fac")
+    }else if (input$metric_kind == "imp_fac"){
       by <- switch(view, Overall="factor", Gender=c("factor", "gender"), LAD=c("factor", "ladnm"))
-    else
+    }else{
       by <- switch(view, Overall=character(0), Gender="gender", LAD="ladnm")
+    }
+    
     df <- base |> filter(cycle >= minc, scen %in% scen_keep); grp <- c("scen", by)
     
     if ("gender" %in% names(df)) {
