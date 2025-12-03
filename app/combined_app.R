@@ -138,7 +138,8 @@ ui <- page_sidebar(
         conditionalPanel(
           condition = "input.main_tabs == 'Differences vs reference'",
           h2("Differences"),
-          selectInput("metric_kind", "Metric:", choices = c(
+          radioButtons("metric_kind", "Metric:", 
+                       choices = c(
             "Diseases postponed (Δ diseases)" = "diseases",
             "Deaths postponed (Δ deaths)"     = "deaths",
             "Δ Healthy years"                 = "healthy",
