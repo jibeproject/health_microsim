@@ -12,6 +12,7 @@ suppressPackageStartupMessages({
   library(DT)
   library(gt)
   library(gtExtras)
+  library(bslib)
 })
 
 pc <- qs::qread(here("temp/precomputed_mcr_wogd_100%V3.qs"))
@@ -80,11 +81,10 @@ all_lads_nm   <- sort(unique(people_lad$ladnm))
 all_genders   <- sort(unique(people_gender$gender))
 all_causes_asr <- asr_overall_all |> filter(!grepl("sev", cause)) |> distinct(cause) |> pull()
 
-ui <- fluidPage(
-  titlePanel("Travel and Health Explorer"),
-  sidebarLayout(
-    sidebarPanel(
-      width = 3,
+ui <- page_sidebar(
+  theme = bs_theme(bootswatch = "yeti"),
+  title = paste0("Travel and Health Explorer"),
+  sidebar = sidebar(
       selectInput("scen_sel", "Scenarios:", choices = all_scenarios,
                   selected = all_scenarios, multiple = TRUE),
       selectInput("view_level", "View by:", choices = c("Overall","Gender","LAD"),
@@ -169,41 +169,33 @@ ui <- fluidPage(
       tags$hr(),
       downloadButton("download_csv", "Download current table (CSV)")
     ),
-    mainPanel(
-      width = 9,
-      tabsetPanel(
-        id = "main_tabs",
-        
-        tabPanel(
-          "Travel Behaviour",
+  navset_card_underline(
+    id = "main_tabs",
+    full_screen = TRUE,
+    nav_panel("Travel Behaviour",
           plotlyOutput("out_mshare", height = "85vh")
         ),
-        tabPanel(
-          "Exposures",
+    nav_panel("Exposures",
           gt_output("plot_exp")
         ),
-        tabPanel(
-          "Differences vs reference",
+    nav_panel("Differences vs reference",
           plotlyOutput("plot_diffly", height = "35vh"),
           tags$hr(),
           h5("Summary (cumulative at latest cycle, or sum if non-cumulative)"),
           uiOutput("table_diff_summary", height = "35vh")
         ),
-        tabPanel("Average onset ages", 
+    nav_panel("Average onset ages", 
                  gt_output("table_avg")),
-        tabPanel(
-          "ASR",
+    nav_panel("ASR",
           uiOutput("plot_asrly", height = "85vh")
         ),
-        tabPanel(
-          "Population",
+    nav_panel("Population",
           plotlyOutput("plot_poply", height = "85vh")
         )
         
       )
-    )
   )
-)
+
 
 # ------------------- SERVER --------------------------------------------
 server <- function(input, output, session) {
@@ -292,15 +284,15 @@ server <- function(input, output, session) {
                    diseases = list(Overall=diseases_overall, Gender=diseases_gender, LAD=dil,label="Δ Diseases"),
                    healthy  = list(Overall=healthy_overall, Gender=healthy_gender, LAD=hl,label="Δ Healthy years"),
                    life     = list(Overall=lifey_overall, Gender=lifey_gender, LAD=ll,  label="Δ Life years"),
-                   imp_fac  = list(Overall = plyr::rbind.fill(lifey_overall |> mutate(factor = "l"),
-                                                              healthy_overall |> mutate(factor = "h"),
-                                                              deaths_overall |> mutate(factor = "d")), 
-                                   Gender=plyr::rbind.fill(lifey_gender  |> mutate(factor = "l"),
-                                                           healthy_gender   |> mutate(factor = "h"),
-                                                           deaths_gender |> mutate(metri = "d")), 
-                                   LAD=plyr::rbind.fill(ll |> mutate(factor = "l"),
-                                                        hl |> mutate(factor = "h"),
-                                                        dl |> mutate(factor = "d")),  
+                   imp_fac  = list(Overall = plyr::rbind.fill(lifey_overall |> mutate(factor = "Δ Life years"),
+                                                              healthy_overall |> mutate(factor = "Δ Healthy years"),
+                                                              deaths_overall |> mutate(factor = "Δ Deaths")), 
+                                   Gender=plyr::rbind.fill(lifey_gender  |> mutate(factor = "Δ Life years"),
+                                                           healthy_gender   |> mutate(factor = "Δ Healthy years"),
+                                                           deaths_gender |> mutate(metri = "Δ Deaths")), 
+                                   LAD=plyr::rbind.fill(ll |> mutate(factor = "Δ Life years"),
+                                                        hl |> mutate(factor = "Δ Healthy years"),
+                                                        dl |> mutate(factor = "Δ Deaths")),  
                                    label="Δ Impact factor"))
     base <- pick[[view]]
     if (input$metric_kind == "diseases")
@@ -322,7 +314,6 @@ server <- function(input, output, session) {
   build_diff_plot <- reactive({
     d <- diff_long(); req(nrow(d) > 0)
     ylab <- if (isTRUE(input$diff_cumulative)) "Cumulative Δ vs reference" else "Δ vs reference"
-    
     
     ttl  <- d$metric[1]
     if ("gender" %in% names(d)) {
