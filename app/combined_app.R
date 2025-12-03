@@ -303,6 +303,13 @@ server <- function(input, output, session) {
     else
       by <- switch(view, Overall=character(0), Gender="gender", LAD="ladnm")
     df <- base |> filter(cycle >= minc, scen %in% scen_keep); grp <- c("scen", by)
+    
+    if ("gender" %in% names(df)) {
+      df <- df |> 
+        mutate(gender = case_when(gender == 1 ~ "Male",
+                                  gender == 2 ~ "Female")) 
+    }
+    
     df |> group_by(across(all_of(c(grp, "cycle")))) |>
       summarise(diff = sum(diff, na.rm = TRUE), .groups = "drop") |>
       group_by(across(all_of(grp))) |>
@@ -318,9 +325,12 @@ server <- function(input, output, session) {
     
     ttl  <- d$metric[1]
     if ("gender" %in% names(d)) {
-      ggplot(d, aes(x = cycle, y = y, colour = scen, linetype = gender)) +
+      
+      # browser()
+      ggplot(d, aes(x = cycle, y = y, colour = scen)) +
         geom_smooth(se = FALSE) + add_zero_line() +
-        labs(title = ttl, x = "Cycle (year)", y = ylab, colour = "Scenario", linetype = "Gender") +
+        facet_wrap(~ gender, nrow = 2, scales = "free_y") + 
+        labs(title = ttl, x = "Cycle (year)", y = ylab, colour = "Scenario") +
         theme_clean()
     } else if ("ladnm" %in% names(d)) {
       ggplot(d, aes(x = cycle, y = y, colour = scen)) +
@@ -441,9 +451,10 @@ server <- function(input, output, session) {
   output$diff_summary_plot <- renderPlotly({
     data <- get_processed_data()
     cumdf <- data$raw
+    by <- data$by
     
     if (grepl("Diseases", data$metric_lab)){
-    plotly::ggplotly(ggplot(cumdf) +
+    p <- ggplot(cumdf) +
       aes(x = cumulative_value, y = cause, fill = scen) +
       geom_bar(
         stat = "summary",
@@ -452,26 +463,33 @@ server <- function(input, output, session) {
       ) +
       scale_fill_hue(direction = 1) +
       theme_minimal()
-    )
     }else if (grepl("Impact", data$metric_lab)){
       
-      plotly::ggplotly(ggplot(cumdf) +
+      p <- ggplot(cumdf) +
         aes(x = cumulative_value, y = scen, fill = factor) +
         geom_bar(stat = "summary", fun = "sum", position = "dodge2") +
         scale_fill_hue(direction = 1) +
-        theme_minimal()
-      )
+        theme_minimal() 
+      
       
     }else{
       
-      plotly::ggplotly(ggplot(cumdf, aes(x = scen, y = cumulative_value, fill = scen)) +
+      p <- ggplot(cumdf, aes(x = scen, y = cumulative_value, fill = scen)) +
         geom_col(position = "dodge") +
         labs(title = paste("Cumulative Values by Scenario and ", data$metric_lab),
              x = "Scenario", y = "Cumulative Value") +
         theme_minimal()
-      )
       
     }
+    
+    if ("gender" %in% names(cumdf))  {
+      p <- p + facet_wrap(~gender)
+    }else if("ladnm" %in% names(cumdf))  {
+      p <- p + facet_wrap(~ladnm)
+    }
+    
+    plotly::ggplotly(p)
+    
   })
   
   # ---------- Average ages (death / onset) ----------
