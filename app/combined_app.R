@@ -142,7 +142,8 @@ ui <- fluidPage(
             "Diseases postponed (Δ diseases)" = "diseases",
             "Deaths postponed (Δ deaths)"     = "deaths",
             "Δ Healthy years"                 = "healthy",
-            "Δ Life years"                    = "life"
+            "Δ Life years"                    = "life",
+            "Δ Impact factor"                 = "imp_fac"
           )),
           sliderInput("diff_min_cycle", "Start cycle:",
                       min = min(trend_cycles), max = max(trend_cycles),
@@ -290,10 +291,22 @@ server <- function(input, output, session) {
                    deaths   = list(Overall=deaths_overall, Gender=deaths_gender,  LAD=dl, label="Δ Deaths"),
                    diseases = list(Overall=diseases_overall, Gender=diseases_gender, LAD=dil,label="Δ Diseases"),
                    healthy  = list(Overall=healthy_overall, Gender=healthy_gender, LAD=hl,label="Δ Healthy years"),
-                   life     = list(Overall=lifey_overall, Gender=lifey_gender, LAD=ll,  label="Δ Life years"))
+                   life     = list(Overall=lifey_overall, Gender=lifey_gender, LAD=ll,  label="Δ Life years"),
+                   imp_fac  = list(Overall = plyr::rbind.fill(lifey_overall |> mutate(factor = "l"),
+                                                              healthy_overall |> mutate(factor = "h"),
+                                                              deaths_overall |> mutate(factor = "d")), 
+                                   Gender=plyr::rbind.fill(lifey_gender  |> mutate(factor = "l"),
+                                                           healthy_gender   |> mutate(factor = "h"),
+                                                           deaths_gender |> mutate(metri = "d")), 
+                                   LAD=plyr::rbind.fill(ll |> mutate(factor = "l"),
+                                                        hl |> mutate(factor = "h"),
+                                                        dl |> mutate(factor = "d")),  
+                                   label="Δ Impact factor"))
     base <- pick[[view]]
     if (input$metric_kind == "diseases")
       by <- switch(view, Overall="cause", Gender=c("cause", "gender"), LAD=c("cause", "ladnm"))
+    else if (input$metric_kind == "imp_fac")
+      by <- switch(view, Overall="factor", Gender=c("factor", "gender"), LAD=c("factor", "ladnm"))
     else
       by <- switch(view, Overall=character(0), Gender="gender", LAD="ladnm")
     df <- base |> filter(cycle >= minc, scen %in% scen_keep); grp <- c("scen", by)
@@ -340,19 +353,25 @@ server <- function(input, output, session) {
     by <- if ("gender" %in% names(d)) {
       if ("cause" %in% names(d)) {
         c("cause", "gender")
-      } else {
+      } else if ("factor" %in% names(d)) {
+        c("factor", "gender")
+      }else{
         "gender"
       }
     } else if ("ladnm" %in% names(d)) {
       if ("cause" %in% names(d)) {
         c("cause", "ladnm")
+      } else if ("factor" %in% names(d)) {
+        c("factor", "ladnm")
       } else {
         "ladnm"
       }
     } else {
       if ("cause" %in% names(d)) {
         "cause"
-      } else {
+      } else if ("factor" %in% names(d)) {
+        "factor"
+      }else {
         character(0)
       }
     }
@@ -445,6 +464,28 @@ server <- function(input, output, session) {
       scale_fill_hue(direction = 1) +
       theme_minimal()
     )
+    }else if (grepl("Impact", data$metric_lab)){
+      
+      #browser()
+      #write_csv(cumdf, "imp_fac.csv")
+      
+      plotly::ggplotly(ggplot(cumdf) +
+        aes(x = cumulative_value, y = scen, fill = factor) +
+        geom_bar(stat = "summary", fun = "sum", position = "dodge2") +
+        scale_fill_hue(direction = 1) +
+        theme_minimal()
+      )
+      
+      # plotly::ggplotly(ggplot(cumdf) +
+      #                    aes(x = cumulative_value, y = factor, fill = scen) +
+      #                    geom_bar(
+      #                      stat = "summary",
+      #                      fun = "mean",
+      #                      position = "dodge2"
+      #                    ) +
+      #                    scale_fill_hue(direction = 1) +
+      #                    theme_minimal()
+      # )
     }else{
       
       plotly::ggplotly(ggplot(cumdf, aes(x = scen, y = cumulative_value, fill = scen)) +
