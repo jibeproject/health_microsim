@@ -80,7 +80,7 @@ pop_cycles    <- sort(unique(people_overall$cycle))
 trend_cycles  <- sort(unique(asr_overall_all$cycle))
 all_lads_nm   <- sort(unique(people_lad$ladnm))
 all_genders   <- sort(unique(people_gender$gender))
-all_causes_asr <- asr_overall_all |> filter(!grepl("sev", cause)) |> distinct(cause) |> pull()
+all_causes_asr <- asr_overall_all |> distinct(cause) |> pull() #filter(!grepl("sev", cause)) |> 
 
 ui <- page_sidebar(
   theme = bs_theme(bootswatch = "yeti"),
@@ -966,6 +966,8 @@ server <- function(input, output, session) {
     }
     
     else if (input$metrics_picker == "Combined Trip Distance by Modes") {
+      
+      
         ggplotly(
           ggplot(t$combined_distance) +
             aes(x = mode, y = avgDistance, fill = scen) +
@@ -980,7 +982,7 @@ server <- function(input, output, session) {
             ) +
             coord_flip() +
             theme_minimal() +
-            facet_wrap(vars(LAD_origin)) +
+            facet_wrap(vars(ladnm)) +
             labs(title = "Average weekly dist. pp by mode and location",
                  fill = "Scenario")
         )
