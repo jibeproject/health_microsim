@@ -15,7 +15,9 @@ suppressPackageStartupMessages({
   library(bslib)
 })
 
-pc <- qs::qread(here("temp/precomputed_mcr_wogd_100%V3.qs"))
+# pc <- qs::qread(here("temp/precomputed_mcr_wogd_100%V3.qs"))
+pc <- qs::qread(here("temp/061225/precomputed_mcr_wgd_100%V4.qs"))
+
 #pc <- qs::qread(here("temp/processed_data/shiny_app_data/precomputed_mcr_wogd_100%V3.qs"))
 list2env(pc, envir = environment())
 SCALING <- 1L
