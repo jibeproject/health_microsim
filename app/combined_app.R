@@ -622,7 +622,7 @@ server <- function(input, output, session) {
       
       p <- ggplot(cumdf, aes(x = scen, y = cumulative_value, fill = scen)) +
         geom_col(position = "dodge") +
-        labs(title = paste("Cumulative Values ", data$metric_lab, " by Scenario"),
+        labs(title = paste("Cumulative ", data$metric_lab, " by Scenario"),
              x = "Scenario", y = "Cumulative Value",
              fill = "Scenario") +
         theme_minimal()
