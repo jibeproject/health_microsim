@@ -403,19 +403,19 @@ server <- function(input, output, session) {
       
       # browser()
       ggplot(d, aes(x = cycle, y = y, colour = scen)) +
-        geom_smooth(se = FALSE) + add_zero_line() +
+        geom_smooth(se = FALSE, method = "loess") + add_zero_line() +
         facet_wrap(~ gender, nrow = 2, scales = "free_y") + 
         labs(title = ttl, x = "Cycle (year)", y = ylab, colour = "Scenario") +
         theme_clean()
     } else if ("ladnm" %in% names(d)) {
       ggplot(d, aes(x = cycle, y = y, colour = scen)) +
-        geom_smooth(se = FALSE) + add_zero_line() +
+        geom_smooth(se = FALSE, method = "loess") + add_zero_line() +
         facet_wrap(~ ladnm, nrow = 2, scales = "free_y") +
         labs(title = ttl, x = "Cycle (year)", y = ylab, colour = "Scenario") +
         theme_clean()
     } else {
       ggplot(d, aes(x = cycle, y = y, colour = scen)) +
-        geom_smooth(se = FALSE) + add_zero_line() +
+        geom_smooth(se = FALSE, method = "loess") + add_zero_line() +
         labs(title = ttl, x = "Cycle (year)", y = ylab, colour = "Scenario") +
         theme_clean()
     }
@@ -549,27 +549,39 @@ server <- function(input, output, session) {
       
       if (!"imd10" %in% names(cumdf)){
         p <- ggplot(cumdf) +
-          aes(x = cumulative_value, y = cause, fill = scen) +
+          aes(x = cause, y = cumulative_value, fill = scen) +
           geom_bar(
             stat = "summary",
             fun = "mean",
             position = "dodge2"
           ) +
           scale_fill_hue(direction = 1) +
-          theme_minimal() +
           labs(
-            color = "Scenario"
-          ) 
+            fill = "Scenario",
+            y = "",
+            x = ""
+          ) +
+          geom_text(
+            aes(label = cumulative_value), 
+            hjust = -2.5, 
+            size = 4,
+            position = position_dodge(width = 1),
+            inherit.aes = TRUE
+          ) + 
+          coord_flip() +
+          theme_minimal()
+          
       }else{
         
         p <- ggplot(cumdf) +
           aes(x = imd10, y = cumulative_value, colour = scen) +
-          geom_smooth(se = FALSE) +
+          geom_smooth(se = FALSE, method = "loess") +
           scale_color_hue(direction = 1) +
           theme_minimal() + 
           labs(
             x = "Index of Multiple Deprivation (IMD)",
-            color = "Scenario"
+            color = "Scenario",
+            y = "Cumulative Δ"
           ) 
       }
     }
@@ -578,15 +590,24 @@ server <- function(input, output, session) {
       if (!"imd10" %in% names(cumdf)){
       
       p <- ggplot(cumdf) +
-        aes(x = cumulative_value, y = scen, fill = factor) +
+        aes(x = scen, y = cumulative_value, fill = factor) +
         geom_bar(stat = "summary", fun = "sum", position = "dodge2") +
         scale_fill_hue(direction = 1) +
+        geom_text(
+          aes(label = cumulative_value), 
+          hjust = -2.5, 
+          size = 4,
+          position = position_dodge(width = 1),
+          inherit.aes = TRUE
+        ) + 
+        coord_flip() +
+        labs(x = "") +
         theme_minimal() 
       }else{
         
         p <- ggplot(cumdf) +
           aes(x = imd10, y = cumulative_value, colour = scen) +
-          geom_smooth(se = FALSE) +
+          geom_smooth(se = FALSE, method = "loess") +
           scale_color_hue(direction = 1) +
           theme_minimal() + 
           labs(
@@ -601,8 +622,9 @@ server <- function(input, output, session) {
       
       p <- ggplot(cumdf, aes(x = scen, y = cumulative_value, fill = scen)) +
         geom_col(position = "dodge") +
-        labs(title = paste("Cumulative Values by Scenario and ", data$metric_lab),
-             x = "Scenario", y = "Cumulative Value") +
+        labs(title = paste("Cumulative Values ", data$metric_lab, " by Scenario"),
+             x = "Scenario", y = "Cumulative Value",
+             fill = "Scenario") +
         theme_minimal()
       
     }
@@ -767,7 +789,7 @@ server <- function(input, output, session) {
           filter(cause %in% causes, cycle >= MIN_CYCLE)
         req(nrow(df) > 0)
         ggplot(df, aes(x = cycle, y = age_std_rate, colour = scen, group = scen)) +
-          geom_smooth(se = FALSE) +
+          geom_smooth(se = FALSE, method = "loess") +
           facet_wrap(vars(cause), scales = "free_y", ncol = 4) +
           labs(title = "ASR per cycle (smoothed, cycles 1–30)", x = "Cycle (year)", y = "ASR per 100,000", colour = "Scenario") +
           theme_clean()
@@ -775,7 +797,7 @@ server <- function(input, output, session) {
         df <- asr_gender_all |> filter(cause %in% causes, cycle >= MIN_CYCLE)
         req(nrow(df) > 0)
         ggplot(df, aes(x = cycle, y = age_std_rate, colour = scen, linetype = gender)) +
-          geom_smooth(se = FALSE) +
+          geom_smooth(se = FALSE, method = "loess") +
           facet_wrap(vars(cause), scales = "free_y", ncol = 4) +
           labs(title = "ASR per cycle by gender (smoothed, cycles 1-30)",
                x = "Cycle (year)", y = "ASR per 100,000", colour = "Scenario", linetype = "Gender") +
@@ -788,7 +810,7 @@ server <- function(input, output, session) {
         } 
         req(nrow(dat) > 0)
         ggplot(dat, aes(x = cycle, y = age_std_rate, colour = scen)) +
-          geom_smooth(se = FALSE) +
+          geom_smooth(se = FALSE, method = "loess") +
           facet_grid(ladnm ~ cause, scales = "free_y") +
           labs(title = "ASR per cycle by LAD (smoothed, cycles 1-30)",
                x = "Cycle (year)", y = "ASR per 100,000", colour = "Scenario") +
