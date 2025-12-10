@@ -16,7 +16,7 @@ suppressPackageStartupMessages({
 })
 
 # pc <- qs::qread(here("temp/precomputed_mcr_wogd_100%V3.qs"))
-pc <- qs::qread(here("temp/061225/precomputed_mcr_wgd_100%V4.qs"))
+pc <- qs::qread(here("temp/061225/precomputed_mcr_wgd_100%V4_imd.qs"))
 
 #pc <- qs::qread(here("temp/processed_data/shiny_app_data/precomputed_mcr_wogd_100%V3.qs"))
 list2env(pc, envir = environment())
@@ -83,6 +83,8 @@ trend_cycles  <- sort(unique(asr_overall_all$cycle))
 all_lads_nm   <- sort(unique(people_lad$ladnm))
 all_genders   <- sort(unique(people_gender$gender))
 all_causes_asr <- asr_overall_all |> distinct(cause) |> pull() #filter(!grepl("sev", cause)) |> 
+selected_views <- c("Overall","Gender","LAD")
+additional_selected_views <- c("IMD")
 
 ui <- page_sidebar(
   theme = bs_theme(bootswatch = "yeti"),
@@ -90,7 +92,7 @@ ui <- page_sidebar(
   sidebar = sidebar(
       selectInput("scen_sel", "Scenarios:", choices = all_scenarios,
                   selected = all_scenarios, multiple = TRUE),
-      selectInput("view_level", "View by:", choices = c("Overall","Gender","LAD"),
+      selectInput("view_level", "View by:", choices = selected_views,
                   selected = "Overall"),
       conditionalPanel(
         "input.view_level == 'LAD'",
@@ -209,6 +211,34 @@ ui <- page_sidebar(
 # ------------------- SERVER --------------------------------------------
 server <- function(input, output, session) {
   
+  observeEvent(input$main_tabs, {
+    
+    # current selection (if any)
+    current <- isolate(input$view_level)
+    
+    if (input$main_tabs == "Differences vs reference") {
+      
+      # selected_views <- c("Overall","Gender","LAD")
+      # additional_selected_views <- c("IMD")
+      
+      new_choices <- c(selected_views, additional_selected_views)
+    } else {
+      new_choices <- selected_views
+      # if current selection not in base choices, drop it
+      if (!is.null(current) && !current %in% new_choices) {
+        current <- NULL
+      }
+    }
+    
+    updateSelectInput(
+      session,
+      "view_level",
+      choices  = new_choices,
+      selected = current
+    )
+    
+  })
+  
   # ---------- Avg ages cause picker ----------
   output$avg_cause_ui <- renderUI({
     if (input$avg_kind == "onset") {
@@ -311,18 +341,20 @@ server <- function(input, output, session) {
     
     do <- diseases_overall
     dg <- diseases_gender
+    dimd <- diseases_imd
     
     if (length(input$asr_causes)){
       do <- do |> filter(cause %in% input$asr_causes)
       dg <- dg |> filter(cause %in% input$asr_causes)
+      dimd <- dimd |> filter(cause %in% input$asr_causes)
       dil <- dil |> filter(cause %in% input$asr_causes)
     }
     
     pick <- switch(input$metric_kind,
-                   deaths   = list(Overall=deaths_overall, Gender=deaths_gender,  LAD=dl, label="Δ Deaths"),
-                   diseases = list(Overall=do, Gender=dg, LAD=dil,label="Δ Diseases"),
-                   healthy  = list(Overall=healthy_overall, Gender=healthy_gender, LAD=hl,label="Δ Healthy years"),
-                   life     = list(Overall=lifey_overall, Gender=lifey_gender, LAD=ll,  label="Δ Life years"),
+                   deaths   = list(Overall=deaths_overall, Gender=deaths_gender,  LAD=dl, IMD = deaths_imd, label="Δ Deaths"),
+                   diseases = list(Overall=do, Gender=dg, LAD=dil,IMD = dimd, label="Δ Diseases"),
+                   healthy  = list(Overall=healthy_overall, Gender=healthy_gender, LAD=hl,IMD = healthy_imd, label="Δ Healthy years"),
+                   life     = list(Overall=lifey_overall, Gender=lifey_gender, LAD=ll,  IMD = lifey_imd, label="Δ Life years"),
                    imp_fac  = list(Overall = plyr::rbind.fill(lifey_overall |> mutate(factor = "Δ Life years"),
                                                               healthy_overall |> mutate(factor = "Δ Healthy years"),
                                                               deaths_overall |> mutate(factor = "Δ Deaths")), 
@@ -335,7 +367,7 @@ server <- function(input, output, session) {
                                    label="Δ Impact factor"))
     base <- pick[[view]]
     if (input$metric_kind == "diseases"){
-      by <- switch(view, Overall="cause", Gender=c("cause", "gender"), LAD=c("cause", "ladnm"))
+      by <- switch(view, Overall="cause", Gender=c("cause", "gender"), LAD=c("cause", "ladnm"), IMD = c("cause", "imd10"))
     }else if (input$metric_kind == "imp_fac"){
       by <- switch(view, Overall="factor", Gender=c("factor", "gender"), LAD=c("factor", "ladnm"))
     }else{
@@ -390,6 +422,7 @@ server <- function(input, output, session) {
   # Define a function to process and return the processed data
   get_processed_data <- function() {
     d <- diff_long()
+    
     req(nrow(d) > 0)
     
     by <- if ("gender" %in% names(d)) {
@@ -399,6 +432,14 @@ server <- function(input, output, session) {
         c("factor", "gender")
       }else{
         "gender"
+      }
+    } else if ("imd10" %in% names(d)) {
+      if ("cause" %in% names(d)) {
+        c("cause", "imd10")
+      } else if ("factor" %in% names(d)) {
+        c("factor", "imd10")
+      }else{
+        "imd10"
       }
     } else if ("ladnm" %in% names(d)) {
       if ("cause" %in% names(d)) {
@@ -493,17 +534,37 @@ server <- function(input, output, session) {
     cumdf <- data$raw
     by <- data$by
     
+    # ggplot(td) +
+    #   aes(x = value, y = imd10, colour = scen) +
+    #   geom_smooth(se = FALSE) +
+    #   scale_color_hue(direction = 1) +
+    #   theme_minimal() +
+    #   facet_wrap(vars(cause))
+    # 
+    
     if (grepl("Diseases", data$metric_lab)){
-    p <- ggplot(cumdf) +
-      aes(x = cumulative_value, y = cause, fill = scen) +
-      geom_bar(
-        stat = "summary",
-        fun = "mean",
-        position = "dodge2"
-      ) +
-      scale_fill_hue(direction = 1) +
-      theme_minimal()
-    }else if (grepl("Impact", data$metric_lab)){
+      
+      if (!"imd10" %in% names(cumdf)){
+        p <- ggplot(cumdf) +
+          aes(x = cumulative_value, y = cause, fill = scen) +
+          geom_bar(
+            stat = "summary",
+            fun = "mean",
+            position = "dodge2"
+          ) +
+          scale_fill_hue(direction = 1) +
+          theme_minimal()
+      }else{
+        
+        p <- ggplot(cumdf) +
+          aes(x = imd10, y = cumulative_value, colour = scen) +
+          geom_smooth(se = FALSE) +
+          scale_color_hue(direction = 1) +
+          theme_minimal()
+        
+      }
+    }
+    else if (grepl("Impact", data$metric_lab)){
       
       p <- ggplot(cumdf) +
         aes(x = cumulative_value, y = scen, fill = factor) +
@@ -524,6 +585,8 @@ server <- function(input, output, session) {
     
     if ("gender" %in% names(cumdf))  {
       p <- p + facet_wrap(~gender)
+    }else if ("imd10" %in% names(cumdf))  {
+      p <- p + facet_wrap(~cause)
     }else if("ladnm" %in% names(cumdf))  {
       p <- p + facet_wrap(~ladnm)
     }
