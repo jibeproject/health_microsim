@@ -529,7 +529,7 @@ pc <- mget(c(
   "people_overall","people_gender","people_lad", "people_imd",
   # diffs
   "deaths_overall","deaths_gender","deaths_lad", "deaths_imd", "deaths_agegroup_cycle",
-  "diseases_overall","diseases_gender","diseases_lad", "deaths_imd", "deaths_agegroup_cycle",
+  "diseases_overall","diseases_gender","diseases_lad", "diseases_imd", "diseases_agegroup_cycle",
   "healthy_overall","healthy_gender","healthy_lad", "healthy_imd", "healthy_agegroup_cycle",
   "lifey_overall","lifey_gender","lifey_lad", "lifey_imd", "lifey_agegroup_cycle",
   # mean-age sources
