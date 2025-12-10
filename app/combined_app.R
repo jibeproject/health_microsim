@@ -364,14 +364,17 @@ server <- function(input, output, session) {
                                    LAD=plyr::rbind.fill(ll |> mutate(factor = "Δ Life years"),
                                                         hl |> mutate(factor = "Δ Healthy years"),
                                                         dl |> mutate(factor = "Δ Deaths")),  
+                                   IMD=plyr::rbind.fill(lifey_imd  |> mutate(factor = "Δ Life years"),
+                                                           healthy_imd |> mutate(factor = "Δ Healthy years"),
+                                                           deaths_imd |> mutate(factor = "Δ Deaths")),
                                    label="Δ Impact factor"))
     base <- pick[[view]]
     if (input$metric_kind == "diseases"){
       by <- switch(view, Overall="cause", Gender=c("cause", "gender"), LAD=c("cause", "ladnm"), IMD = c("cause", "imd10"))
     }else if (input$metric_kind == "imp_fac"){
-      by <- switch(view, Overall="factor", Gender=c("factor", "gender"), LAD=c("factor", "ladnm"))
+      by <- switch(view, Overall="factor", Gender=c("factor", "gender"), LAD=c("factor", "ladnm"), IMD = c("factor", "imd10"))
     }else{
-      by <- switch(view, Overall=character(0), Gender="gender", LAD="ladnm")
+      by <- switch(view, Overall=character(0), Gender="gender", LAD="ladnm", IMD = "imd10")
     }
     
     df <- base |> filter(cycle >= minc, scen %in% scen_keep); grp <- c("scen", by)
@@ -553,24 +556,45 @@ server <- function(input, output, session) {
             position = "dodge2"
           ) +
           scale_fill_hue(direction = 1) +
-          theme_minimal()
+          theme_minimal() +
+          labs(
+            color = "Scenario"
+          ) 
       }else{
         
         p <- ggplot(cumdf) +
           aes(x = imd10, y = cumulative_value, colour = scen) +
           geom_smooth(se = FALSE) +
           scale_color_hue(direction = 1) +
-          theme_minimal()
-        
+          theme_minimal() + 
+          labs(
+            x = "Index of Multiple Deprivation (IMD)",
+            color = "Scenario"
+          ) 
       }
     }
     else if (grepl("Impact", data$metric_lab)){
+      
+      if (!"imd10" %in% names(cumdf)){
       
       p <- ggplot(cumdf) +
         aes(x = cumulative_value, y = scen, fill = factor) +
         geom_bar(stat = "summary", fun = "sum", position = "dodge2") +
         scale_fill_hue(direction = 1) +
         theme_minimal() 
+      }else{
+        
+        p <- ggplot(cumdf) +
+          aes(x = imd10, y = cumulative_value, colour = scen) +
+          geom_smooth(se = FALSE) +
+          scale_color_hue(direction = 1) +
+          theme_minimal() + 
+          labs(
+            x = "Index of Multiple Deprivation (IMD)",
+            color = "Scenario"
+          )
+
+      }
       
       
     }else{
@@ -585,8 +609,10 @@ server <- function(input, output, session) {
     
     if ("gender" %in% names(cumdf))  {
       p <- p + facet_wrap(~gender)
-    }else if ("imd10" %in% names(cumdf))  {
+    }else if ("imd10" %in% names(cumdf) && "cause" %in% names(cumdf))  {
       p <- p + facet_wrap(~cause)
+    }else if ("imd10" %in% names(cumdf) && "factor" %in% names(cumdf))  {
+      p <- p + facet_wrap(~factor, scales = "free_y")
     }else if("ladnm" %in% names(cumdf))  {
       p <- p + facet_wrap(~ladnm)
     }
