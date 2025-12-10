@@ -596,7 +596,7 @@ server <- function(input, output, session) {
         geom_text(
           aes(label = cumulative_value), 
           hjust = -2.5, 
-          size = 4,
+          size = ifelse("gender" %in% names(cumdf), 2, 3),
           position = position_dodge(width = 1),
           inherit.aes = TRUE
         ) + 
@@ -620,12 +620,23 @@ server <- function(input, output, session) {
       
     }else{
       
-      p <- ggplot(cumdf, aes(x = scen, y = cumulative_value, fill = scen)) +
-        geom_col(position = "dodge") +
-        labs(title = paste("Cumulative ", data$metric_lab, " by Scenario"),
-             x = "Scenario", y = "Cumulative Value",
-             fill = "Scenario") +
-        theme_minimal()
+        p <- ggplot(cumdf, aes(x = scen, y = cumulative_value, fill = scen)) +
+          geom_col(position = "dodge") +
+          geom_text(
+            aes(label = cumulative_value, y = cumulative_value / 2),
+            size = ifelse("gender" %in% names(cumdf), 2, 3),
+            position = position_dodge(width = 1),
+            color = "white"
+          ) +
+          labs(
+            title = paste("Cumulative", data$metric_lab, "by Scenario"),
+            x = "Scenario", 
+            y = "Cumulative Value",
+            fill = "Scenario"
+          ) +
+          coord_flip() +
+          theme_minimal()
+        
       
     }
     
