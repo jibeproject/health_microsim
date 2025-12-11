@@ -102,7 +102,9 @@ ui <- page_sidebar(
       ),
       
       conditionalPanel(
-        condition = "input.inner_tabs == 'Travel Behaviour' && input.tabs == 'Travel & Exposures'",
+        #condition = "input.tabs == 'Travel & Exposures'",
+        condition = "input.main_tabs == 'Travel & Exposures' && 
+        input.inner_tabs == 'Travel Behaviour'",
         radioButtons(
           "metrics_picker", "Metrics:",
           choices = c(
@@ -135,11 +137,6 @@ ui <- page_sidebar(
         ),
         
         conditionalPanel(
-          condition = "input.main_tabs == 'Travel Behaviour'",
-          
-        ),
-        
-        conditionalPanel(
           condition = "input.main_tabs == 'Differences vs reference'",
           radioButtons("metric_kind", "Metric:", 
                        choices = c(
@@ -161,12 +158,12 @@ ui <- page_sidebar(
           uiOutput("avg_cause_ui")
         ),
         conditionalPanel(
-          condition = "input.main_tabs == 'ASR'",
+          condition = "input.main_tabs == 'Age Standardised Rates'",
           selectInput("asr_mode", "ASR view:",
                       choices = c("Average 1-30 (bars)"="avg","Over time (smoothed)"="trend"))
         ),
         conditionalPanel(
-          condition = "input.main_tabs == 'ASR' || (input.main_tabs == 'Differences vs reference' && 
+          condition = "input.main_tabs == 'Age Standardised Rates' || (input.main_tabs == 'Differences vs reference' && 
           input.metric_kind == 'diseases')",
           selectizeInput("asr_causes", "Causes:", choices = all_causes_asr,
                          selected = c("coronary_heart_disease","stroke"),
@@ -188,7 +185,7 @@ ui <- page_sidebar(
     ),
     nav_panel("Average onset ages", 
               gt_output("table_avg")),
-    nav_panel("ASR",
+    nav_panel("Age Standardised Rates",
               uiOutput("plot_asrly", height = "85vh")
     ),
     nav_panel("Population",
@@ -916,7 +913,10 @@ server <- function(input, output, session) {
           tab_options(table.font.size = "small") |>
           opt_interactive(use_filters = TRUE,
                           use_sorting = FALSE,
-                          use_compact_mode = TRUE)
+                          use_compact_mode = TRUE) |> 
+          tab_header(
+            title = "Age-Standardised Rates per 100,000"
+          )
         
       })
       gt_output("asr_gt")
@@ -939,7 +939,7 @@ server <- function(input, output, session) {
       } else d
     } else if (tab == "Average onset ages") {
       output$table_avg |> req(); isolate({ output$table_avg() })
-    } else if (tab == "ASR") {
+    } else if (tab == "Age Standardised Rates") {
       if (input$asr_mode == "avg") {
         if (input$view_level == "Overall") {
           bind_rows(asr_overall_avg_1_30, asr_healthy_years_overall_avg_1_30) |>
