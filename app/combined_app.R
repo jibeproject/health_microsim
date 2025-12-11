@@ -620,6 +620,8 @@ server <- function(input, output, session) {
       
     }else{
       
+      if (!"imd10" %in% names(cumdf)){
+      
         p <- ggplot(cumdf, aes(x = scen, y = cumulative_value, fill = scen)) +
           geom_col(position = "dodge") +
           geom_text(
@@ -636,7 +638,17 @@ server <- function(input, output, session) {
           ) +
           coord_flip() +
           theme_minimal()
-        
+      }else{
+        p <- ggplot(cumdf) +
+          aes(x = imd10, y = cumulative_value, colour = scen) +
+          geom_smooth(se = FALSE, method = "loess") +
+          scale_color_hue(direction = 1) +
+          theme_minimal() + 
+          labs(
+            x = "Index of Multiple Deprivation (IMD)",
+            color = "Scenario"
+          )
+      }
       
     }
     
