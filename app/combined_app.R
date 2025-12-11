@@ -127,7 +127,6 @@ ui <- page_sidebar(
         id = "control_tabs", type = "pills",
         conditionalPanel(
           condition = "input.main_tabs == 'Population'",
-          h2("Population"),
           selectizeInput("pop_cycles", "Cycles to show (bars):",
                          choices = pop_cycles, selected = c(2,10,MAX_CYCLE), multiple = TRUE),
           radioButtons("pop_style", "Bar style:", c("Stacked"="stack","Side-by-side"="dodge"),
@@ -142,7 +141,6 @@ ui <- page_sidebar(
         
         conditionalPanel(
           condition = "input.main_tabs == 'Differences vs reference'",
-          h2("Differences"),
           radioButtons("metric_kind", "Metric:", 
                        choices = c(
             "Diseases postponed (Δ diseases)" = "diseases",
@@ -159,13 +157,11 @@ ui <- page_sidebar(
         ),
         conditionalPanel(
           condition = "input.main_tabs == 'Average onset ages'",
-          h2("Average onset ages"),
           selectInput("avg_kind", "Average age of:", choices = c("Death"="death","Disease onset"="onset")),
           uiOutput("avg_cause_ui")
         ),
         conditionalPanel(
           condition = "input.main_tabs == 'ASR'",
-          h2("ASR"),
           selectInput("asr_mode", "ASR view:",
                       choices = c("Average 1-30 (bars)"="avg","Over time (smoothed)"="trend"))
         ),
@@ -243,7 +239,8 @@ server <- function(input, output, session) {
   # ---------- Avg ages cause picker ----------
   output$avg_cause_ui <- renderUI({
     if (input$avg_kind == "onset") {
-      selectInput("avg_cause", "Disease (onset):",
+      selectizeInput("avg_cause", "Disease (onset):",
+                     multiple = TRUE,
                   choices = sort(unique(incidence_src$value)),
                   selected = "coronary_heart_disease")
     } else {
@@ -670,7 +667,8 @@ server <- function(input, output, session) {
   # ---------- Average ages (death / onset) ----------
   output$avg_cause_ui <- renderUI({
     if (input$avg_kind == "onset") {
-      selectInput("avg_cause", "Disease (onset):",
+      selectizeInput("avg_cause", "Disease (onset):",
+                     multiple = TRUE,
                   choices = sort(unique(incidence_src$value)),
                   selected = "coronary_heart_disease")
     } else {
@@ -712,8 +710,8 @@ server <- function(input, output, session) {
       cause <- input$avg_cause; req(cause)
       if (view == "Overall") {
         dt <- mean_age_onset_raw_by_scen_val |>
-          filter(value == cause) |>
-          left_join(mean_age_onset_weight_by_scen_val |> filter(value == cause),
+          filter(value %in% cause) |>
+          left_join(mean_age_onset_weight_by_scen_val |> filter(value %in% cause),
                     by = c("scen","value")) |>
           arrange(scen) |>
           select(scen, value,
