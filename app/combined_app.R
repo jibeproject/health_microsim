@@ -559,13 +559,21 @@ server <- function(input, output, session) {
             y = "",
             x = ""
           ) +
+          
           geom_text(
-            aes(label = cumulative_value), 
-            hjust = -2.5, 
-            size = 4,
+            aes(label = cumulative_value, y = cumulative_value / 2),
+            size = ifelse("gender" %in% names(cumdf), 2, 3),
             position = position_dodge(width = 1),
-            inherit.aes = TRUE
-          ) + 
+            color = "white"
+          ) +
+        
+          # geom_text(
+          #   aes(label = cumulative_value), 
+          #   hjust = -2.5, 
+          #   size = 4,
+          #   position = position_dodge(width = 1),
+          #   inherit.aes = TRUE
+          # ) + 
           coord_flip() +
           theme_minimal()
           
@@ -592,12 +600,11 @@ server <- function(input, output, session) {
         geom_bar(stat = "summary", fun = "sum", position = "dodge2") +
         scale_fill_hue(direction = 1) +
         geom_text(
-          aes(label = cumulative_value), 
-          hjust = -2.5, 
+          aes(label = cumulative_value, y = cumulative_value / 2),
           size = ifelse("gender" %in% names(cumdf), 2, 3),
           position = position_dodge(width = 1),
-          inherit.aes = TRUE
-        ) + 
+          color = "black"
+        ) +
         coord_flip() +
         labs(x = "") +
         theme_minimal() 
