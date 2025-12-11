@@ -160,7 +160,8 @@ ui <- page_sidebar(
         conditionalPanel(
           condition = "input.main_tabs == 'Age Standardised Rates'",
           selectInput("asr_mode", "ASR view:",
-                      choices = c("Average 1-30 (bars)"="avg","Over time (smoothed)"="trend"))
+                      choices = c("Average 1-30 (bars)"="avg","Over time (smoothed)"="trend"),
+                      selected = "Over time (smoothed)")
         ),
         conditionalPanel(
           condition = "input.main_tabs == 'Age Standardised Rates' || (input.main_tabs == 'Differences vs reference' && 
@@ -892,12 +893,13 @@ server <- function(input, output, session) {
   }
   
   output$plot_asrly <- renderUI({
-    plot_obj <- build_asr_plot()
+      plot_obj <- build_asr_plot()
+    
     if (inherits(plot_obj, "ggplot")) {
-      output$plot_asrly <- renderPlotly({
+      output$plot_asr <- renderPlotly({
         ggplotly(plot_obj)#, tooltip = c("x", "y", "colour", "fill", "linetype"))
       })
-      plotlyOutput("plot_asrly")
+      plotlyOutput("plot_asr")
     } else {#if (inherits(plot_obj, "gt_tbl")) {
       output$asr_gt <- render_gt({
         
