@@ -93,7 +93,7 @@ ui <- page_sidebar(
       selectInput("scen_sel", "Scenarios:", choices = all_scenarios,
                   selected = all_scenarios, multiple = TRUE),
       selectInput("view_level", "View by:", choices = selected_views,
-                  selected = "Gender"),
+                  selected = "Overall"),
       conditionalPanel(
         "input.view_level == 'LAD'",
         selectizeInput("lad_sel", "LAD(s):",
