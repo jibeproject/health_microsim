@@ -93,7 +93,7 @@ ui <- page_sidebar(
       selectInput("scen_sel", "Scenarios:", choices = all_scenarios,
                   selected = all_scenarios, multiple = TRUE),
       selectInput("view_level", "View by:", choices = selected_views,
-                  selected = "Overall"),
+                  selected = "Gender"),
       conditionalPanel(
         "input.view_level == 'LAD'",
         selectizeInput("lad_sel", "LAD(s):",
@@ -102,7 +102,7 @@ ui <- page_sidebar(
       ),
       
       conditionalPanel(
-        condition = "input.main_tabs == 'Travel Behaviour'",
+        condition = "input.inner_tabs == 'Travel Behaviour' && input.tabs == 'Travel & Exposures'",
         radioButtons(
           "metrics_picker", "Metrics:",
           choices = c(
@@ -199,9 +199,11 @@ ui <- page_sidebar(
       navset_card_underline(
         id = "inner_tabs",
         nav_panel("Travel Behaviour",
+                  value = "Travel Behaviour",
                   plotlyOutput("out_mshare", height = "85vh")
         ),
         nav_panel("Exposures",
+                  value = "Exposures",
                   gt_output("plot_exp")
         )
         
@@ -751,6 +753,11 @@ server <- function(input, output, session) {
     if (length(input$scen_sel))
       dt <- dt |> filter(grepl(paste(input$scen_sel, collapse = "|"), scen))
     
+    if ("gender" %in% names(dt)){
+      dt$gender <- ifelse(dt$gender == 1, "Male",
+                          ifelse(dt$gender == 2, "Female", NA))
+    }
+    
     get_normalized_table(dt |> 
                             pivot_wider(names_from = scen, values_from = mean_age_raw_years)) |>
       dplyr::select(-matches("min|max|norm")) |> 
@@ -961,7 +968,16 @@ server <- function(input, output, session) {
       lexp <- if (view == "Overall") {
         exp |> filter(grepl("Overall", grouping))
       } else if (view == "Gender") {
-        exp |> filter(grepl("Gender", grouping))
+        exp |> 
+          filter(grepl("Gender", grouping)) |> 
+          mutate(
+            grouping = case_when(
+              grouping == "Gender: 1" ~ "Gender: Male",
+              grouping == "Gender: 2" ~ "Gender: Female",
+              TRUE                  ~ grouping      # keep all other values as-is
+            )
+          )
+        
       } else if  (view == "LAD") {
         exp |> filter(grepl("LAD", grouping))
       }
