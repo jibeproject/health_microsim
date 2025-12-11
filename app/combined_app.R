@@ -187,10 +187,10 @@ ui <- page_sidebar(
           gt_output("plot_exp")
         ),
     nav_panel("Differences vs reference",
-          plotlyOutput("plot_diffly", height = "35vh"),
+              uiOutput("table_diff_summary", height = "35vh"),
           tags$hr(),
           h5("Summary (cumulative at latest cycle, or sum if non-cumulative)"),
-          uiOutput("table_diff_summary", height = "35vh")
+          plotlyOutput("plot_diffly", height = "35vh")
         ),
     nav_panel("Average onset ages", 
                  gt_output("table_avg")),
