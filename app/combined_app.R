@@ -835,12 +835,13 @@ server <- function(input, output, session) {
           theme_clean()
       } else if (input$view_level == "Gender") {
         df <- asr_gender_all |> filter(cause %in% causes, cycle >= MIN_CYCLE)
+        
         req(nrow(df) > 0)
-        ggplot(df, aes(x = cycle, y = age_std_rate, colour = scen, linetype = gender)) +
+        ggplot(df, aes(x = cycle, y = age_std_rate, colour = scen)) +
           geom_smooth(se = FALSE, method = "loess") +
-          facet_wrap(vars(cause), scales = "free_y", ncol = 4) +
+          facet_wrap(vars(cause, gender), scales = "free_y", ncol = 4) +
           labs(title = "ASR per cycle by gender (smoothed, cycles 1-30)",
-               x = "Cycle (year)", y = "ASR per 100,000", colour = "Scenario", linetype = "Gender") +
+               x = "Cycle (year)", y = "ASR per 100,000", colour = "Scenario") +
           theme_clean()
       } else {
         dat <- asr_lad_all_per_cycle |> filter(cause %in% causes, cycle >= MIN_CYCLE)
@@ -897,10 +898,10 @@ server <- function(input, output, session) {
     
     if (inherits(plot_obj, "ggplot")) {
       output$plot_asr <- renderPlotly({
-        ggplotly(plot_obj)#, tooltip = c("x", "y", "colour", "fill", "linetype"))
+        ggplotly(plot_obj)
       })
       plotlyOutput("plot_asr")
-    } else {#if (inherits(plot_obj, "gt_tbl")) {
+    } else {
       output$asr_gt <- render_gt({
         
         
@@ -908,10 +909,7 @@ server <- function(input, output, session) {
         
         gt_tbl <- get_normalized_table(plot_obj) |>
           dplyr::select(-matches("min|max|norm")) |> 
-          #dplyr::select(cause, any_of(c("gender", "ladnm")), all_of(html_cols)) |>
           gt() |>
-          #cols_label(!!!setNames(html_cols, html_cols)) |>
-          #fmt_markdown(columns = all_of(html_cols)) |>
           tab_options(table.font.size = "small") |>
           opt_interactive(use_filters = TRUE,
                           use_sorting = FALSE,
