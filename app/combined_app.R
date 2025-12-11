@@ -180,29 +180,35 @@ ui <- page_sidebar(
   navset_card_underline(
     id = "main_tabs",
     full_screen = TRUE,
-    nav_panel("Travel Behaviour",
-          plotlyOutput("out_mshare", height = "85vh")
-        ),
-    nav_panel("Exposures",
-          gt_output("plot_exp")
-        ),
     nav_panel("Differences vs reference",
               uiOutput("table_diff_summary", height = "35vh"),
-          tags$hr(),
-          h5("Summary (cumulative at latest cycle, or sum if non-cumulative)"),
-          plotlyOutput("plot_diffly", height = "35vh")
-        ),
+              tags$hr(),
+              h5("Summary (cumulative at latest cycle, or sum if non-cumulative)"),
+              plotlyOutput("plot_diffly", height = "35vh")
+    ),
     nav_panel("Average onset ages", 
-                 gt_output("table_avg")),
+              gt_output("table_avg")),
     nav_panel("ASR",
-          uiOutput("plot_asrly", height = "85vh")
-        ),
+              uiOutput("plot_asrly", height = "85vh")
+    ),
     nav_panel("Population",
-          plotlyOutput("plot_poply")#, height = "85vh")
+              plotlyOutput("plot_poply")#, height = "85vh")
+    ),
+    nav_panel(
+      title = "Travel & Exposures",
+      navset_card_underline(
+        id = "inner_tabs",
+        nav_panel("Travel Behaviour",
+                  plotlyOutput("out_mshare", height = "85vh")
+        ),
+        nav_panel("Exposures",
+                  gt_output("plot_exp")
         )
         
       )
+    )
   )
+)
 
 
 # ------------------- SERVER --------------------------------------------
@@ -914,6 +920,7 @@ server <- function(input, output, session) {
   # ---------- CSV download ----------
   current_table <- reactive({
     tab <- input$main_tabs
+    inner_tab <- input$inner_tabs
     if (tab == "Population") {
       pd <- pop_data(); pd$data |> mutate(across(where(is.numeric), ~ round(., 6)))
     } else if (tab == "Differences vs reference") {
@@ -945,7 +952,9 @@ server <- function(input, output, session) {
           asr_lad_all_per_cycle |> filter(cause %in% input$asr_causes, cycle >= MIN_CYCLE)
         }
       }
-    }else if (tab == "Exposures"){
+    }
+    
+    if (inner_tab == "Exposures"){
       
       view <- input$view_level
       # Handle missing or non-"Overall" selections
@@ -1206,7 +1215,6 @@ server <- function(input, output, session) {
     
     gt_tbl <- norm_df |>
       dplyr::select(grouping, variable, stat, all_of(html_cols)) |>
-      #rename_at(vars(everything()), ~ sub("_html$", "", .x)) |> 
       gt(groupname_col = "grouping") |>
       cols_label(!!!setNames(html_cols, html_cols)) |>
       fmt_markdown(columns = all_of(html_cols)) |>
