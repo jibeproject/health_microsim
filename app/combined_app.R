@@ -146,10 +146,11 @@ ui <- page_sidebar(
           radioButtons("metric_kind", "Metric:", 
                        choices = c(
             "Diseases postponed (Δ diseases)" = "diseases",
+            "Δ Impact factor"                 = "imp_fac",
             "Deaths postponed (Δ deaths)"     = "deaths",
             "Δ Healthy years"                 = "healthy",
-            "Δ Life years"                    = "life",
-            "Δ Impact factor"                 = "imp_fac"
+            "Δ Life years"                    = "life"
+            
           )),
           sliderInput("diff_min_cycle", "Start cycle:",
                       min = min(trend_cycles), max = max(trend_cycles),
