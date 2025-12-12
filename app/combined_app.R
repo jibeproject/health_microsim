@@ -23,7 +23,7 @@ list2env(pc, envir = environment())
 SCALING <- 1L
 
 
-t <- qs::qread(here("temp/061125_trips.qs"))
+t <- qs::qread(here("temp/121225_trips.qs"))
 exp <- qs::qread(here("temp/091125/exp.qs"))
 
 #t <- qs::qread(here("temp/processed_data/shiny_app_data/061125_trips.qs"))
@@ -184,10 +184,11 @@ ui <- page_sidebar(
               h5("Summary (cumulative at latest cycle, or sum if non-cumulative)"),
               plotlyOutput("plot_diffly", height = "35vh")
     ),
-    nav_panel("Average onset ages", 
-              gt_output("table_avg")),
     nav_panel("Age Standardised Rates",
-              uiOutput("plot_asrly", height = "85vh")
+              uiOutput("plot_asrly")#, height = "85vh"),
+    ),
+    nav_panel("Average onset ages", 
+              gt_output("table_avg")
     ),
     nav_panel("Population",
               plotlyOutput("plot_poply")#, height = "85vh")
@@ -713,11 +714,13 @@ server <- function(input, output, session) {
           arrange(scen, gender, value) |>
           rename(mean_age_raw_years = mean_age_raw)
       } else {
+        
         dt <- mean_age_dead_raw_by_scen_val_lad |>
           (\(df) if(length(input$lad_sel) > 0) filter(df, ladnm %in% input$lad_sel) else df)() |>
           filter(value %in% causes) |>
           arrange(scen, ladnm, value) |>
           rename(mean_age_raw_years = mean_age_raw)
+        
       }
     } else {
       cause <- input$avg_cause; req(cause)
@@ -819,7 +822,7 @@ server <- function(input, output, session) {
         
         dplot |> 
           group_by(cause, ladnm, scen) |> 
-          reframe(age_std_rate = mean(age_std_rate)) |> 
+          reframe(age_std_rate = mean(age_std_rate, na.rm = T)) |> 
           pivot_wider(names_from = scen, values_from = age_std_rate)
         
       }
@@ -831,16 +834,18 @@ server <- function(input, output, session) {
         ggplot(df, aes(x = cycle, y = age_std_rate, colour = scen, group = scen)) +
           geom_smooth(se = FALSE, method = "loess") +
           facet_wrap(vars(cause), scales = "free_y", ncol = 4) +
-          labs(title = "ASR per cycle (smoothed, cycles 1–30)", x = "Cycle (year)", y = "ASR per 100,000", colour = "Scenario") +
+          labs(title = "ASR per cycle (smoothed, cycles 1–30)\n\n", x = "Cycle (year)", y = "ASR per 100,000", colour = "Scenario") +
           theme_clean()
       } else if (input$view_level == "Gender") {
         df <- asr_gender_all |> filter(cause %in% causes, cycle >= MIN_CYCLE)
+        df$gender <- ifelse(df$gender == 1, "Male",
+                            ifelse(df$gender == 2, "Female", NA))
         
         req(nrow(df) > 0)
         ggplot(df, aes(x = cycle, y = age_std_rate, colour = scen)) +
           geom_smooth(se = FALSE, method = "loess") +
-          facet_wrap(vars(cause, gender), scales = "free_y", ncol = 4) +
-          labs(title = "ASR per cycle by gender (smoothed, cycles 1-30)",
+          facet_wrap(vars(cause, gender), scales = "free_y") +
+          labs(title = "ASR per cycle by gender (smoothed, cycles 1-30)\n\n",
                x = "Cycle (year)", y = "ASR per 100,000", colour = "Scenario") +
           theme_clean()
       } else {
@@ -1134,6 +1139,26 @@ server <- function(input, output, session) {
     
     else if (input$metrics_picker == "Combined Trip Distance by Modes") {
       
+      if (input$view_level == "Overall") {
+      
+      pop <- people_overall |> 
+        filter(cycle == 0) |> 
+        group_by(scen) |> 
+        reframe(pop = sum(pop))
+      
+      td <- t$combined_distance |> 
+        filter(grepl("All", ladnm)) |> 
+        group_by(scen, mode) |> 
+        reframe(total_dist = sum(sumDistance)) |> 
+        left_join(pop) |> mutate(med_dist = total_dist/pop)
+      
+      ggplotly(ggplot(td) +
+        aes(x = med_dist, y = mode, fill = scen) +
+        geom_bar(stat = "summary", fun = "sum", position = "dodge2") +
+        scale_fill_hue(direction = 1) +
+        theme_minimal()
+      )
+      }else{
       
         ggplotly(
           ggplot(t$combined_distance) +
@@ -1153,6 +1178,7 @@ server <- function(input, output, session) {
             labs(title = "Average weekly dist. pp by mode and location",
                  fill = "Scenario")
         )
+      }
         
       } else if (input$metrics_picker == "Trip Duration by Mode") {
         ggplotly(ggplot(t$avg_time_combined) +
