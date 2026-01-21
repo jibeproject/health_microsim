@@ -22,9 +22,8 @@ pc <- qs::qread(here("temp/precomputed_mcr_ref_ss_green_100%V6.qs"))
 list2env(pc, envir = environment())
 SCALING <- 1L
 
-
 t <- qs::qread(here("temp/121225_trips.qs"))
-exp <- qs::qread(here("temp/exp.qs"))
+exp <- qs::qread(here("temp/210126_exp_summary.qs"))
 
 #t <- qs::qread(here("temp/processed_data/shiny_app_data/061125_trips.qs"))
 #exp <- qs::qread(here("temp/processed_data/shiny_app_data/exp.qs"))  
@@ -220,7 +219,7 @@ server <- function(input, output, session) {
     # current selection (if any)
     current <- isolate(input$view_level)
     
-    if (input$main_tabs == "Differences vs reference") {
+    if (input$main_tabs %in% c("Differences vs reference")) {
       
       # selected_views <- c("Overall","Gender","LAD")
       # additional_selected_views <- c("IMD")
@@ -242,6 +241,36 @@ server <- function(input, output, session) {
     )
     
   })
+  
+  
+  observeEvent(input$inner_tabs, {
+    
+    # current selection (if any)
+    current <- isolate(input$view_level)
+    
+    if (input$inner_tabs == "Exposures") {
+      
+      # selected_views <- c("Overall","Gender","LAD")
+      # additional_selected_views <- c("IMD")
+      
+      new_choices <- c(selected_views, additional_selected_views)
+    } else {
+      new_choices <- selected_views
+      # if current selection not in base choices, drop it
+      if (!is.null(current) && !current %in% new_choices) {
+        current <- NULL
+      }
+    }
+    
+    updateSelectInput(
+      session,
+      "view_level",
+      choices  = new_choices,
+      selected = current
+    )
+    
+  })
+  
   
   # ---------- Avg ages cause picker ----------
   output$avg_cause_ui <- renderUI({
@@ -987,6 +1016,8 @@ server <- function(input, output, session) {
         
       } else if  (view == "LAD") {
         exp |> filter(grepl("LAD", grouping))
+      } else if (view == "IMD"){
+        exp |> filter(grepl("IMD", grouping))
       }
       
       if (view == "LAD" && length(input$lad_sel)) {
@@ -1264,7 +1295,7 @@ server <- function(input, output, session) {
     
     gt_tbl <- norm_df |>
       dplyr::select(grouping, variable, stat, all_of(html_cols)) |>
-      gt(groupname_col = "grouping") |>
+      gt() |> #groupname_col = "grouping") |>
       cols_label(!!!setNames(html_cols, html_cols)) |>
       fmt_markdown(columns = all_of(html_cols)) |>
       tab_options(table.font.size = "small") |>
