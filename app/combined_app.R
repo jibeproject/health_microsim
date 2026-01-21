@@ -219,7 +219,7 @@ server <- function(input, output, session) {
     # current selection (if any)
     current <- isolate(input$view_level)
     
-    if (input$main_tabs %in% c("Differences vs reference")) {
+    if (input$main_tabs %in% c("Differences vs reference", "Age Standardised Rates")) {
       
       # selected_views <- c("Overall","Gender","LAD")
       # additional_selected_views <- c("IMD")
@@ -836,7 +836,18 @@ server <- function(input, output, session) {
           reframe(age_std_rate = mean(age_std_rate)) |> 
           pivot_wider(names_from = scen, values_from = age_std_rate)
         
-      } else {
+      } else if (input$view_level == "IMD") {
+        df <- asr_imd_all_avg_1_30 |> 
+          filter(cause %in% causes, scen %in% scens)
+        req(nrow(df) > 0)
+        
+        df |>  
+          group_by(cause, imd10, scen) |> 
+          reframe(age_std_rate = mean(age_std_rate)) |> 
+          pivot_wider(names_from = scen, values_from = age_std_rate)
+        
+      } 
+      else {
         df <- asr_lad_all_avg_1_30 |> 
           filter(cause %in% causes, scen %in% scens)
           
