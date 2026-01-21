@@ -888,7 +888,17 @@ server <- function(input, output, session) {
           labs(title = "ASR per cycle by gender (smoothed, cycles 1-30)\n\n",
                x = "Cycle (year)", y = "ASR per 100,000", colour = "Scenario") +
           theme_clean()
-      } else {
+      } else if (input$view_level == "IMD") {
+        df <- asr_imd_all |> filter(cause %in% causes, cycle >= MIN_CYCLE)
+        req(nrow(df) > 0)
+        ggplot(df, aes(x = imd10, y = age_std_rate, colour = scen)) +
+          geom_smooth(se = FALSE, method = "loess") +
+          facet_wrap(vars(cause), scales = "free_y") +
+          labs(title = "ASR per cycle by IMD (smoothed, cycles 1-30)\n\n",
+               x = "IMD", y = "ASR per 100,000", colour = "Scenario") +
+          theme_clean()
+      }
+      else {
         dat <- asr_lad_all_per_cycle |> filter(cause %in% causes, cycle >= MIN_CYCLE)
         req(nrow(dat) > 0)
         if (length(input$lad_sel)) {
