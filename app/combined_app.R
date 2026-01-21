@@ -16,7 +16,7 @@ suppressPackageStartupMessages({
 })
 
 # pc <- qs::qread(here("temp/precomputed_mcr_wogd_100%V3.qs"))
-pc <- qs::qread(here("temp/061225/precomputed_mcr_wgd_100%V4_imd.qs"))
+pc <- qs::qread(here("temp/precomputed_mcr_ref_ss_green_100%V6.qs"))
 
 #pc <- qs::qread(here("temp/processed_data/shiny_app_data/precomputed_mcr_wogd_100%V3.qs"))
 list2env(pc, envir = environment())
@@ -24,7 +24,7 @@ SCALING <- 1L
 
 
 t <- qs::qread(here("temp/121225_trips.qs"))
-exp <- qs::qread(here("temp/091125/exp.qs"))
+exp <- qs::qread(here("temp/exp.qs"))
 
 #t <- qs::qread(here("temp/processed_data/shiny_app_data/061125_trips.qs"))
 #exp <- qs::qread(here("temp/processed_data/shiny_app_data/exp.qs"))  
@@ -937,13 +937,15 @@ server <- function(input, output, session) {
       pd <- pop_data(); pd$data |> mutate(across(where(is.numeric), ~ round(., 6)))
     } else if (tab == "Differences vs reference") {
       d <- diff_long()
+      
       if (isTRUE(input$diff_cumulative)) {
         by <- if ("gender" %in% names(d)) "gender" else if ("ladnm" %in% names(d)) "ladnm" else character(0)
-        d |> group_by(across(all_of(c("scen", by)))) |> slice_max(order_by = cycle, n = 1, with_ties = FALSE) |>
-          ungroup() |> transmute(scen, across(all_of(by)), final_cycle = cycle, cumulative_value = y, cumulative_value_scaled = y * SCALING)
-      } else d
+        return(d |> group_by(across(all_of(c("scen", by)))) |> slice_max(order_by = cycle, n = 1, with_ties = FALSE) |>
+          ungroup() |> transmute(scen, across(all_of(by)), final_cycle = cycle, cumulative_value = y, cumulative_value_scaled = y * SCALING) |> 
+          as.data.frame())
+      } else return(d)
     } else if (tab == "Average onset ages") {
-      output$table_avg |> req(); isolate({ output$table_avg() })
+      output$table_avg |> req(); return(isolate({ output$table_avg() }))
     } else if (tab == "Age Standardised Rates") {
       if (input$asr_mode == "avg") {
         if (input$view_level == "Overall") {
@@ -999,8 +1001,13 @@ server <- function(input, output, session) {
     }
   })
   output$download_csv <- downloadHandler(
-    filename = function() paste0("export_", gsub("\\s+","_", tolower(input$main_tabs)), "_", Sys.Date(), ".csv"),
-    content  = function(file) readr::write_csv(current_table(), file, na = "")
+    filename = function() { 
+      paste0("export_", gsub("\\s+","_", tolower(input$main_tabs)), "_", Sys.Date(), ".csv")},
+    content  = function(file) {
+      write_csv(current_table(), file)
+      #readr::write_csv(x = current_table(), file = file, na = "")
+      
+      }
   )
   
   
