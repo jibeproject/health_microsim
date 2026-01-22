@@ -15,10 +15,9 @@ suppressPackageStartupMessages({
   library(bslib)
 })
 
-pc <- qs::qread("processed_data/precomputed_mcr_ref_ss_green_100%V6.qs")
+pc <- qs::qread("processed_data/precomputed_mcr_ref_ss_green_S2_100%V6.qs")# precomputed_mcr_ref_ss_green_100%V6.qs")
 t <- qs::qread("processed_data/121225_trips.qs")
 exp <- qs::qread("processed_data/210126_exp_summary.qs")
-# list2env(pc, envir = environment())
 SCALING <- 1L
 
 
@@ -75,6 +74,7 @@ trend_cycles  <- sort(unique(pc$asr_overall_all$cycle))
 all_lads_nm   <- sort(unique(pc$people_lad$ladnm))
 all_genders   <- sort(unique(pc$people_gender$gender))
 all_causes_asr <- pc$asr_overall_all |> distinct(cause) |> pull() #filter(!grepl("sev", cause)) |> 
+all_causes_except_dead <- pc$asr_overall_all |> distinct(cause) |> filter(!grepl("dead", cause)) |> pull()
 selected_views <- c("Overall","Gender","LAD")
 additional_selected_views <- c("IMD")
 
@@ -189,10 +189,10 @@ ui <- page_sidebar(
       title = "Travel & Exposures",
       navset_card_underline(
         id = "inner_tabs",
-        nav_panel("Travel Behaviour",
-                  value = "Travel Behaviour",
-                  plotlyOutput("out_mshare", height = "85vh")
-        ),
+        # nav_panel("Travel Behaviour",
+        #           value = "Travel Behaviour",
+        #           plotlyOutput("out_mshare", height = "85vh")
+        # ),
         nav_panel("Exposures",
                   value = "Exposures",
                   gt_output("plot_exp")
@@ -303,7 +303,7 @@ server <- function(input, output, session) {
     if (input$avg_kind == "onset") {
       selectizeInput("avg_cause", "Disease (onset):",
                      multiple = TRUE,
-                  choices = sort(unique(incidence_src$value)),
+                  choices = all_causes_except_dead,
                   selected = "coronary_heart_disease")
     } else {
       selectizeInput("avg_death_causes", "Death cause(s):",
@@ -738,7 +738,7 @@ server <- function(input, output, session) {
     if (input$avg_kind == "onset") {
       selectizeInput("avg_cause", "Disease (onset):",
                      multiple = TRUE,
-                  choices = sort(unique(pc$incidence_src$value)),
+                  choices = all_causes_except_dead,
                   selected = "coronary_heart_disease")
     } else {
       selectizeInput("avg_death_causes", "Death cause(s):",
