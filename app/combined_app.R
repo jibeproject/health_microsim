@@ -332,8 +332,6 @@ server <- function(input, output, session) {
     req(input$pop_cycles, input$scen_sel)
     view <- input$view_level
     
-    
-    
     if (view == "Overall") {
       dat <- set_ag(pc$people_overall) |> filter(scen %in% input$scen_sel, cycle %in% input$pop_cycles)
       if (isTRUE(input$pop_share)) {
@@ -460,8 +458,6 @@ server <- function(input, output, session) {
     
     ttl  <- d$metric[1]
     if ("gender" %in% names(d)) {
-      
-      # browser()
       ggplot(d, aes(x = cycle, y = y, colour = scen)) +
         geom_smooth(se = FALSE, method = "loess") + add_zero_line() +
         facet_wrap(~ gender, nrow = 2, scales = "free_y") + 
@@ -748,8 +744,12 @@ server <- function(input, output, session) {
     }
   })
   
-  output$table_avg <- renderUI({
+  get_onset_ages <- reactive({
+    # req(input$avg_kind, input$view_level, input$scen_sel, input$avg_cause, input$avg_death_causes,
+    #     input$lad_sel)          
+          
     view <- input$view_level
+    
     dt <- NULL
     
     if (input$avg_kind == "death") {
@@ -789,8 +789,8 @@ server <- function(input, output, session) {
                  mean_age_raw_years = mean_age_raw)
       } else if (view == "Gender") {
         dt <- pc$mean_age_onset_raw_by_scen_val_gender |>
-          filter(value == cause) |>
-          left_join(pc$mean_age_onset_weight_by_scen_val_gender |> filter(value == cause),
+          filter(value %in% cause) |>
+          left_join(pc$mean_age_onset_weight_by_scen_val_gender |> filter(value %in% cause),
                     by = c("scen","value","gender")) |>
           arrange(scen, gender) |>
           select(scen, gender, value,
@@ -798,7 +798,7 @@ server <- function(input, output, session) {
       } else {
         dt <- pc$mean_age_onset_raw_by_scen_val_lad |>
           (\(df) if(length(input$lad_sel) > 0) filter(df, ladnm %in% input$lad_sel) else df)() |>
-          filter(value == cause) |>
+          filter(value %in% cause) |>
           arrange(scen, ladnm) |>
           rename(mean_age_raw_years = mean_age_raw)
       }
@@ -814,6 +814,19 @@ server <- function(input, output, session) {
                           ifelse(dt$gender == 2, "Female", NA))
     }
     
+    return(dt)
+  })
+  
+  output$table_avg <- renderUI({
+    
+    # browser()
+    # 
+    # 
+    # #req(input$avg_kind, input$view_level, input$scen_sel, input$avg_cause, input$avg_death_causes)
+    # req(input$avg_kind, input$view_level, input$scen_sel, input$avg_cause, input$avg_death_causes,
+    #     input$lad_sel)
+    
+    dt <- get_onset_ages()
     get_normalized_table(dt |> 
                             pivot_wider(names_from = scen, values_from = mean_age_raw_years)) |>
       dplyr::select(-matches("min|max|norm")) |> 
@@ -823,6 +836,9 @@ server <- function(input, output, session) {
                       use_sorting = FALSE,
                       use_compact_mode = TRUE)
   })
+  
+  
+  
   
   # ---------- ASR ----------
   to_chr_cause <- function(df) if ("cause" %in% names(df)) dplyr::mutate(df, cause = as.character(cause)) else df
@@ -835,103 +851,133 @@ server <- function(input, output, session) {
   asr_healthy_years_overall       <- to_chr_cause(pc$asr_healthy_years_overall)
   asr_healthy_years_overall_avg_1_30 <- to_chr_cause(pc$asr_healthy_years_overall_avg_1_30)
   
-  build_asr_plot <- reactive({
-    req(input$asr_mode, input$asr_causes, input$view_level, input$scen_sel)
+  # New reactive to handle all data fetching and processing
+  get_asr_data <- reactive({
+    
+    #req(input$asr_mode, input$asr_causes, input$view_level, input$scen_sel)
     causes <- input$asr_causes
     scens <- input$scen_sel
+    
+    
+    df <- NULL
+    
     if (input$asr_mode == "avg") {
       if (input$view_level == "Overall") {
         df <- bind_rows(asr_overall_avg_1_30, asr_healthy_years_overall_avg_1_30) |>
           filter(cause %in% causes, scen %in% scens)
-        req(nrow(df) > 0)
         
-        df |>
+        req(nrow(df) > 0)
+        return(df |>
           group_by(cause, scen) |> 
           reframe(age_std_rate = mean(age_std_rate)) |> 
-          pivot_wider(names_from = scen, values_from = age_std_rate) 
+          pivot_wider(names_from = scen, values_from = age_std_rate))
         
       } else if (input$view_level == "Gender") {
         df <- asr_gender_all_avg_1_30 |> 
           filter(cause %in% causes, scen %in% scens)
-        req(nrow(df) > 0)
         
-        df |> 
-          mutate(gender = case_when(gender == 1 ~ "Male",
-                                                    gender == 2 ~ "Female")) |> 
+        req(nrow(df) > 0)
+        return(df |> 
+          mutate(gender = case_when(
+            gender == 1 ~ "Male",
+            gender == 2 ~ "Female"
+          )) |> 
           group_by(cause, gender, scen) |> 
           reframe(age_std_rate = mean(age_std_rate)) |> 
           pivot_wider(names_from = scen, values_from = age_std_rate)
+        )
         
       } else if (input$view_level == "IMD") {
         df <- pc$asr_imd_all_avg_1_30 |> 
           filter(cause %in% causes, scen %in% scens)
-        req(nrow(df) > 0)
         
-        df |>  
+        req(nrow(df) > 0)
+        return(df |>  
           group_by(cause, imd10, scen) |> 
           reframe(age_std_rate = mean(age_std_rate)) |> 
-          pivot_wider(names_from = scen, values_from = age_std_rate)
+          pivot_wider(names_from = scen, values_from = age_std_rate))
         
-      } 
-      else {
+      } else {
         df <- asr_lad_all_avg_1_30 |> 
           filter(cause %in% causes, scen %in% scens)
-          
-        if (length(input$lad_sel)) df <- df |> filter(ladnm %in% input$lad_sel)
+        
+        if (length(input$lad_sel)) 
+          df <- df |> filter(ladnm %in% input$lad_sel)
+        
         req(nrow(df) > 0)
-        top_ids <- df |>
-          filter(cause == causes[1], scen == "reference") |>
-          #slice_max(order_by = age_std_rate, n = input$lad_topn, with_ties = FALSE) |>
+        top_ids <- df |> 
+          filter(cause == causes[1], scen == "reference") |> 
           distinct(ladnm)
+        
         dplot <- df |> filter(ladnm %in% top_ids$ladnm)
         req(nrow(dplot) > 0)
         
-        dplot |> 
+        return(dplot |> 
           group_by(cause, ladnm, scen) |> 
-          reframe(age_std_rate = mean(age_std_rate, na.rm = T)) |> 
-          pivot_wider(names_from = scen, values_from = age_std_rate)
-        
+          reframe(age_std_rate = mean(age_std_rate, na.rm = TRUE)) |> 
+          pivot_wider(names_from = scen, values_from = age_std_rate))
       }
     } else {
+      # Non-average mode datasets
       if (input$view_level == "Overall") {
-        df <- bind_rows(asr_overall_all, asr_healthy_years_overall) |>
+        return(bind_rows(asr_overall_all, asr_healthy_years_overall) |>
+          filter(cause %in% causes, cycle >= MIN_CYCLE))
+      } else if (input$view_level == "Gender") {
+        return(asr_gender_all |> 
+          filter(cause %in% causes, cycle >= MIN_CYCLE) |>
+          mutate(gender = ifelse(gender == 1, "Male",
+                                 ifelse(gender == 2, "Female", NA))))
+      } else if (input$view_level == "IMD") {
+        return(pc$asr_imd_all |> 
+          filter(cause %in% causes, cycle >= MIN_CYCLE))
+      } else {
+        df <- asr_lad_all_per_cycle |> 
           filter(cause %in% causes, cycle >= MIN_CYCLE)
-        req(nrow(df) > 0)
+        if (length(input$lad_sel)) {
+          df <- df |> filter(ladnm %in% input$lad_sel)
+        }
+        
+        return(df)
+      }
+      
+    }
+    
+  })
+  
+  
+  build_asr_plot <- reactive({
+    df <- get_asr_data()
+    req(df)
+    
+    if (input$asr_mode == "avg") {
+      df  # return processed table
+    } else {
+      if (input$view_level == "Overall") {
         ggplot(df, aes(x = cycle, y = age_std_rate, colour = scen, group = scen)) +
           geom_smooth(se = FALSE, method = "loess") +
           facet_wrap(vars(cause), scales = "free_y", ncol = 4) +
-          labs(title = "ASR per cycle (smoothed, cycles 1–30)\n\n", x = "Cycle (year)", y = "ASR per 100,000", colour = "Scenario") +
+          labs(title = "ASR per cycle (smoothed, cycles 1–30)\n\n", 
+               x = "Cycle (year)", y = "ASR per 100,000", colour = "Scenario") +
           theme_clean()
-      } else if (input$view_level == "Gender") {
-        df <- asr_gender_all |> filter(cause %in% causes, cycle >= MIN_CYCLE)
-        df$gender <- ifelse(df$gender == 1, "Male",
-                            ifelse(df$gender == 2, "Female", NA))
         
-        req(nrow(df) > 0)
+      } else if (input$view_level == "Gender") {
         ggplot(df, aes(x = cycle, y = age_std_rate, colour = scen)) +
           geom_smooth(se = FALSE, method = "loess") +
           facet_wrap(vars(cause, gender), scales = "free_y") +
           labs(title = "ASR per cycle by gender (smoothed, cycles 1-30)\n\n",
                x = "Cycle (year)", y = "ASR per 100,000", colour = "Scenario") +
           theme_clean()
+        
       } else if (input$view_level == "IMD") {
-        df <- pc$asr_imd_all |> filter(cause %in% causes, cycle >= MIN_CYCLE)
-        req(nrow(df) > 0)
         ggplot(df, aes(x = imd10, y = age_std_rate, colour = scen)) +
           geom_smooth(se = FALSE, method = "loess") +
           facet_wrap(vars(cause), scales = "free_y") +
           labs(title = "ASR per cycle by IMD (smoothed, cycles 1-30)\n\n",
                x = "IMD", y = "ASR per 100,000", colour = "Scenario") +
           theme_clean()
-      }
-      else {
-        dat <- asr_lad_all_per_cycle |> filter(cause %in% causes, cycle >= MIN_CYCLE)
-        req(nrow(dat) > 0)
-        if (length(input$lad_sel)) {
-          dat <- dat |> filter(ladnm %in% input$lad_sel)
-        } 
-        req(nrow(dat) > 0)
-        ggplot(dat, aes(x = cycle, y = age_std_rate, colour = scen)) +
+        
+      } else {
+        ggplot(df, aes(x = cycle, y = age_std_rate, colour = scen)) +
           geom_smooth(se = FALSE, method = "loess") +
           facet_grid(ladnm ~ cause, scales = "free_y") +
           labs(title = "ASR per cycle by LAD (smoothed, cycles 1-30)",
@@ -940,6 +986,7 @@ server <- function(input, output, session) {
       }
     }
   })
+  
   
   output$plot_asrly <- renderUI({
       plot_obj <- build_asr_plot()
@@ -988,27 +1035,10 @@ server <- function(input, output, session) {
           as.data.frame())
       } else return(d)
     } else if (tab == "Average onset ages") {
-      output$table_avg |> req(); return(isolate({ output$table_avg() }))
+      req(input$avg_kind, input$view_level, input$scen_sel, input$avg_cause, input$avg_death_causes)
+      return(isolate({ get_onset_ages() }))
     } else if (tab == "Age Standardised Rates") {
-      if (input$asr_mode == "avg") {
-        if (input$view_level == "Overall") {
-          bind_rows(asr_overall_avg_1_30, asr_healthy_years_overall_avg_1_30) |>
-            filter(cause %in% input$asr_causes)
-        } else if (input$view_level == "Gender") {
-          asr_gender_all_avg_1_30 |> filter(cause %in% input$asr_causes)
-        } else {
-          asr_lad_all_avg_1_30 |> filter(cause %in% input$asr_causes)
-        }
-      } else {
-        if (input$view_level == "Overall") {
-          bind_rows(asr_overall_all, asr_healthy_years_overall) |>
-            filter(cause %in% input$asr_causes, cycle >= MIN_CYCLE)
-        } else if (input$view_level == "Gender") {
-          asr_gender_all |> filter(cause %in% input$asr_causes, cycle >= MIN_CYCLE)
-        } else {
-          asr_lad_all_per_cycle |> filter(cause %in% input$asr_causes, cycle >= MIN_CYCLE)
-        }
-      }
+      return(isolate({ get_asr_data() }))
     }
     
     if (inner_tab == "Exposures"){
