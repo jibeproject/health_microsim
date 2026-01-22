@@ -189,10 +189,10 @@ ui <- page_sidebar(
       title = "Travel & Exposures",
       navset_card_underline(
         id = "inner_tabs",
-        # nav_panel("Travel Behaviour",
-        #           value = "Travel Behaviour",
-        #           plotlyOutput("out_mshare", height = "85vh")
-        # ),
+        nav_panel("Travel Behaviour",
+                  value = "Travel Behaviour"#,
+                  #plotlyOutput("out_mshare", height = "85vh")
+        ),
         nav_panel("Exposures",
                   value = "Exposures",
                   gt_output("plot_exp")
@@ -273,6 +273,10 @@ server <- function(input, output, session) {
     
     # current selection (if any)
     current <- isolate(input$view_level)
+    
+    # print("input$inner_tabs")
+    # print(input$inner_tabs)
+    
     
     if (input$inner_tabs == "Exposures") {
       
