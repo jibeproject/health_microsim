@@ -15,18 +15,11 @@ suppressPackageStartupMessages({
   library(bslib)
 })
 
-# pc <- qs::qread(here("temp/precomputed_mcr_wogd_100%V3.qs"))
-pc <- qs::qread(here("temp/precomputed_mcr_ref_ss_green_100%V6.qs"))
-
-#pc <- qs::qread(here("temp/processed_data/shiny_app_data/precomputed_mcr_wogd_100%V3.qs"))
-list2env(pc, envir = environment())
+pc <- qs::qread("processed_data/precomputed_mcr_ref_ss_green_100%V6.qs")
+t <- qs::qread("processed_data/121225_trips.qs")
+exp <- qs::qread("processed_data/210126_exp_summary.qs")
+# list2env(pc, envir = environment())
 SCALING <- 1L
-
-t <- qs::qread(here("temp/121225_trips.qs"))
-exp <- qs::qread(here("temp/210126_exp_summary.qs"))
-
-#t <- qs::qread(here("temp/processed_data/shiny_app_data/061125_trips.qs"))
-#exp <- qs::qread(here("temp/processed_data/shiny_app_data/exp.qs"))  
 
 
 MIN_CYCLE <- 1
@@ -76,12 +69,12 @@ align_age_levels <- function(w, people_age) {
 death_values <- c("dead","dead_car","dead_bike","dead_walk")
 
 # ------------------- UI -------------------------------------------------
-all_scenarios <- sort(unique(people_overall$scen))
-pop_cycles    <- sort(unique(people_overall$cycle))
-trend_cycles  <- sort(unique(asr_overall_all$cycle))
-all_lads_nm   <- sort(unique(people_lad$ladnm))
-all_genders   <- sort(unique(people_gender$gender))
-all_causes_asr <- asr_overall_all |> distinct(cause) |> pull() #filter(!grepl("sev", cause)) |> 
+all_scenarios <- sort(unique(pc$people_overall$scen))
+pop_cycles    <- sort(unique(pc$people_overall$cycle))
+trend_cycles  <- sort(unique(pc$asr_overall_all$cycle))
+all_lads_nm   <- sort(unique(pc$people_lad$ladnm))
+all_genders   <- sort(unique(pc$people_gender$gender))
+all_causes_asr <- pc$asr_overall_all |> distinct(cause) |> pull() #filter(!grepl("sev", cause)) |> 
 selected_views <- c("Overall","Gender","LAD")
 additional_selected_views <- c("IMD")
 
@@ -214,6 +207,39 @@ ui <- page_sidebar(
 # ------------------- SERVER --------------------------------------------
 server <- function(input, output, session) {
   
+  get_normalized_table <- function(df){
+    scen_cols <- all_scenarios
+    
+    if (length(input$scen_sel))
+      scen_cols <- input$scen_sel
+    
+    scen_cols <- intersect(scen_cols, names(df))
+    
+    norm_df <- df |>
+      rowwise() |>
+      mutate(
+        row_min = min(c_across(all_of(scen_cols)), na.rm = TRUE),
+        row_max = max(c_across(all_of(scen_cols)), na.rm = TRUE)
+      ) |>
+      mutate(across(
+        all_of(scen_cols),
+        function(x) if_else(row_max == row_min, 0.5, (x - row_min) / (row_max - row_min)),
+        .names = "{.col}_norm"
+      )) |>
+      ungroup()
+    
+    # Create html-colored cell content
+    for (scen in scen_cols) {
+      norm_col <- paste0(scen, "_norm")
+      norm_df[[scen]] <- mapply(function(val, norm) {
+        color <- col_fun(norm)
+        sprintf("<div style='background-color:%s; padding:2px;'>%s</div>", color, round(val, 2))
+      }, norm_df[[scen]], norm_df[[norm_col]], SIMPLIFY = TRUE)
+    }
+    
+    return(norm_df)
+  }
+  
   observeEvent(input$main_tabs, {
     
     # current selection (if any)
@@ -309,14 +335,14 @@ server <- function(input, output, session) {
     
     
     if (view == "Overall") {
-      dat <- set_ag(people_overall) |> filter(scen %in% input$scen_sel, cycle %in% input$pop_cycles)
+      dat <- set_ag(pc$people_overall) |> filter(scen %in% input$scen_sel, cycle %in% input$pop_cycles)
       if (isTRUE(input$pop_share)) {
         list(data = pop_share(dat, c("cycle","scen")), y = "share", y_lab = "Share of pop.")
       } else {
         list(data = dat, y = "pop", y_lab = "Population count")
       }
     } else if (view == "Gender") {
-      dat <- set_ag(people_gender) |> 
+      dat <- set_ag(pc$people_gender) |> 
         filter(scen %in% input$scen_sel, cycle %in% input$pop_cycles) |> 
         mutate(gender = case_when(gender == 1 ~ "Male",
                                   gender == 2 ~ "Female"))
@@ -327,7 +353,7 @@ server <- function(input, output, session) {
         list(data = dat, facet = "gender", y = "pop", y_lab = "Population count")
       }
     } else {
-      dat <- set_ag(people_lad) |> filter(scen %in% input$scen_sel, cycle %in% input$pop_cycles)
+      dat <- set_ag(pc$people_lad) |> filter(scen %in% input$scen_sel, cycle %in% input$pop_cycles)
       if (length(input$lad_sel)) dat <- dat |> filter(ladnm %in% input$lad_sel)
       if (isTRUE(input$pop_share)) {
         list(data = pop_share(dat, c("cycle","scen","ladnm")), facet = "ladnm", y = "share", y_lab = "Share of pop.")
@@ -361,10 +387,10 @@ server <- function(input, output, session) {
     validate(need(length(scen_keep) > 0, "Select at least one non-reference scenario."))
     minc <- input$diff_min_cycle; view <- input$view_level; cumu <- isTRUE(input$diff_cumulative)
     
-    dl <- deaths_lad
-    dil <- diseases_lad
-    hl <- healthy_lad
-    ll <- lifey_lad
+    dl <- pc$deaths_lad
+    dil <- pc$diseases_lad
+    hl <- pc$healthy_lad
+    ll <- pc$lifey_lad
     if (length(input$lad_sel)){
       dl <- dl |> filter(ladnm %in% input$lad_sel)
       dil <- dil |> filter(ladnm %in% input$lad_sel)
@@ -373,9 +399,9 @@ server <- function(input, output, session) {
 
     }
     
-    do <- diseases_overall
-    dg <- diseases_gender
-    dimd <- diseases_imd
+    do <- pc$diseases_overall
+    dg <- pc$diseases_gender
+    dimd <- pc$diseases_imd
     
     if (length(input$asr_causes)){
       do <- do |> filter(cause %in% input$asr_causes)
@@ -385,22 +411,22 @@ server <- function(input, output, session) {
     }
     
     pick <- switch(input$metric_kind,
-                   deaths   = list(Overall=deaths_overall, Gender=deaths_gender,  LAD=dl, IMD = deaths_imd, label="Δ Deaths"),
+                   deaths   = list(Overall=pc$deaths_overall, Gender=pc$deaths_gender,  LAD=dl, IMD = pc$deaths_imd, label="Δ Deaths"),
                    diseases = list(Overall=do, Gender=dg, LAD=dil,IMD = dimd, label="Δ Diseases"),
-                   healthy  = list(Overall=healthy_overall, Gender=healthy_gender, LAD=hl,IMD = healthy_imd, label="Δ Healthy years"),
-                   life     = list(Overall=lifey_overall, Gender=lifey_gender, LAD=ll,  IMD = lifey_imd, label="Δ Life years"),
-                   imp_fac  = list(Overall = plyr::rbind.fill(lifey_overall |> mutate(factor = "Δ Life years"),
-                                                              healthy_overall |> mutate(factor = "Δ Healthy years"),
-                                                              deaths_overall |> mutate(factor = "Δ Deaths")), 
-                                   Gender=plyr::rbind.fill(lifey_gender  |> mutate(factor = "Δ Life years"),
-                                                           healthy_gender   |> mutate(factor = "Δ Healthy years"),
-                                                           deaths_gender |> mutate(factor = "Δ Deaths")), 
+                   healthy  = list(Overall=pc$healthy_overall, Gender=pc$healthy_gender, LAD=hl,IMD = pc$healthy_imd, label="Δ Healthy years"),
+                   life     = list(Overall=pc$lifey_overall, Gender=pc$lifey_gender, LAD=ll,  IMD = pc$lifey_imd, label="Δ Life years"),
+                   imp_fac  = list(Overall = plyr::rbind.fill(pc$lifey_overall |> mutate(factor = "Δ Life years"),
+                                                              pc$healthy_overall |> mutate(factor = "Δ Healthy years"),
+                                                              pc$deaths_overall |> mutate(factor = "Δ Deaths")), 
+                                   Gender=plyr::rbind.fill(pc$lifey_gender  |> mutate(factor = "Δ Life years"),
+                                                           pc$healthy_gender   |> mutate(factor = "Δ Healthy years"),
+                                                           pc$deaths_gender |> mutate(factor = "Δ Deaths")), 
                                    LAD=plyr::rbind.fill(ll |> mutate(factor = "Δ Life years"),
                                                         hl |> mutate(factor = "Δ Healthy years"),
                                                         dl |> mutate(factor = "Δ Deaths")),  
-                                   IMD=plyr::rbind.fill(lifey_imd  |> mutate(factor = "Δ Life years"),
-                                                           healthy_imd |> mutate(factor = "Δ Healthy years"),
-                                                           deaths_imd |> mutate(factor = "Δ Deaths")),
+                                   IMD=plyr::rbind.fill(pc$lifey_imd  |> mutate(factor = "Δ Life years"),
+                                                        pc$healthy_imd |> mutate(factor = "Δ Healthy years"),
+                                                        pc$deaths_imd |> mutate(factor = "Δ Deaths")),
                                    label="Δ Impact factor"))
     base <- pick[[view]]
     if (input$metric_kind == "diseases"){
@@ -712,7 +738,7 @@ server <- function(input, output, session) {
     if (input$avg_kind == "onset") {
       selectizeInput("avg_cause", "Disease (onset):",
                      multiple = TRUE,
-                  choices = sort(unique(incidence_src$value)),
+                  choices = sort(unique(pc$incidence_src$value)),
                   selected = "coronary_heart_disease")
     } else {
       selectizeInput("avg_death_causes", "Death cause(s):",
@@ -729,22 +755,22 @@ server <- function(input, output, session) {
     if (input$avg_kind == "death") {
       causes <- input$avg_death_causes; req(causes)
       if (view == "Overall") {
-        dt <- mean_age_dead_raw_by_scen_val |>
+        dt <- pc$mean_age_dead_raw_by_scen_val |>
           filter(value %in% causes) |>
-          left_join(mean_age_dead_weight_by_scen_val |> filter(value %in% causes),
+          left_join(pc$mean_age_dead_weight_by_scen_val |> filter(value %in% causes),
                     by = c("scen","value")) |>
           arrange(scen, value) |>
           rename(mean_age_raw_years = mean_age_raw)
       } else if (view == "Gender") {
-        dt <- mean_age_dead_raw_by_scen_val_gender |>
+        dt <- pc$mean_age_dead_raw_by_scen_val_gender |>
           filter(value %in% causes) |>
-          left_join(mean_age_dead_weight_by_scen_val_gender |> filter(value %in% causes),
+          left_join(pc$mean_age_dead_weight_by_scen_val_gender |> filter(value %in% causes),
                     by = c("scen","value","gender")) |>
           arrange(scen, gender, value) |>
           rename(mean_age_raw_years = mean_age_raw)
       } else {
         
-        dt <- mean_age_dead_raw_by_scen_val_lad |>
+        dt <- pc$mean_age_dead_raw_by_scen_val_lad |>
           (\(df) if(length(input$lad_sel) > 0) filter(df, ladnm %in% input$lad_sel) else df)() |>
           filter(value %in% causes) |>
           arrange(scen, ladnm, value) |>
@@ -754,23 +780,23 @@ server <- function(input, output, session) {
     } else {
       cause <- input$avg_cause; req(cause)
       if (view == "Overall") {
-        dt <- mean_age_onset_raw_by_scen_val |>
+        dt <- pc$mean_age_onset_raw_by_scen_val |>
           filter(value %in% cause) |>
-          left_join(mean_age_onset_weight_by_scen_val |> filter(value %in% cause),
+          left_join(pc$mean_age_onset_weight_by_scen_val |> filter(value %in% cause),
                     by = c("scen","value")) |>
           arrange(scen) |>
           select(scen, value,
                  mean_age_raw_years = mean_age_raw)
       } else if (view == "Gender") {
-        dt <- mean_age_onset_raw_by_scen_val_gender |>
+        dt <- pc$mean_age_onset_raw_by_scen_val_gender |>
           filter(value == cause) |>
-          left_join(mean_age_onset_weight_by_scen_val_gender |> filter(value == cause),
+          left_join(pc$mean_age_onset_weight_by_scen_val_gender |> filter(value == cause),
                     by = c("scen","value","gender")) |>
           arrange(scen, gender) |>
           select(scen, gender, value,
                  mean_age_raw_years = mean_age_raw)
       } else {
-        dt <- mean_age_onset_raw_by_scen_val_lad |>
+        dt <- pc$mean_age_onset_raw_by_scen_val_lad |>
           (\(df) if(length(input$lad_sel) > 0) filter(df, ladnm %in% input$lad_sel) else df)() |>
           filter(value == cause) |>
           arrange(scen, ladnm) |>
@@ -800,14 +826,14 @@ server <- function(input, output, session) {
   
   # ---------- ASR ----------
   to_chr_cause <- function(df) if ("cause" %in% names(df)) dplyr::mutate(df, cause = as.character(cause)) else df
-  asr_overall_all                 <- to_chr_cause(asr_overall_all)
-  asr_overall_avg_1_30            <- to_chr_cause(asr_overall_avg_1_30)
-  asr_gender_all                  <- to_chr_cause(asr_gender_all)
-  asr_gender_all_avg_1_30         <- to_chr_cause(asr_gender_all_avg_1_30)
-  asr_lad_all_per_cycle           <- to_chr_cause(asr_lad_all_per_cycle)
-  asr_lad_all_avg_1_30            <- to_chr_cause(asr_lad_all_avg_1_30)
-  asr_healthy_years_overall       <- to_chr_cause(asr_healthy_years_overall)
-  asr_healthy_years_overall_avg_1_30 <- to_chr_cause(asr_healthy_years_overall_avg_1_30)
+  asr_overall_all                 <- to_chr_cause(pc$asr_overall_all)
+  asr_overall_avg_1_30            <- to_chr_cause(pc$asr_overall_avg_1_30)
+  asr_gender_all                  <- to_chr_cause(pc$asr_gender_all)
+  asr_gender_all_avg_1_30         <- to_chr_cause(pc$asr_gender_all_avg_1_30)
+  asr_lad_all_per_cycle           <- to_chr_cause(pc$asr_lad_all_per_cycle)
+  asr_lad_all_avg_1_30            <- to_chr_cause(pc$asr_lad_all_avg_1_30)
+  asr_healthy_years_overall       <- to_chr_cause(pc$asr_healthy_years_overall)
+  asr_healthy_years_overall_avg_1_30 <- to_chr_cause(pc$asr_healthy_years_overall_avg_1_30)
   
   build_asr_plot <- reactive({
     req(input$asr_mode, input$asr_causes, input$view_level, input$scen_sel)
@@ -837,7 +863,7 @@ server <- function(input, output, session) {
           pivot_wider(names_from = scen, values_from = age_std_rate)
         
       } else if (input$view_level == "IMD") {
-        df <- asr_imd_all_avg_1_30 |> 
+        df <- pc$asr_imd_all_avg_1_30 |> 
           filter(cause %in% causes, scen %in% scens)
         req(nrow(df) > 0)
         
@@ -889,7 +915,7 @@ server <- function(input, output, session) {
                x = "Cycle (year)", y = "ASR per 100,000", colour = "Scenario") +
           theme_clean()
       } else if (input$view_level == "IMD") {
-        df <- asr_imd_all |> filter(cause %in% causes, cycle >= MIN_CYCLE)
+        df <- pc$asr_imd_all |> filter(cause %in% causes, cycle >= MIN_CYCLE)
         req(nrow(df) > 0)
         ggplot(df, aes(x = imd10, y = age_std_rate, colour = scen)) +
           geom_smooth(se = FALSE, method = "loess") +
@@ -914,39 +940,6 @@ server <- function(input, output, session) {
       }
     }
   })
-  
-  get_normalized_table <- function(df){
-    scen_cols <- all_scenarios
-    
-    if (length(input$scen_sel))
-      scen_cols <- input$scen_sel
-    
-    scen_cols <- intersect(scen_cols, names(df))
-    
-    norm_df <- df |>
-      rowwise() |>
-      mutate(
-        row_min = min(c_across(all_of(scen_cols)), na.rm = TRUE),
-        row_max = max(c_across(all_of(scen_cols)), na.rm = TRUE)
-      ) |>
-      mutate(across(
-        all_of(scen_cols),
-        function(x) if_else(row_max == row_min, 0.5, (x - row_min) / (row_max - row_min)),
-        .names = "{.col}_norm"
-      )) |>
-      ungroup()
-    
-    # Create html-colored cell content
-    for (scen in scen_cols) {
-      norm_col <- paste0(scen, "_norm")
-      norm_df[[scen]] <- mapply(function(val, norm) {
-        color <- col_fun(norm)
-        sprintf("<div style='background-color:%s; padding:2px;'>%s</div>", color, round(val, 2))
-      }, norm_df[[scen]], norm_df[[norm_col]], SIMPLIFY = TRUE)
-    }
-    
-    return(norm_df)
-  }
   
   output$plot_asrly <- renderUI({
       plot_obj <- build_asr_plot()
