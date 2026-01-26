@@ -401,7 +401,7 @@ for (scen in c("base"))#, "safestreet", "green", "both"))
           function(rf, ps, sex) {
             adj_rf <- rf
             
-            if (grepl("diabetes", ps)) {
+            if (grepl("diabetes", ps) && DIAB_INTER) {
               if (sex == 1) {
                 adj_rf <- adj_rf * 2.16
               } else {
@@ -427,7 +427,7 @@ for (scen in c("base"))#, "safestreet", "green", "both"))
         function(rf, ps, sex) {
           adj_rf <- rf
           
-          if (grepl("diabetes", ps)) {
+          if (grepl("diabetes", ps) && DIAB_INTER) {
             if (sex == 1) {
               adj_rf <- adj_rf * 1.83
             } else {
@@ -746,5 +746,5 @@ df$id <- rownames(sim_output)
 #   # Option 3: Manchester path (default if FILE_PATH_BELEN is TRUE and FILE_PATH_HPC is FALSE)
 #   arrow::write_dataset(df, paste0("manchester/health/processed/", SCEN_SHORT_NAME, "_dis_inter_", DISEASE_RISK, "_state_trans-n.c-", n.c, "-n.i-", n.i, "-n.d-", length(diseases), ".parquet"))
 # }
-
+}
 
