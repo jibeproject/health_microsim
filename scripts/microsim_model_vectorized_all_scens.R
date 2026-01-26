@@ -16,11 +16,12 @@ library(stringi)     # For faster string operations
 # Boolean variable for dir/file paths
 FILE_PATH_BELEN <- FALSE
 FILE_PATH_HPC <- FALSE
+DIABETES_INTER_CHD <- TRUE
 
 options(future.globals.maxSize = +Inf)
 
 # Set sample_pro to be greater than zero
-sample_prop <- 0.1
+sample_prop <- 0.011
 
 # Number of cycles/years the simulation works
 n.c <- 5
@@ -38,7 +39,7 @@ for (scen in c("base"))#, "safestreet", "green", "both"))
   
   manchester_dir_path <- '/media/ali/Expansion/backup_tabea/Ali/manchester'
   
-  manchester_dir_path <- 'Z:/HealthImpact/Data/Country/UK/JIBE/manchester'
+  # manchester_dir_path <- 'Z:/HealthImpact/Data/Country/UK/JIBE/manchester'
   
   if (INJURY_RISK){
     
@@ -394,349 +395,356 @@ for (scen in c("base"))#, "safestreet", "green", "both"))
         
         dis_rate <- dis_rate * risk_factors_adj
         
-      }else if (cause == "diabetes") {
+      }else if (cause == "coronary_heart_disease") {
         
         risk_factors_adj_diabetes <- mapply(
           function(rf, ps, sex) {
             adj_rf <- rf
             
-            if (grepl("coronary_heart_disease", ps)) {
+            if (grepl("diabetes", ps)) {
               if (sex == 1) {
                 adj_rf <- adj_rf * 2.16
               } else {
                 adj_rf <- adj_rf * 2.82
               }
-            } else if (grepl("stroke", ps)) {
-              if (sex == 1) {
-                adj_rf <- adj_rf * 1.83
-              } else {
-                adj_rf <- adj_rf * 2.28
-              }
             }else{
               adj_rf <- adj_rf * 1
             }
-            
             adj_rf
           },
           risk_factors, prev_state, sex,
           SIMPLIFY = TRUE
         )
         
-        # risk_factors_adj_diabetes <- mapply(function(rf, ps, sex) {
-        #   adj_rf <- rf
-        #   # Additional condition: if cause is diabetes and prev_state includes chd or stroke
-        #   if (grepl("coronary_heart_disease", ps)){
-        #     
-        #     adj_rf <- adj_rf * if_else(sex == 1, 2.16, 2.82)
-        #     
-        #   }else if (grepl("stroke", ps)) {
-        #     adj_rf <- adj_rf * if_else(sex == 1, 1.83, 2.28)
-        #   }
-        # }, risk_factors, prev_state, sex, SIMPLIFY = TRUE)
-        
         rf = risk_factors_adj_diabetes
         
         dis_rate <- dis_rate *  rf
         
-      }
       
-      dis_prob <- 1 - exp(-dis_rate)
+    }else if (cause == "stroke") {
       
-    }else{
+      risk_factors_adj_diabetes <- mapply(
+        function(rf, ps, sex) {
+          adj_rf <- rf
+          
+          if (grepl("diabetes", ps)) {
+            if (sex == 1) {
+              adj_rf <- adj_rf * 1.83
+            } else {
+              adj_rf <- adj_rf * 2.28
+            }
+          }else{
+            adj_rf <- adj_rf * 1
+          }
+          
+          adj_rf
+        },
+        risk_factors, prev_state, sex,
+        SIMPLIFY = TRUE
+      )
       
-      dis_prob <- as.numeric(sapply(rd[, cause], function(x) strsplit(x, ",")[[1]][rr_index]) |> as.numeric()) 
+      rf = risk_factors_adj_diabetes
+      
+      dis_rate <- dis_rate *  rf
       
     }
     
-    #personRR <- getRRA
+    dis_prob <- 1 - exp(-dis_rate)
     
+  }else{
     
-    #   double injuryRisk = ((PersonHealth) person).getWeeklyAccidentRisk("severeFatalInjury" + mode);
-    #   
-    #   // adjust injury risk by applying age/gender relative risks + finalCalibration to fit link based stats
-    #   double personalRR = getCasualtyRR_byAge_Gender(person.getGender(), person.getAge(), mode, (HealthDataContainerImpl) dataContainer);
-    #   
-    #   double carShare = ((HealthDataContainerImpl) dataContainer).getCarShareInjurydata().get(ageGroup).get(person.getGender()).shareDriver;
-    #   
-    #   if (mode.equals("Car")){
-    #     injuryRisk = injuryRisk * (personalRR * carShare + averageCarRR * (1-carShare)) * calibrationFactors.getCalibrationFactor(properties.main.scenarioName, mode) ;
-    #   }
-    #   else{
-    #     injuryRisk = injuryRisk * personalRR * calibrationFactors.getCalibrationFactor(properties.main.scenarioName, mode) ;
-    #   }
-    #}
+    dis_prob <- as.numeric(sapply(rd[, cause], function(x) strsplit(x, ",")[[1]][rr_index]) |> as.numeric()) 
     
-    # print(paste(cycle, cause, rr_index))
-    
-    #all_cause_prob <- as.numeric(rd[, "all_cause_mortality"])
-    
-    
-    # Initialize result with current state (falling back to previous state if NA)
-    result <- ifelse(is.na(curr_state), prev_state, curr_state)
-    
-    # Pre-compute conditions
-    already_dead <- (!is.na(curr_state) & (grepl("dead", prev_state) | grepl("dead", curr_state)) | current_age >= 100) # | (all_cause_prob == 0)
-    transition_condition <- !already_dead & !is.na(dis_prob) & (runif(length(dis_prob)) < dis_prob)
-    
-    # print(summary(transition_condition))
-    # print(summary(dis_prob))
-    
-    # Handle all-cause mortality
-    if (cause == "all_cause_mortality") {
-      result[transition_condition] <- "dead"
-    } else {
-      # Handle other causes
-      to_update <- which(transition_condition)
-      if (length(to_update) > 0) {
-        curr_state_upd <- curr_state[to_update]
-        curr_state_upd[is.na(curr_state_upd)] <- prev_state[to_update][is.na(curr_state_upd)]
-        
-        # Check if cause already exists
-        has_cause <- stri_detect_fixed(curr_state_upd, cause)
-        
-        # Update states - modified to ensure proper spacing
-        new_states <- ifelse(has_cause,
-                             curr_state_upd,
-                             stri_replace_all_fixed(
-                               stri_trim(
-                                 stri_paste(cause, " ", curr_state_upd)  # Added space between cause and curr_state_upd
-                               ),
-                               "healthy", ""))
-        
-        # Clean up any double spaces that might have been created
-        new_states <- stri_replace_all_regex(new_states, "\\s+", " ")
-        new_states <- stri_trim(new_states)
-        
-        result[to_update] <- new_states
-      }
+  }
+  
+  #personRR <- getRRA
+  
+  
+  #   double injuryRisk = ((PersonHealth) person).getWeeklyAccidentRisk("severeFatalInjury" + mode);
+  #   
+  #   // adjust injury risk by applying age/gender relative risks + finalCalibration to fit link based stats
+  #   double personalRR = getCasualtyRR_byAge_Gender(person.getGender(), person.getAge(), mode, (HealthDataContainerImpl) dataContainer);
+  #   
+  #   double carShare = ((HealthDataContainerImpl) dataContainer).getCarShareInjurydata().get(ageGroup).get(person.getGender()).shareDriver;
+  #   
+  #   if (mode.equals("Car")){
+  #     injuryRisk = injuryRisk * (personalRR * carShare + averageCarRR * (1-carShare)) * calibrationFactors.getCalibrationFactor(properties.main.scenarioName, mode) ;
+  #   }
+  #   else{
+  #     injuryRisk = injuryRisk * personalRR * calibrationFactors.getCalibrationFactor(properties.main.scenarioName, mode) ;
+  #   }
+  #}
+  
+  # print(paste(cycle, cause, rr_index))
+  
+  #all_cause_prob <- as.numeric(rd[, "all_cause_mortality"])
+  
+  
+  # Initialize result with current state (falling back to previous state if NA)
+  result <- ifelse(is.na(curr_state), prev_state, curr_state)
+  
+  # Pre-compute conditions
+  already_dead <- (!is.na(curr_state) & (grepl("dead", prev_state) | grepl("dead", curr_state)) | current_age >= 100) # | (all_cause_prob == 0)
+  transition_condition <- !already_dead & !is.na(dis_prob) & (runif(length(dis_prob)) < dis_prob)
+  
+  # print(summary(transition_condition))
+  # print(summary(dis_prob))
+  
+  # Handle all-cause mortality
+  if (cause == "all_cause_mortality") {
+    result[transition_condition] <- "dead"
+  } else {
+    # Handle other causes
+    to_update <- which(transition_condition)
+    if (length(to_update) > 0) {
+      curr_state_upd <- curr_state[to_update]
+      curr_state_upd[is.na(curr_state_upd)] <- prev_state[to_update][is.na(curr_state_upd)]
+      
+      # Check if cause already exists
+      has_cause <- stri_detect_fixed(curr_state_upd, cause)
+      
+      # Update states - modified to ensure proper spacing
+      new_states <- ifelse(has_cause,
+                           curr_state_upd,
+                           stri_replace_all_fixed(
+                             stri_trim(
+                               stri_paste(cause, " ", curr_state_upd)  # Added space between cause and curr_state_upd
+                             ),
+                             "healthy", ""))
+      
+      # Clean up any double spaces that might have been created
+      new_states <- stri_replace_all_regex(new_states, "\\s+", " ")
+      new_states <- stri_trim(new_states)
+      
+      result[to_update] <- new_states
     }
-    
-    # Ensure dead stays dead
-    result[already_dead] <- "dead"
-    
-    return(result)
   }
   
-  # Pre-process data for faster access
-  prep_health_data <- function(hd) {
-    # Convert to data.table for faster lookups
-    setDT(hd)
-    
-    # Create keys for fast lookups
-    if ("lsoa21cd" %in% names(hd)) {
-      hd[, lookup_key := paste(age, sex, cause, lsoa21cd, measure, sep = "|")]
-    } else {
-      hd[, lookup_key := paste(age, sex, cause, measure, sep = "|")]
-    }
-    
-    # Create a named vector of rates for O(1) lookups
-    setkey(hd, lookup_key)
-    return(hd)
+  # Ensure dead stays dead
+  result[already_dead] <- "dead"
+  
+  return(result)
+}
+
+# Pre-process data for faster access
+prep_health_data <- function(hd) {
+  # Convert to data.table for faster lookups
+  setDT(hd)
+  
+  # Create keys for fast lookups
+  if ("lsoa21cd" %in% names(hd)) {
+    hd[, lookup_key := paste(age, sex, cause, lsoa21cd, measure, sep = "|")]
+  } else {
+    hd[, lookup_key := paste(age, sex, cause, measure, sep = "|")]
   }
   
-  # Pre-process disease risks
-  prep_disease_risks <- function(disease_risks) {
-    setDT(disease_risks)
-    return(disease_risks)
-  }
+  # Create a named vector of rates for O(1) lookups
+  setkey(hd, lookup_key)
+  return(hd)
+}
+
+# Pre-process disease risks
+prep_disease_risks <- function(disease_risks) {
+  setDT(disease_risks)
+  return(disease_risks)
+}
+
+# Main simulation function
+run_simulation <- function(synth_pop_wprob, m, hd, disease_risks, n.c, diseases, inj_probs = NULL) {
   
-  # Main simulation function
-  run_simulation <- function(synth_pop_wprob, m, hd, disease_risks, n.c, diseases, inj_probs = NULL) {
-    
-    # synth_pop_wprob <- synth_pop
-    # Prepare data for fast access
-    
-    # synth_pop_wprob <- synth_pop
-    hd_prepped <- prep_health_data(hd)
-    #if (DISEASE_RISK) disease_risks_prepped <- prep_disease_risks(disease_risks)
-    
-    # Convert to matrix for faster column access
-    synth_matrix <- as.matrix(synth_pop_wprob)
-    
-    # Main simulation loop
-    for (incyc in 1:n.c) {
-      for (dis in diseases) {
-        
-        # Calculate current age for all individuals
-        current_age <- as.numeric(synth_matrix[, "age"]) + incyc - 1
-        
-        if (dis != "injuries"){
-          # Prepare lookup keys for health data
-          if (dis == "all_cause_mortality") {
-            location_col <- "lsoa21cd"
-          } else {
-            location_col <- "lsoa21cd" ## Updated data columns now matching java
-          }
-          
-          lookup_keys <- paste(current_age,
-                               synth_matrix[, "sex"],
-                               dis,
-                               synth_matrix[, location_col],
-                               ifelse(dis == "all_cause_mortality", "deaths", "incidence"),
-                               sep = "|")
-          
-          # Get rates in bulk
-          filtered_rates <- hd_prepped[.(lookup_keys), rate, on = "lookup_key"]
-          filtered_rates[is.na(filtered_rates)] <- 0
-          
-          if (length(filtered_rates) > nrow(synth_matrix)){
-            filtered_rates <- filtered_rates[1:nrow(synth_matrix)]
-          }
-          
-        }else{
-          
-          # Treat injuries differently, as their probabilities/rates don't come from the health transitions dataset.
-          # Instead their risks come from exposures and their chances of injuries/death come from an external age, gender, and scenario specific prob.
-          if (dis == "injuries"){
-          }
-          
-          filtered_rates <- inj_probs
-          
+  # synth_pop_wprob <- synth_pop
+  # Prepare data for fast access
+  
+  # synth_pop_wprob <- synth_pop
+  hd_prepped <- prep_health_data(hd)
+  #if (DISEASE_RISK) disease_risks_prepped <- prep_disease_risks(disease_risks)
+  
+  # Convert to matrix for faster column access
+  synth_matrix <- as.matrix(synth_pop_wprob)
+  
+  # Main simulation loop
+  for (incyc in 1:n.c) {
+    for (dis in diseases) {
+      
+      # Calculate current age for all individuals
+      current_age <- as.numeric(synth_matrix[, "age"]) + incyc - 1
+      
+      if (dis != "injuries"){
+        # Prepare lookup keys for health data
+        if (dis == "all_cause_mortality") {
+          location_col <- "lsoa21cd"
+        } else {
+          location_col <- "lsoa21cd" ## Updated data columns now matching java
         }
         
-        # Get current and previous states in bulk
-        cm <- m[, c(paste0("c", incyc - 1), paste0("c", incyc))]
+        lookup_keys <- paste(current_age,
+                             synth_matrix[, "sex"],
+                             dis,
+                             synth_matrix[, location_col],
+                             ifelse(dis == "all_cause_mortality", "deaths", "incidence"),
+                             sep = "|")
         
-        rdf <- get_state_vectorized(
-          rd = synth_matrix,
-          cycle = incyc,
-          cause = dis,
-          cm = cm,
-          ind_spec_rate = filtered_rates,
-          DIAB_INTER = TRUE
-        )
-        #print(length(rdf))
-        #print(length(m[, incyc + 1]))
-        #browser()
+        # Get rates in bulk
+        filtered_rates <- hd_prepped[.(lookup_keys), rate, on = "lookup_key"]
+        filtered_rates[is.na(filtered_rates)] <- 0
         
-        # Update states in bulk
-        m[, incyc + 1] <- rdf
+        if (length(filtered_rates) > nrow(synth_matrix)){
+          filtered_rates <- filtered_rates[1:nrow(synth_matrix)]
+        }
+        
+      }else{
+        
+        # Treat injuries differently, as their probabilities/rates don't come from the health transitions dataset.
+        # Instead their risks come from exposures and their chances of injuries/death come from an external age, gender, and scenario specific prob.
+        if (dis == "injuries"){
+        }
+        
+        filtered_rates <- inj_probs
+        
       }
+      
+      # Get current and previous states in bulk
+      cm <- m[, c(paste0("c", incyc - 1), paste0("c", incyc))]
+      
+      rdf <- get_state_vectorized(
+        rd = synth_matrix,
+        cycle = incyc,
+        cause = dis,
+        cm = cm,
+        ind_spec_rate = filtered_rates,
+        DIAB_INTER = DIABETES_INTER_CHD
+      )
+      #print(length(rdf))
+      #print(length(m[, incyc + 1]))
+      #browser()
+      
+      # Update states in bulk
+      m[, incyc + 1] <- rdf
     }
-    
-    return(m)
   }
   
-  # Run the simulation
-  tic()
-  sim_output <- run_simulation(synth_pop, m, hd, disease_risks, n.c, diseases, inj_probs = agp)
-  toc()
+  return(m)
+}
+
+# Run the simulation
+tic()
+sim_output <- run_simulation(synth_pop, m, hd, disease_risks, n.c, diseases, inj_probs = agp)
+toc()
+
+
+## some plots to visualise results
+
+# Create individual states, while ignoring the all_cause_mortality state as dead state already captures it
+
+l <- data.frame(states = c('dead', diseases |> str_subset(pattern = "all_cause_mortality", negate = TRUE)), freq = 0, c = 0)
+for (ind in 1:n.c){
+  df <- unlist(strsplit(sim_output[, ind], " ")) |>
+    as.data.frame()
+  names(df) <- 'states'
+  tbl <- df |>
+    group_by(states) |>
+    summarise(cn = dplyr::n()) |>
+    mutate(freq = round(cn / sum(cn) * 100, 1), c = ind) |>
+    dplyr::select(-cn)
+  l <- plyr::rbind.fill(l, tbl)
+}
+
+l$c <- as.factor(l$c)
+
+l <- l |> filter(!is.na(states))
+
+# Generate historic state transitions of all diseases + dead
+ggplot(l |> filter(freq > 0)) +
+  aes(x = c, y = freq, fill = states) +
+  geom_col() +
+  labs(x = "Years", y = "Frequency (%)", title = paste(SCEN_SHORT_NAME, "State transitions over the years")) +
+  theme_minimal()
+
+plotly::ggplotly(ggplot(l |> filter(states != "healthy"), aes(x = c, y = freq, color = states, group = states)) + geom_line() + geom_point() +
+                   labs(x = "Years", y = "Frequency (%)", title = paste(SCEN_SHORT_NAME, "State transitions over the years")))
+
+
+sim_output |> as.data.frame() |>
+  rownames_to_column("id") |>
+  pivot_longer(cols = -c(id)) |>
+  mutate(unpacked = str_split(value, " ")) |>
+  unnest() |>
+  mutate(value = str_trim(unpacked)) |>
+  dplyr::select(-unpacked) |>
+  mutate(value = str_replace_all(value, fixed("parkinson’s_disease"), "parkinson")) |>
+  group_by(name, value)|>
+  summarise(nv = dplyr::n(),
+            freq = round(100 * nv / nrow(sim_output), 1)) |>
+  filter(nv > 0) |>
+  pivot_wider(id_cols = value,
+              names_from = name, values_from = nv) |> print()
+
+prep_trans_df <- function(m, measure = "freq"){
   
-  
-  ## some plots to visualise results
-  
-  # Create individual states, while ignoring the all_cause_mortality state as dead state already captures it
-  
-  l <- data.frame(states = c('dead', diseases |> str_subset(pattern = "all_cause_mortality", negate = TRUE)), freq = 0, c = 0)
-  for (ind in 1:n.c){
-    df <- unlist(strsplit(sim_output[, ind], " ")) |>
-      as.data.frame()
-    names(df) <- 'states'
-    tbl <- df |>
-      group_by(states) |>
-      summarise(cn = dplyr::n()) |>
-      mutate(freq = round(cn / sum(cn) * 100, 1), c = ind) |>
-      dplyr::select(-cn)
-    l <- plyr::rbind.fill(l, tbl)
-  }
-  
-  l$c <- as.factor(l$c)
-  
-  l <- l |> filter(!is.na(states))
-  
-  # Generate historic state transitions of all diseases + dead
-  ggplot(l |> filter(freq > 0)) +
-    aes(x = c, y = freq, fill = states) +
-    geom_col() +
-    labs(x = "Years", y = "Frequency (%)", title = paste(SCEN_SHORT_NAME, "State transitions over the years")) +
-    theme_minimal()
-  
-  plotly::ggplotly(ggplot(l |> filter(states != "healthy"), aes(x = c, y = freq, color = states, group = states)) + geom_line() + geom_point() +
-                     labs(x = "Years", y = "Frequency (%)", title = paste(SCEN_SHORT_NAME, "State transitions over the years")))
-  
-  
-  sim_output |> as.data.frame() |>
+  # measure <- "freq"
+  df <- m |> as.data.frame() |>
     rownames_to_column("id") |>
     pivot_longer(cols = -c(id)) |>
     mutate(unpacked = str_split(value, " ")) |>
     unnest() |>
     mutate(value = str_trim(unpacked)) |>
-    dplyr::select(-unpacked) |>
     mutate(value = str_replace_all(value, fixed("parkinson’s_disease"), "parkinson")) |>
+    dplyr::select(-unpacked) |>
     group_by(name, value)|>
     summarise(nv = dplyr::n(),
-              freq = round(100 * nv / nrow(sim_output), 1)) |>
-    filter(nv > 0) |>
-    pivot_wider(id_cols = value,
-                names_from = name, values_from = nv) |> print()
-  
-  prep_trans_df <- function(m, measure = "freq"){
-    
-    # measure <- "freq"
-    df <- m |> as.data.frame() |>
-      rownames_to_column("id") |>
-      pivot_longer(cols = -c(id)) |>
-      mutate(unpacked = str_split(value, " ")) |>
-      unnest() |>
-      mutate(value = str_trim(unpacked)) |>
-      mutate(value = str_replace_all(value, fixed("parkinson’s_disease"), "parkinson")) |>
-      dplyr::select(-unpacked) |>
-      group_by(name, value)|>
-      summarise(nv = dplyr::n(),
-                freq = round(100 * nv / nrow(m), 1)) |>
-      filter(freq > 0) |>
-      {\(.) if(measure == "freq"){
-        pivot_wider(., id_cols = value, names_from = name, values_from = freq)
+              freq = round(100 * nv / nrow(m), 1)) |>
+    filter(freq > 0) |>
+    {\(.) if(measure == "freq"){
+      pivot_wider(., id_cols = value, names_from = name, values_from = freq)
+    }
+      else{
+        pivot_wider(., id_cols = value, names_from = name, values_from = nv)
       }
-        else{
-          pivot_wider(., id_cols = value, names_from = name, values_from = nv)
-        }
-      }()  |>
-      rename(cause = value) |>
-      pivot_longer(cols = -cause) |>
-      as.data.frame() |>
-      filter(cause != "healthy")
-    
-    
-    df$name <- gsub("c","",as.character(df$name))
-    df$name <- as.numeric(df$name)
-    
-    df <- df |> arrange(cause, name)
-    
-    return(df)
-    
-  }
-  
-  plotly::ggplotly(ggplot(prep_trans_df(sim_output, measure = "freq"),
-                          aes(x = name, y = value, color = cause, group = cause) ) +
-                     geom_point() +
-                     geom_line() +
-                     labs(title = paste(SCEN_SHORT_NAME, "Disease freq over time"), x = "years", y = "freq (%) "))
+    }()  |>
+    rename(cause = value) |>
+    pivot_longer(cols = -cause) |>
+    as.data.frame() |>
+    filter(cause != "healthy")
   
   
-  plotly::ggplotly(ggplot(prep_trans_df(sim_output, measure = "nv"),
-                          aes(x = name, y = value, color = cause, group = cause) ) +
-                     geom_point() +
-                     geom_line() +
-                     labs(title = paste(SCEN_SHORT_NAME, "Disease count over time"), x = "years", y = "count (n) "))
+  df$name <- gsub("c","",as.character(df$name))
+  df$name <- as.numeric(df$name)
   
+  df <- df |> arrange(cause, name)
   
-  df <- as.data.frame(sim_output)
-  df$id <- rownames(sim_output)
-  
-  
-  # if (FILE_PATH_HPC) {
-  #   # Option 1: HPC path
-  #   arrow::write_dataset(df, paste0("health_data/results/", SCEN_SHORT_NAME, "_dis_inter_", DISEASE_RISK, "_state_trans-n.c-", n.c, "-n.i-", n.i, "-n.d-", length(diseases), ".parquet"))
-  # 
-  # } else if (!FILE_PATH_BELEN) {
-  #   # Option 2: Default (Ali)
-  #   arrow::write_dataset(df, paste0("data/", SCEN_SHORT_NAME, "_dis_inter_", DISEASE_RISK, "_state_trans-n.c-", n.c, "-n.i-", n.i, "-n.d-", length(diseases), ".parquet"))
-  # 
-  # } else {
-  #   # Option 3: Manchester path (default if FILE_PATH_BELEN is TRUE and FILE_PATH_HPC is FALSE)
-  #   arrow::write_dataset(df, paste0("manchester/health/processed/", SCEN_SHORT_NAME, "_dis_inter_", DISEASE_RISK, "_state_trans-n.c-", n.c, "-n.i-", n.i, "-n.d-", length(diseases), ".parquet"))
-  # }
-  
+  return(df)
   
 }
+
+plotly::ggplotly(ggplot(prep_trans_df(sim_output, measure = "freq"),
+                        aes(x = name, y = value, color = cause, group = cause) ) +
+                   geom_point() +
+                   geom_line() +
+                   labs(title = paste(SCEN_SHORT_NAME, "Disease freq over time"), x = "years", y = "freq (%) "))
+
+
+plotly::ggplotly(ggplot(prep_trans_df(sim_output, measure = "nv"),
+                        aes(x = name, y = value, color = cause, group = cause) ) +
+                   geom_point() +
+                   geom_line() +
+                   labs(title = paste(SCEN_SHORT_NAME, "Disease count over time"), x = "years", y = "count (n) "))
+
+
+df <- as.data.frame(sim_output)
+df$id <- rownames(sim_output)
+
+
+# if (FILE_PATH_HPC) {
+#   # Option 1: HPC path
+#   arrow::write_dataset(df, paste0("health_data/results/", SCEN_SHORT_NAME, "_dis_inter_", DISEASE_RISK, "_state_trans-n.c-", n.c, "-n.i-", n.i, "-n.d-", length(diseases), ".parquet"))
+# 
+# } else if (!FILE_PATH_BELEN) {
+#   # Option 2: Default (Ali)
+#   arrow::write_dataset(df, paste0("data/", SCEN_SHORT_NAME, "_dis_inter_", DISEASE_RISK, "_state_trans-n.c-", n.c, "-n.i-", n.i, "-n.d-", length(diseases), ".parquet"))
+# 
+# } else {
+#   # Option 3: Manchester path (default if FILE_PATH_BELEN is TRUE and FILE_PATH_HPC is FALSE)
+#   arrow::write_dataset(df, paste0("manchester/health/processed/", SCEN_SHORT_NAME, "_dis_inter_", DISEASE_RISK, "_state_trans-n.c-", n.c, "-n.i-", n.i, "-n.d-", length(diseases), ".parquet"))
+# }
+
+
