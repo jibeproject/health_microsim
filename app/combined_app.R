@@ -276,10 +276,19 @@ server <- function(input, output, session) {
                   choices = all_causes_except_dead,
                   selected = "coronary_heart_disease")
     } else {
-      selectizeInput("avg_death_causes", "Death cause(s):",
-                     choices = c("dead","dead_car","dead_bike","dead_walk"),
-                     selected = c("dead","dead_car","dead_bike","dead_walk"),
-                     multiple = TRUE)
+      selectizeInput(
+        "avg_death_causes", 
+        "Death cause(s):",
+        choices = c(
+          "Death (all causes)" = "dead",
+          "Death (car)" = "dead_car",
+          "Death (cyclist)" = "dead_bike",
+          "Death (pedestrian)" = "dead_walk"
+        ),
+        selected = c("dead", "dead_car", "dead_bike", "dead_walk"),
+        multiple = TRUE
+      )
+      
     }
   })
   
@@ -696,21 +705,6 @@ server <- function(input, output, session) {
     
   })
   
-  # ---------- Average ages (death / onset) ----------
-  output$avg_cause_ui <- renderUI({
-    if (input$avg_kind == "onset") {
-      selectizeInput("avg_cause", "Disease (onset):",
-                     multiple = TRUE,
-                  choices = all_causes_except_dead,
-                  selected = "coronary_heart_disease")
-    } else {
-      selectizeInput("avg_death_causes", "Death cause(s):",
-                     choices = c("dead","dead_car","dead_bike","dead_walk"),
-                     selected = c("dead","dead_car","dead_bike","dead_walk"),
-                     multiple = TRUE)
-    }
-  })
-  
   get_onset_ages <- reactive({
     # req(input$avg_kind, input$view_level, input$scen_sel, input$avg_cause, input$avg_death_causes,
     #     input$lad_sel)          
@@ -727,21 +721,33 @@ server <- function(input, output, session) {
           left_join(pc$mean_age_dead_weight_by_scen_val |> filter(value %in% causes),
                     by = c("scen","value")) |>
           arrange(scen, value) |>
-          rename(mean_age_raw_years = mean_age_raw)
+          rename(mean_age_raw_years = mean_age_raw) |> 
+          mutate(value = case_when(value == "dead" ~ "Death (all causes)",
+                                   value == "dead_car" ~ "Death (car)",
+                                   value == "dead_bike" ~ "Death (cyclist)",
+                                   value == "dead_walk" ~ "Death (pedestrian)"))
       } else if (view == "Gender") {
         dt <- pc$mean_age_dead_raw_by_scen_val_gender |>
           filter(value %in% causes) |>
           left_join(pc$mean_age_dead_weight_by_scen_val_gender |> filter(value %in% causes),
                     by = c("scen","value","gender")) |>
           arrange(scen, gender, value) |>
-          rename(mean_age_raw_years = mean_age_raw)
+          rename(mean_age_raw_years = mean_age_raw) |> 
+          mutate(value = case_when(value == "dead" ~ "Death (all causes)",
+                                   value == "dead_car" ~ "Death (car)",
+                                   value == "dead_bike" ~ "Death (cyclist)",
+                                   value == "dead_walk" ~ "Death (pedestrian)"))
       } else {
         
         dt <- pc$mean_age_dead_raw_by_scen_val_lad |>
           (\(df) if(length(input$lad_sel) > 0) filter(df, ladnm %in% input$lad_sel) else df)() |>
           filter(value %in% causes) |>
           arrange(scen, ladnm, value) |>
-          rename(mean_age_raw_years = mean_age_raw)
+          rename(mean_age_raw_years = mean_age_raw) |> 
+          mutate(value = case_when(value == "dead" ~ "Death (all causes)",
+                                   value == "dead_car" ~ "Death (car)",
+                                   value == "dead_bike" ~ "Death (cyclist)",
+                                   value == "dead_walk" ~ "Death (pedestrian)"))
         
       }
     } else {
