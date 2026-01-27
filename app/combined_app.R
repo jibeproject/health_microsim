@@ -596,13 +596,6 @@ server <- function(input, output, session) {
             color = "white"
           ) +
         
-          # geom_text(
-          #   aes(label = cumulative_value), 
-          #   hjust = -2.5, 
-          #   size = 4,
-          #   position = position_dodge(width = 1),
-          #   inherit.aes = TRUE
-          # ) + 
           coord_flip() +
           theme_minimal()
           
@@ -610,7 +603,8 @@ server <- function(input, output, session) {
         
         p <- ggplot(cumdf) +
           aes(x = imd10, y = cumulative_value, colour = scen) +
-          geom_smooth(se = FALSE, method = "loess") +
+          geom_col(position = position_dodge(width = 0.9), aes(fill = scen)) +
+          scale_x_continuous(breaks = c(1:10)) +
           scale_color_hue(direction = 1) +
           theme_minimal() + 
           labs(
@@ -653,7 +647,6 @@ server <- function(input, output, session) {
         
       }
       
-      
     }else{
       
       if (!"imd10" %in% names(cumdf)){
@@ -677,7 +670,8 @@ server <- function(input, output, session) {
       }else{
         p <- ggplot(cumdf) +
           aes(x = imd10, y = cumulative_value, colour = scen) +
-          geom_smooth(se = FALSE, method = "loess") +
+          geom_col(position = position_dodge(width = 0.9), aes(fill = scen)) +
+          scale_x_continuous(breaks = c(1:10)) + 
           scale_color_hue(direction = 1) +
           theme_minimal() + 
           labs(
@@ -927,34 +921,35 @@ server <- function(input, output, session) {
     } else {
       if (input$view_level == "Overall") {
         ggplot(df, aes(x = cycle, y = age_std_rate, colour = scen, group = scen)) +
-          geom_smooth(se = FALSE, method = "loess") +
+          geom_col(position = position_dodge(width = 0.9), aes(fill = scen)) +
           facet_wrap(vars(cause), scales = "free_y", ncol = 4) +
           labs(title = "ASR per cycle (smoothed, cycles 1–30)\n\n", 
-               x = "Cycle (year)", y = "ASR per 100,000", colour = "Scenario") +
+               x = "Cycle (year)", y = "ASR per 100,000") +
           theme_clean()
         
       } else if (input$view_level == "Gender") {
         ggplot(df, aes(x = cycle, y = age_std_rate, colour = scen)) +
-          geom_smooth(se = FALSE, method = "loess") +
+          geom_col(position = position_dodge(width = 0.9), aes(fill = scen)) +
           facet_wrap(vars(cause, gender), scales = "free_y") +
           labs(title = "ASR per cycle by gender (smoothed, cycles 1-30)\n\n",
-               x = "Cycle (year)", y = "ASR per 100,000", colour = "Scenario") +
+               x = "Cycle (year)", y = "ASR per 100,000") +
           theme_clean()
         
       } else if (input$view_level == "IMD") {
         ggplot(df, aes(x = imd10, y = age_std_rate, colour = scen)) +
-          geom_smooth(se = FALSE, method = "loess") +
+          geom_col(position = position_dodge(width = 0.9), aes(fill = scen)) +
+          scale_x_continuous(breaks = c(1:10)) + 
           facet_wrap(vars(cause), scales = "free_y") +
           labs(title = "ASR per cycle by IMD (smoothed, cycles 1-30)\n\n",
-               x = "IMD", y = "ASR per 100,000", colour = "Scenario") +
+               x = "IMD", y = "ASR per 100,000") +
           theme_clean()
         
       } else {
         ggplot(df, aes(x = cycle, y = age_std_rate, colour = scen)) +
-          geom_smooth(se = FALSE, method = "loess") +
+          geom_col(position = position_dodge(width = 0.9), aes(fill = scen)) +
           facet_grid(ladnm ~ cause, scales = "free_y") +
           labs(title = "ASR per cycle by LAD (smoothed, cycles 1-30)",
-               x = "Cycle (year)", y = "ASR per 100,000", colour = "Scenario") +
+               x = "Cycle (year)", y = "ASR per 100,000") +
           theme_clean()
       }
     }
