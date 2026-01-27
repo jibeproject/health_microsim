@@ -145,7 +145,7 @@ ui <- page_sidebar(
           checkboxInput("diff_cumulative", "Cumulative over cycles", value = TRUE)
         ),
         conditionalPanel(
-          condition = "input.main_tabs == 'Average onset ages'",
+          condition = "input.main_tabs == 'Average onset ages'", 
           selectInput("avg_kind", "Average age of:", choices = c("Death"="death","Disease onset"="onset")),
           uiOutput("avg_cause_ui")
         ),
@@ -240,66 +240,32 @@ server <- function(input, output, session) {
     return(norm_df)
   }
   
-  observeEvent(input$main_tabs, {
-    
-    # current selection (if any)
+  
+  observeEvent({
+    list(input$main_tabs, input$inner_tabs)
+  }, {
+    req(input$inner_tabs)
     current <- isolate(input$view_level)
     
-    if (input$main_tabs %in% c("Differences vs reference", "Age Standardised Rates")) {
-      
-      # selected_views <- c("Overall","Gender","LAD")
-      # additional_selected_views <- c("IMD")
+    if (input$main_tabs %in% c("Differences vs reference", "Age Standardised Rates") ||
+        input$inner_tabs == "Exposures") {
       
       new_choices <- c(selected_views, additional_selected_views)
+      
+    } else if (input$main_tabs %in% c("Population", "Average onset ages") ||
+               input$inner_tabs == "Travel Behaviour") {
+      
+      new_choices <- selected_views
+      if (!is.null(current) && !current %in% new_choices) current <- NULL
     } else {
       new_choices <- selected_views
-      # if current selection not in base choices, drop it
-      if (!is.null(current) && !current %in% new_choices) {
-        current <- NULL
-      }
     }
     
-    updateSelectInput(
-      session,
-      "view_level",
-      choices  = new_choices,
-      selected = current
-    )
+    updateSelectInput(session, "view_level",
+                      choices = new_choices,
+                      selected = current)
     
-  })
-  
-  
-  observeEvent(input$inner_tabs, {
-    
-    # current selection (if any)
-    current <- isolate(input$view_level)
-    
-    # print("input$inner_tabs")
-    # print(input$inner_tabs)
-    
-    
-    if (input$inner_tabs == "Exposures") {
-      
-      # selected_views <- c("Overall","Gender","LAD")
-      # additional_selected_views <- c("IMD")
-      
-      new_choices <- c(selected_views, additional_selected_views)
-    } else {
-      new_choices <- selected_views
-      # if current selection not in base choices, drop it
-      if (!is.null(current) && !current %in% new_choices) {
-        current <- NULL
-      }
-    }
-    
-    updateSelectInput(
-      session,
-      "view_level",
-      choices  = new_choices,
-      selected = current
-    )
-    
-  })
+  }, ignoreNULL = TRUE)
   
   
   # ---------- Avg ages cause picker ----------
