@@ -440,6 +440,7 @@ server <- function(input, output, session) {
         labs(title = ttl, x = "Cycle (year)", y = ylab, colour = "Scenario") +
         theme_clean()
     } else {
+      
       ggplot(d, aes(x = cycle, y = y, colour = scen)) +
         geom_smooth(se = FALSE, method = "loess") + add_zero_line() +
         labs(title = ttl, x = "Cycle (year)", y = ylab, colour = "Scenario") +
@@ -639,15 +640,17 @@ server <- function(input, output, session) {
       }else{
         
         p <- ggplot(cumdf) +
-          aes(x = imd10, y = cumulative_value, colour = scen) +
-          geom_smooth(se = FALSE, method = "loess") +
+          aes(x = imd10, y = cumulative_value, fill = scen) +
+          geom_col(position = position_dodge(width = 0.9)) +
           scale_color_hue(direction = 1) +
-          theme_minimal() + 
+          theme_minimal() +
+          scale_x_continuous(breaks = c(1:10)) +
           labs(
             x = "Index of Multiple Deprivation (IMD)",
             color = "Scenario"
-          )
-
+          ) +
+          guides(color = "none")
+        
       }
       
       
