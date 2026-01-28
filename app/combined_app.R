@@ -65,7 +65,10 @@ align_age_levels <- function(w, people_age) {
 }
 
 # ------------------- Precompute (with cache) ---------------------------
-death_values <- c("dead","dead_car","dead_bike","dead_walk")
+death_values <- c("Death (all causes)" = "dead",
+                  "Death (car)" = "dead_car",
+                  "Death (cyclist)" = "dead_bike",
+                  "Death (pedestrian)" = "dead_walk")
 
 # ------------------- UI -------------------------------------------------
 all_scenarios <- sort(unique(pc$people_overall$scen))
@@ -73,7 +76,7 @@ pop_cycles    <- sort(unique(pc$people_overall$cycle))
 trend_cycles  <- sort(unique(pc$asr_overall_all$cycle))
 all_lads_nm   <- sort(unique(pc$people_lad$ladnm))
 all_genders   <- sort(unique(pc$people_gender$gender))
-all_causes_asr <- pc$asr_overall_all |> distinct(cause) |> pull() #filter(!grepl("sev", cause)) |> 
+all_causes_asr <- pc$asr_overall_all |> distinct(cause) |> filter(!grepl("dead", cause)) |> pull() #
 all_causes_except_dead <- pc$asr_overall_all |> distinct(cause) |> filter(!grepl("dead", cause)) |> pull()
 selected_views <- c("Overall","Gender","LAD")
 additional_selected_views <- c("IMD")
@@ -158,7 +161,7 @@ ui <- page_sidebar(
         conditionalPanel(
           condition = "input.main_tabs == 'Age Standardised Rates' || (input.main_tabs == 'Differences vs reference' && 
           input.metric_kind == 'diseases')",
-          selectizeInput("asr_causes", "Causes:", choices = all_causes_asr,
+          selectizeInput("asr_causes", "Causes:", choices =  append(all_causes_asr, death_values),
                          selected = c("coronary_heart_disease","stroke"),
                          multiple = TRUE)#,
         )
@@ -439,8 +442,14 @@ server <- function(input, output, session) {
     if ("gender" %in% names(d)) {
       ggplot(d, aes(x = cycle, y = y, colour = scen)) +
         geom_smooth(se = FALSE, method = "loess") + add_zero_line() +
-        facet_wrap(~ gender, nrow = 2, scales = "free_y") + 
         labs(title = ttl, x = "Cycle (year)", y = ylab, colour = "Scenario") +
+        {
+          if ("factor" %in% names(d)) {
+            facet_wrap(vars(gender, factor), scales = "free_y")
+          } else {
+            facet_wrap(vars(gender), nrow = 2, scales = "free_y")
+          }
+        } +
         theme_clean()
     } else if ("ladnm" %in% names(d)) {
       ggplot(d, aes(x = cycle, y = y, colour = scen)) +
@@ -453,6 +462,13 @@ server <- function(input, output, session) {
       ggplot(d, aes(x = cycle, y = y, colour = scen)) +
         geom_smooth(se = FALSE, method = "loess") + add_zero_line() +
         labs(title = ttl, x = "Cycle (year)", y = ylab, colour = "Scenario") +
+        {
+          if ("factor" %in% names(d)) {
+            facet_wrap(~ factor, scales = "free_y")
+          } else {
+            list()   # add nothing
+          }
+        } +
         theme_clean()
     }
   })
