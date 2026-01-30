@@ -15,9 +15,9 @@ suppressPackageStartupMessages({
   library(bslib)
 })
 
-pc <- qs::qread("processed_data/precomputed_mcr_ref_ss_green_S2_100%V6.qs")# precomputed_mcr_ref_ss_green_100%V6.qs")
-t <- qs::qread("processed_data/121225_trips.qs")
-exp <- qs::qread("processed_data/210126_exp_summary.qs")
+pc <- qs::qread("processed_data/seed = 3/shiny/precomputed_100%V6.qs")
+t <- qs::qread("processed_data/seed = 2/shiny/121225_trips.qs")
+exp <- qs::qread("processed_data/seed = 3/shiny/exp_s3.qs")
 SCALING <- 1L
 
 
@@ -248,14 +248,28 @@ server <- function(input, output, session) {
     list(input$main_tabs, input$inner_tabs)
   }, {
     req(input$inner_tabs)
+    req(input$main_tabs)
+    
+    # print(input$inner_tabs)
+    # print(input$main_tabs)
+    
     current <- isolate(input$view_level)
     
-    if (input$main_tabs %in% c("Differences vs reference", "Age Standardised Rates") ||
-        input$inner_tabs == "Exposures") {
+    if (input$main_tabs %in% c("Differences vs reference", "Age Standardised Rates")) {
       
       new_choices <- c(selected_views, additional_selected_views)
       
-    } else if (input$main_tabs %in% c("Population", "Average onset ages") ||
+      if (!is.null(current) && !current %in% new_choices) current <- NULL
+      
+      
+    } else if (input$inner_tabs == "Exposures") {
+      
+      new_choices <- c(selected_views, additional_selected_views, "Agegroup")
+      
+      if (!is.null(current) && !current %in% new_choices) current <- NULL
+      
+    } 
+    else if (input$main_tabs %in% c("Population", "Average onset ages") ||
                input$inner_tabs == "Travel Behaviour") {
       
       new_choices <- selected_views
@@ -263,6 +277,8 @@ server <- function(input, output, session) {
     } else {
       new_choices <- selected_views
     }
+    
+    # print(new_choices)
     
     updateSelectInput(session, "view_level",
                       choices = new_choices,
@@ -1052,6 +1068,8 @@ server <- function(input, output, session) {
         exp |> filter(grepl("LAD", grouping))
       } else if (view == "IMD"){
         exp |> filter(grepl("IMD", grouping))
+      } else if  (view == "Agegroup"){
+        exp |> filter(grepl("Age", grouping))
       }
       
       if (view == "LAD" && length(input$lad_sel)) {
