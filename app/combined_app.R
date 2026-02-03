@@ -475,17 +475,43 @@ server <- function(input, output, session) {
         theme_clean()
     } else {
       
+      if (all(c("imd10", "cause") %in% names(d))){
+        ggplot(
+          reframe(group_by(d,
+                           cause,
+                           scen,
+                           imd10),
+                  y = sum(y))
+        ) +
+          aes(x = imd10, y = y, fill = scen) +
+          geom_bar(
+            stat = "summary",
+            fun = "sum",
+            position = "dodge2"
+          )+
+          theme_minimal() +
+          facet_wrap(vars(cause), scales = "free_y") + 
+          scale_x_continuous(breaks = c(1:10)) +
+          labs(title = ttl, x = "Index of Multiple Deprivation (IMD)", y = ylab, colour = "Scenario")
+        
+      }else{
+      
       ggplot(d, aes(x = cycle, y = y, colour = scen)) +
         geom_smooth(se = FALSE, method = "loess") + add_zero_line() +
         labs(title = ttl, x = "Cycle (year)", y = ylab, colour = "Scenario") +
         {
           if ("factor" %in% names(d)) {
             facet_wrap(~ factor, scales = "free_y")
-          } else {
+          } else if  ("cause" %in% names(d)) {
+            # if ("imd10" %in% names(d))
+            #   write_csv(d, "imd_cum.csv")
+            facet_wrap(~ cause, scales = "free_y")
+          }else {
             list()   # add nothing
           }
         } +
         theme_clean()
+      }
     }
   })
   output$plot_diffly <- renderPlotly({ ggplotly(build_diff_plot())})#, tooltip = c("x","y","colour","linetype")) })
@@ -1003,7 +1029,7 @@ server <- function(input, output, session) {
         ggplot(df, aes(x = cycle, y = age_std_rate, colour = scen, group = scen)) +
           geom_col(position = position_dodge(width = 0.9), aes(fill = scen)) +
           facet_wrap(vars(cause), scales = "free_y", ncol = 4) +
-          labs(title = "ASR per cycle (smoothed, cycles 1–30)\n\n", 
+          labs(title = "ASR per cycle (summed over cycles 1-30)\n\n", 
                x = "Cycle (year)", y = "ASR per 100,000") +
           theme_clean()
         
@@ -1011,7 +1037,7 @@ server <- function(input, output, session) {
         ggplot(df, aes(x = cycle, y = age_std_rate, colour = scen)) +
           geom_col(position = position_dodge(width = 0.9), aes(fill = scen)) +
           facet_wrap(vars(cause, gender), scales = "free_y") +
-          labs(title = "ASR per cycle by gender (smoothed, cycles 1-30)\n\n",
+          labs(title = "ASR per cycle by gender (summed over cycles 1-30)\n\n",
                x = "Cycle (year)", y = "ASR per 100,000") +
           theme_clean()
         
@@ -1020,7 +1046,7 @@ server <- function(input, output, session) {
           geom_col(position = position_dodge(width = 0.9), aes(fill = scen)) +
           scale_x_continuous(breaks = c(1:10)) + 
           facet_wrap(vars(cause), scales = "free_y") +
-          labs(title = "ASR per cycle by IMD (smoothed, cycles 1-30)\n\n",
+          labs(title = "ASR by IMD (summed over cycles 1-30)\n\n",
                x = "IMD", y = "ASR per 100,000") +
           theme_clean()
         
@@ -1028,7 +1054,7 @@ server <- function(input, output, session) {
         ggplot(df, aes(x = cycle, y = age_std_rate, colour = scen)) +
           geom_col(position = position_dodge(width = 0.9), aes(fill = scen)) +
           facet_grid(ladnm ~ cause, scales = "free_y") +
-          labs(title = "ASR per cycle by LAD (smoothed, cycles 1-30)",
+          labs(title = "ASR per cycle by LAD (total for cycles 1-30)",
                x = "Cycle (year)", y = "ASR per 100,000") +
           theme_clean()
       }
@@ -1041,6 +1067,7 @@ server <- function(input, output, session) {
     
     if (inherits(plot_obj, "ggplot")) {
       output$plot_asr <- renderPlotly({
+        #req(nrow(plot_obj) > 0)
         ggplotly(plot_obj)
       })
       plotlyOutput("plot_asr")
