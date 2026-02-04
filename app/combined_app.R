@@ -15,7 +15,10 @@ suppressPackageStartupMessages({
   library(bslib)
 })
 
-pc <- qs::qread("processed_data/seed = 3/shiny/precomputed_fixed_100%V6.qs")
+#pc <- qs::qread("processed_data/seed = 2/shiny/precomputed_100%V6.qs")
+pc <- qs::qread("processed_data/seed = 3/shiny/precomputed_030226_100%V6.qs")
+#pc <- qs::qread("processed_data/seed = 2/shiny/precomputed_100%V6.qs")
+
 t <- qs::qread("processed_data/seed = 2/shiny/121225_trips.qs")
 exp <- qs::qread("processed_data/seed = 3/shiny/exp_s3.qs")
 SCALING <- 1L
@@ -1098,22 +1101,24 @@ server <- function(input, output, session) {
   current_table <- reactive({
     tab <- input$main_tabs
     inner_tab <- input$inner_tabs
+    d <- NULL
     if (tab == "Population") {
-      pd <- pop_data(); pd$data |> mutate(across(where(is.numeric), ~ round(., 6)))
+      pd <- pop_data()
+      d <- pd$data |> mutate(across(where(is.numeric), ~ round(., 6)))
     } else if (tab == "Differences vs reference") {
       d <- diff_long()
       
       if (isTRUE(input$diff_cumulative)) {
         by <- if ("gender" %in% names(d)) "gender" else if ("ladnm" %in% names(d)) "ladnm" else character(0)
-        return(d |> group_by(across(all_of(c("scen", by)))) |> slice_max(order_by = cycle, n = 1, with_ties = FALSE) |>
+        d |> group_by(across(all_of(c("scen", by)))) |> slice_max(order_by = cycle, n = 1, with_ties = FALSE) |>
           ungroup() |> transmute(scen, across(all_of(by)), final_cycle = cycle, cumulative_value = y, cumulative_value_scaled = y * SCALING) |> 
-          as.data.frame())
-      } else return(d)
+          as.data.frame()
+      } else d
     } else if (tab == "Average onset ages") {
       req(input$avg_kind, input$view_level, input$scen_sel, input$avg_cause, input$avg_death_causes)
-      return(isolate({ get_onset_ages() }))
+      isolate({ d <- get_onset_ages() })
     } else if (tab == "Age Standardised Rates") {
-      return(isolate({ get_asr_data() }))
+      isolate({ d <- get_asr_data() })
     }
     
     if (inner_tab == "Exposures"){
@@ -1121,9 +1126,9 @@ server <- function(input, output, session) {
       view <- input$view_level
       # Handle missing or non-"Overall" selections
       lexp <- if (view == "Overall") {
-        exp |> filter(grepl("Overall", grouping))
+        d <- exp |> filter(grepl("Overall", grouping))
       } else if (view == "Gender") {
-        exp |> 
+        d <- exp |> 
           filter(grepl("Gender", grouping)) |> 
           mutate(
             grouping = case_when(
@@ -1134,33 +1139,45 @@ server <- function(input, output, session) {
           )
         
       } else if  (view == "LAD") {
-        exp |> filter(grepl("LAD", grouping))
+        d <- exp |> filter(grepl("LAD", grouping))
       } else if (view == "IMD"){
-        exp |> filter(grepl("IMD", grouping))
+        d <- exp |> filter(grepl("IMD", grouping))
       } else if  (view == "Agegroup"){
-        exp |> filter(grepl("Age", grouping))
+        d <- exp |> filter(grepl("Age", grouping))
       }
       
       if (view == "LAD" && length(input$lad_sel)) {
-        lexp <- lexp |> filter(grepl(paste(input$lad_sel, collapse = "|"), grouping))
+        d <- lexp <- lexp |> filter(grepl(paste(input$lad_sel, collapse = "|"), grouping))
       } 
       
       if (length(input$scen_sel)) {
-        lexp <- lexp |> filter(grepl(paste(input$scen_sel, collapse = "|"), scen))
+        d <- lexp <- lexp |> filter(grepl(paste(input$scen_sel, collapse = "|"), scen))
       }
-      
-      lexp
     }
+    d
+    
   })
   output$download_csv <- downloadHandler(
     filename = function() { 
-      paste0("export_", gsub("\\s+","_", tolower(input$main_tabs)), "_", Sys.Date(), ".csv")},
-    content  = function(file) {
-      write_csv(current_table(), file)
-      #readr::write_csv(x = current_table(), file = file, na = "")
-      
-      }
+      paste0(
+        "export_",
+        gsub("\\s+","_", tolower(input$main_tabs)),
+        "_",
+        Sys.Date(),
+        ".csv"
+      )
+    },
+    content = function(file) {
+      # If current_table is a reactive:
+      dat <- current_table()
+      print(dat)
+      validate(
+        need(!is.null(dat), "No data to download")
+      )
+      readr::write_csv(dat, file)
+    }
   )
+  
   
   
   output$out_zm <- renderPlotly({
