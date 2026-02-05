@@ -189,20 +189,9 @@ ui <- page_sidebar(
     nav_panel("Population",
               plotlyOutput("plot_poply")#, height = "85vh")
     ),
-    nav_panel(
-      title = "Travel & Exposures",
-      navset_card_underline(
-        id = "inner_tabs",
-        nav_panel("Travel Behaviour",
-                  value = "Travel Behaviour"#,
-                  #plotlyOutput("out_mshare", height = "85vh")
-        ),
-        nav_panel("Exposures",
-                  value = "Exposures",
-                  gt_output("plot_exp")
-        )
-        
-      )
+    nav_panel("Exposures",
+              value = "Exposures",
+              gt_output("plot_exp")
     )
   )
 )
@@ -246,40 +235,24 @@ server <- function(input, output, session) {
   
   
   observeEvent({
-    list(input$main_tabs, input$inner_tabs)
+    list(input$main_tabs)
   }, {
-    req(input$inner_tabs)
     req(input$main_tabs)
-    
-    # print(input$inner_tabs)
-    # print(input$main_tabs)
     
     current <- isolate(input$view_level)
     
     if (input$main_tabs %in% c("Differences vs reference", "Age Standardised Rates")) {
-      
       new_choices <- c(selected_views, additional_selected_views)
-      
-      if (!is.null(current) && !current %in% new_choices) current <- NULL
-      
-      
-    } else if (input$inner_tabs == "Exposures") {
-      
-      new_choices <- c(selected_views, additional_selected_views, "Agegroup")
-      
-      if (!is.null(current) && !current %in% new_choices) current <- NULL
-      
-    } 
-    else if (input$main_tabs %in% c("Population", "Average onset ages") ||
-               input$inner_tabs == "Travel Behaviour") {
-      
+    } else if (input$main_tabs %in% c("Population", "Average onset ages")) {
       new_choices <- selected_views
-      if (!is.null(current) && !current %in% new_choices) current <- NULL
+    } else if (input$main_tabs == "Exposures") {
+      new_choices <- c(selected_views, additional_selected_views, "Agegroup")
     } else {
       new_choices <- selected_views
     }
     
-    # print(new_choices)
+    # Ensure current selection is valid within new choices
+    if (!is.null(current) && !current %in% new_choices) current <- NULL
     
     updateSelectInput(session, "view_level",
                       choices = new_choices,
@@ -379,7 +352,8 @@ server <- function(input, output, session) {
   
   # ---------- Differences vs reference ----------
   diff_long <- reactive({
-    req(input$metric_kind, input$view_level, input$diff_min_cycle, input$asr_causes)
+    req(input$metric_kind, input$view_level, input$diff_min_cycle, input$asr_causes)#, input$diff_cumulative)
+    
     scen_keep <- setdiff(input$scen_sel, "reference")
     validate(need(length(scen_keep) > 0, "Select at least one non-reference scenario."))
     minc <- input$diff_min_cycle; view <- input$view_level; cumu <- isTRUE(input$diff_cumulative)
@@ -443,9 +417,9 @@ server <- function(input, output, session) {
     }
     
     df |> group_by(across(all_of(c(grp, "cycle")))) |>
-      summarise(diff = sum(diff, na.rm = TRUE), .groups = "drop") |>
+      summarise(diff = (if (cumu) median else sum)(diff, na.rm = TRUE)) |>
       group_by(across(all_of(grp))) |>
-      mutate(y = if (cumu) cumsum(diff) else diff) |>
+      mutate(y = diff) |> #if (cumu) cumsum(diff) else diff) |>
       ungroup() |>
       mutate(metric = pick$label)
     
@@ -454,6 +428,7 @@ server <- function(input, output, session) {
   build_diff_plot <- reactive({
     d <- diff_long(); req(nrow(d) > 0)
     ylab <- if (isTRUE(input$diff_cumulative)) "Cumulative Δ vs reference" else "Δ vs reference"
+    bar_chart_func <- if (isTRUE(input$diff_cumulative)) "sum" else "mean"
     
     ttl  <- d$metric[1]
     if ("gender" %in% names(d)) {
@@ -487,7 +462,7 @@ server <- function(input, output, session) {
           aes(x = imd10, y = y, fill = scen) +
           geom_bar(
             stat = "summary",
-            fun = "sum",
+            fun = bar_chart_func,
             position = "dodge2"
           )+
           theme_minimal() +
@@ -632,13 +607,7 @@ server <- function(input, output, session) {
     cumdf <- data$raw
     by <- data$by
     
-    # ggplot(td) +
-    #   aes(x = value, y = imd10, colour = scen) +
-    #   geom_smooth(se = FALSE) +
-    #   scale_color_hue(direction = 1) +
-    #   theme_minimal() +
-    #   facet_wrap(vars(cause))
-    # 
+    bar_chart_func <- if (isTRUE(input$diff_cumulative)) "sum" else "mean"
     
     if (grepl("Diseases", data$metric_lab)){
       
@@ -647,7 +616,7 @@ server <- function(input, output, session) {
           aes(x = cause, y = cumulative_value, fill = scen) +
           geom_bar(
             stat = "summary",
-            fun = "mean",
+            fun = bar_chart_func,
             position = "dodge2"
           ) +
           scale_fill_hue(direction = 1) +
@@ -661,7 +630,7 @@ server <- function(input, output, session) {
             aes(label = cumulative_value, y = cumulative_value / 2),
             size = ifelse("gender" %in% names(cumdf), 2, 3),
             position = position_dodge(width = 1),
-            color = "white"
+            color = "black"
           ) +
         
           coord_flip() +
@@ -688,7 +657,7 @@ server <- function(input, output, session) {
       
       p <- ggplot(cumdf) +
         aes(x = scen, y = cumulative_value, fill = factor) +
-        geom_bar(stat = "summary", fun = "sum", position = "dodge2") +
+        geom_bar(stat = "summary", fun = bar_chart_func, position = "dodge2") +
         scale_fill_hue(direction = 1) +
         geom_text(
           aes(label = cumulative_value, y = cumulative_value / 2),
@@ -852,9 +821,6 @@ server <- function(input, output, session) {
   
   output$table_avg <- renderUI({
     
-    # browser()
-    # 
-    # 
     # #req(input$avg_kind, input$view_level, input$scen_sel, input$avg_cause, input$avg_death_causes)
     # req(input$avg_kind, input$view_level, input$scen_sel, input$avg_cause, input$avg_death_causes,
     #     input$lad_sel)
@@ -1071,7 +1037,7 @@ server <- function(input, output, session) {
         #req(nrow(plot_obj) > 0)
         ggplotly(plot_obj)
       })
-      plotlyOutput("plot_asr")
+      plotlyOutput("plot_asr", height = "100vh")
     } else {
       output$asr_gt <- render_gt({
         
@@ -1098,7 +1064,7 @@ server <- function(input, output, session) {
   # ---------- CSV download ----------
   current_table <- reactive({
     tab <- input$main_tabs
-    inner_tab <- input$inner_tabs
+    #inner_tab <- input$inner_tabs
     d <- NULL
     if (tab == "Population") {
       pd <- pop_data()
@@ -1119,7 +1085,7 @@ server <- function(input, output, session) {
       isolate({ d <- get_asr_data() })
     }
     
-    if (inner_tab == "Exposures"){
+    if (tab == "Exposures"){
       
       view <- input$view_level
       # Handle missing or non-"Overall" selections
