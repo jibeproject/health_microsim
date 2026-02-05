@@ -142,7 +142,8 @@ ui <- page_sidebar(
             "Δ Healthy years"                 = "healthy",
             "Δ Life years"                    = "life"
             
-          )),
+          ),
+          selected = "deaths"),
           sliderInput("diff_min_cycle", "Start cycle:",
                       min = min(trend_cycles), max = max(trend_cycles),
                       value = MIN_CYCLE, step = 1),
@@ -416,8 +417,8 @@ server <- function(input, output, session) {
                                   gender == 2 ~ "Female")) 
     }
     
-    df |> group_by(across(all_of(c(grp, "cycle")))) |>
-      summarise(diff = (if (cumu) median else sum)(diff, na.rm = TRUE)) |>
+    df |> group_by(across(all_of(c(grp)))) |>
+      summarise(diff = (if (cumu) sum else median)(diff, na.rm = TRUE)) |>
       group_by(across(all_of(grp))) |>
       mutate(y = diff) |> #if (cumu) cumsum(diff) else diff) |>
       ungroup() |>
@@ -536,6 +537,8 @@ server <- function(input, output, session) {
     
     if (!isTRUE(input$diff_cumulative)) {
       
+      if ("cycle" %in% names(d)) {
+      
       d <- d |> 
         group_by(across(all_of(c("scen", by)))) |>
         slice_max(order_by = cycle, n = 1, with_ties = FALSE) |>
@@ -548,21 +551,52 @@ server <- function(input, output, session) {
           cumulative_value_scaled = y * SCALING
         ) |>
         arrange(scen, across(all_of(by)))
+      }else{
+        
+        d <- d |> 
+          group_by(across(all_of(c("scen", by)))) |>
+          ungroup() |>
+          transmute(
+            metric = metric_lab, scen,
+            !!!(if (length(by)) rlang::syms(by) else NULL),
+            cumulative_value = y,
+            cumulative_value_scaled = y * SCALING
+          ) |>
+          arrange(scen, across(all_of(by)))
+        
+      }
       
     } else {
-      d <- d |> 
-        group_by(across(all_of(c("scen", by)))) |>
-        summarise(
-          final_cycle = max(cycle, na.rm = TRUE),
-          cumulative_value = sum(diff, na.rm = TRUE), 
-          .groups = "drop"
-        ) |>
-        mutate(
-          metric = metric_lab, 
-          cumulative_value_scaled = cumulative_value * SCALING,
-          .before = 1
-        ) |>
-        arrange(scen, across(all_of(by)))
+      
+      if ("cycle" %in% names(d)) {
+        d <- d |> 
+          group_by(across(all_of(c("scen", by)))) |>
+          summarise(
+            final_cycle = max(cycle, na.rm = TRUE),
+            cumulative_value = sum(diff, na.rm = TRUE), 
+            .groups = "drop"
+          ) |>
+          mutate(
+            metric = metric_lab, 
+            cumulative_value_scaled = cumulative_value * SCALING,
+            .before = 1
+          ) |>
+          arrange(scen, across(all_of(by)))
+      }else {
+        
+        d <- d |> 
+          group_by(across(all_of(c("scen", by)))) |>
+          summarise(
+            cumulative_value = sum(diff, na.rm = TRUE), 
+            .groups = "drop"
+          ) |>
+          mutate(
+            metric = metric_lab, 
+            cumulative_value_scaled = cumulative_value * SCALING,
+            .before = 1
+          ) |>
+          arrange(scen, across(all_of(by)))
+      }
         
     }
     
@@ -729,7 +763,7 @@ server <- function(input, output, session) {
       p <- p + facet_wrap(~ladnm)
     }
     
-    plotly::ggplotly(p)
+    plotly::ggplotly(p + labs(title = paste(data$metric_lab, if (isTRUE(input$diff_cumulative)) "(sum)" else "(median)")))
     
   })
   
@@ -1074,9 +1108,16 @@ server <- function(input, output, session) {
       
       if (isTRUE(input$diff_cumulative)) {
         by <- if ("gender" %in% names(d)) "gender" else if ("ladnm" %in% names(d)) "ladnm" else character(0)
-        d |> group_by(across(all_of(c("scen", by)))) |> slice_max(order_by = cycle, n = 1, with_ties = FALSE) |>
-          ungroup() |> transmute(scen, across(all_of(by)), final_cycle = cycle, cumulative_value = y, cumulative_value_scaled = y * SCALING) |> 
-          as.data.frame()
+        
+        if ("cycle" %in% names(d)){
+          d |> group_by(across(all_of(c("scen", by)))) |> slice_max(order_by = cycle, n = 1, with_ties = FALSE) |>
+            ungroup() |> transmute(scen, across(all_of(by)), final_cycle = cycle, cumulative_value = y, cumulative_value_scaled = y * SCALING) |> 
+            as.data.frame()
+        }else{
+          d |> group_by(across(all_of(c("scen", by)))) |>  
+            ungroup() |> transmute(scen, across(all_of(by)), cumulative_value = y, cumulative_value_scaled = y * SCALING) |> 
+            as.data.frame()
+        }
       } else d
     } else if (tab == "Average onset ages") {
       req(input$avg_kind, input$view_level, input$scen_sel, input$avg_cause, input$avg_death_causes)
@@ -1134,7 +1175,6 @@ server <- function(input, output, session) {
     content = function(file) {
       # If current_table is a reactive:
       dat <- current_table()
-      print(dat)
       validate(
         need(!is.null(dat), "No data to download")
       )
