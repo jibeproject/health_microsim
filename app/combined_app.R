@@ -15,12 +15,10 @@ suppressPackageStartupMessages({
   library(bslib)
 })
 
-#pc <- qs::qread("processed_data/seed = 2/shiny/precomputed_100%V6.qs")
-pc <- qs::qread("processed_data/seed = 3/shiny/precomputed_030226_100%V6.qs")
-#pc <- qs::qread("processed_data/seed = 2/shiny/precomputed_100%V6.qs")
+pc <- qs::qread("processed_data/seed = 3/shiny/precomputed_040226_100%V6.qs")
+t <- qs::qread("processed_data/seed = 3/shiny/121225_trips.qs")
+exp <- qs::qread("processed_data/seed = 3/shiny/exp_050226.qs")
 
-t <- qs::qread("processed_data/seed = 2/shiny/121225_trips.qs")
-exp <- qs::qread("processed_data/seed = 3/shiny/exp_s3.qs")
 SCALING <- 1L
 
 
@@ -177,10 +175,10 @@ ui <- page_sidebar(
     id = "main_tabs",
     full_screen = TRUE,
     nav_panel("Differences vs reference",
-              uiOutput("table_diff_summary", height = "35vh"),
-              tags$hr(),
-              h5("Summary (cumulative at latest cycle, or sum if non-cumulative)"),
-              plotlyOutput("plot_diffly", height = "35vh")
+              uiOutput("table_diff_summary", height = "100vh"),
+              #tags$hr(),
+              #h5("Summary (cumulative at latest cycle, or sum if non-cumulative)"),
+              #plotlyOutput("plot_diffly", height = "35vh")
     ),
     nav_panel("Age Standardised Rates",
               uiOutput("plot_asrly")#, height = "85vh"),
@@ -603,7 +601,7 @@ server <- function(input, output, session) {
     if (isTRUE(input$diff_table)) {
       gt_output("diff_summary_gt")
     } else {
-      plotlyOutput("diff_summary_plot")
+      plotlyOutput("diff_summary_plot", height = "100vh")
     }
   })
   
@@ -976,7 +974,7 @@ server <- function(input, output, session) {
       # Non-average mode datasets
       if (input$view_level == "Overall") {
         return(bind_rows(asr_overall_all, asr_healthy_years_overall) |>
-          filter(cause %in% causes, cycle >= MIN_CYCLE) |> 
+          filter(cause %in% causes, scen %in% scens, cycle >= MIN_CYCLE) |> 
             mutate(cause = case_when(cause == "dead" ~ "Death (all causes)",
                                      cause == "dead_car" ~ "Death (car)",
                                      cause == "dead_bike" ~ "Death (cyclist)",
@@ -984,7 +982,7 @@ server <- function(input, output, session) {
                                      .default = as.character(cause))))
       } else if (input$view_level == "Gender") {
         return(asr_gender_all |> 
-          filter(cause %in% causes, cycle >= MIN_CYCLE) |> 
+          filter(cause %in% causes, scen %in% scens, cycle >= MIN_CYCLE) |> 
             mutate(cause = case_when(cause == "dead" ~ "Death (all causes)",
                                      cause == "dead_car" ~ "Death (car)",
                                      cause == "dead_bike" ~ "Death (cyclist)",
@@ -994,7 +992,7 @@ server <- function(input, output, session) {
                                  ifelse(gender == 2, "Female", NA))))
       } else if (input$view_level == "IMD") {
         return(pc$asr_imd_all |> 
-          filter(cause %in% causes, cycle >= MIN_CYCLE) |> 
+          filter(cause %in% causes, scen %in% scens, cycle >= MIN_CYCLE) |> 
             mutate(cause = case_when(cause == "dead" ~ "Death (all causes)",
                                      cause == "dead_car" ~ "Death (car)",
                                      cause == "dead_bike" ~ "Death (cyclist)",
@@ -1003,7 +1001,7 @@ server <- function(input, output, session) {
           )
       } else {
         df <- asr_lad_all_per_cycle |> 
-          filter(cause %in% causes, cycle >= MIN_CYCLE) |> 
+          filter(cause %in% causes, scen %in% scens, cycle >= MIN_CYCLE) |> 
           mutate(cause = case_when(cause == "dead" ~ "Death (all causes)",
                                    cause == "dead_car" ~ "Death (car)",
                                    cause == "dead_bike" ~ "Death (cyclist)",
