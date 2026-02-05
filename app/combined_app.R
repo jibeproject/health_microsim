@@ -339,7 +339,7 @@ server <- function(input, output, session) {
     base <- ggplot(d, aes(x = agegroup_cycle, y = .data[[pd$y]], fill = scen)) +
       geom_col(position = pos) +
       scale_y_continuous(labels = if (pd$y == "share") percent else label_comma()) +
-      labs(title = "Population by age group", x = "Age group", y = pd$y_lab, fill = "Scenario") +
+      labs(title = "Population by age group", x = "Age group", y = pd$y_lab) +
       theme_clean() +
       theme(axis.text.x = element_text(angle = 90, vjust = 0.5))
     if (!is.null(pd$facet)) {
@@ -428,13 +428,13 @@ server <- function(input, output, session) {
   build_diff_plot <- reactive({
     d <- diff_long(); req(nrow(d) > 0)
     ylab <- if (isTRUE(input$diff_cumulative)) "Cumulative Δ vs reference" else "Δ vs reference"
-    bar_chart_func <- if (isTRUE(input$diff_cumulative)) "sum" else "mean"
+    bar_chart_func <- if (isTRUE(input$diff_cumulative)) "sum" else "median"
     
     ttl  <- d$metric[1]
     if ("gender" %in% names(d)) {
       ggplot(d, aes(x = cycle, y = y, colour = scen)) +
         geom_smooth(se = FALSE, method = "loess") + add_zero_line() +
-        labs(title = ttl, x = "Cycle (year)", y = ylab, colour = "Scenario") +
+        labs(title = ttl, x = "Cycle (year)", y = ylab) +
         {
           if ("factor" %in% names(d)) {
             facet_wrap(vars(gender, factor), scales = "free_y")
@@ -447,7 +447,7 @@ server <- function(input, output, session) {
       ggplot(d, aes(x = cycle, y = y, colour = scen)) +
         geom_smooth(se = FALSE, method = "loess") + add_zero_line() +
         facet_wrap(~ ladnm, nrow = 2, scales = "free_y") +
-        labs(title = ttl, x = "Cycle (year)", y = ylab, colour = "Scenario") +
+        labs(title = ttl, x = "Cycle (year)", y = ylab) +
         theme_clean()
     } else {
       
@@ -468,13 +468,13 @@ server <- function(input, output, session) {
           theme_minimal() +
           facet_wrap(vars(cause), scales = "free_y") + 
           scale_x_continuous(breaks = c(1:10)) +
-          labs(title = ttl, x = "Index of Multiple Deprivation (IMD)", y = ylab, colour = "Scenario")
+          labs(title = ttl, x = "Index of Multiple Deprivation (IMD)", y = ylab)
         
       }else{
       
       ggplot(d, aes(x = cycle, y = y, colour = scen)) +
         geom_smooth(se = FALSE, method = "loess") + add_zero_line() +
-        labs(title = ttl, x = "Cycle (year)", y = ylab, colour = "Scenario") +
+        labs(title = ttl, x = "Cycle (year)", y = ylab) +
         {
           if ("factor" %in% names(d)) {
             facet_wrap(~ factor, scales = "free_y")
@@ -534,7 +534,7 @@ server <- function(input, output, session) {
     
     metric_lab <- unique(d$metric)[1]
     
-    if (isTRUE(input$diff_cumulative)) {
+    if (!isTRUE(input$diff_cumulative)) {
       
       d <- d |> 
         group_by(across(all_of(c("scen", by)))) |>
@@ -607,7 +607,7 @@ server <- function(input, output, session) {
     cumdf <- data$raw
     by <- data$by
     
-    bar_chart_func <- if (isTRUE(input$diff_cumulative)) "sum" else "mean"
+    bar_chart_func <- if (isTRUE(input$diff_cumulative)) "sum" else "median"
     
     if (grepl("Diseases", data$metric_lab)){
       
@@ -694,7 +694,7 @@ server <- function(input, output, session) {
             aes(label = cumulative_value, y = cumulative_value / 2),
             size = ifelse("gender" %in% names(cumdf), 2, 3),
             position = position_dodge(width = 1),
-            color = "white"
+            color = "black"
           ) +
           labs(
             title = paste("Cumulative", data$metric_lab, "by Scenario"),
