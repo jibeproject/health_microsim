@@ -550,7 +550,7 @@ server <- function(input, output, session) {
           !!!(if (length(by)) rlang::syms(by) else NULL),
           final_cycle = cycle,
           cumulative_value = y,
-          cumulative_value_scaled = y * SCALING
+          !!!if (SCALING == 1) NULL else list(cumulative_value_scaled = y * SCALING)
         ) |>
         arrange(scen, across(all_of(by)))
       }else{
@@ -562,7 +562,7 @@ server <- function(input, output, session) {
             metric = metric_lab, scen,
             !!!(if (length(by)) rlang::syms(by) else NULL),
             cumulative_value = y,
-            cumulative_value_scaled = y * SCALING
+            !!!if (SCALING == 1) NULL else list(cumulative_value_scaled = y * SCALING)
           ) |>
           arrange(scen, across(all_of(by)))
         
@@ -580,7 +580,7 @@ server <- function(input, output, session) {
           ) |>
           mutate(
             metric = metric_lab, 
-            cumulative_value_scaled = cumulative_value * SCALING,
+            !!!if (SCALING == 1) NULL else list(cumulative_value_scaled = y * SCALING),
             .before = 1
           ) |>
           arrange(scen, across(all_of(by)))
@@ -594,7 +594,7 @@ server <- function(input, output, session) {
           ) |>
           mutate(
             metric = metric_lab, 
-            cumulative_value_scaled = cumulative_value * SCALING,
+            !!!if (SCALING == 1) NULL else list(cumulative_value_scaled = y * SCALING),
             .before = 1
           ) |>
           arrange(scen, across(all_of(by)))
@@ -1125,7 +1125,7 @@ server <- function(input, output, session) {
               across(all_of(by)),
               final_cycle            = cycle,
               cumulative_value       = y,
-              cumulative_value_scaled = y * SCALING
+              !!!if (SCALING == 1) NULL else list(cumulative_value_scaled = y * SCALING)
             )
         } else {
           d <- d |>
@@ -1136,7 +1136,7 @@ server <- function(input, output, session) {
               scen,
               across(all_of(by)),
               cumulative_value       = y,
-              cumulative_value_scaled = y * SCALING
+              !!!if (SCALING == 1) NULL else list(cumulative_value_scaled = y * SCALING)
             )
         }
       }
