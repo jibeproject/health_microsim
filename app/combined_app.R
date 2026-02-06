@@ -409,6 +409,8 @@ server <- function(input, output, session) {
       by <- switch(view, Overall=character(0), Gender="gender", LAD="ladnm", IMD = "imd10")
     }
     
+    req(!is.null(base))
+    
     df <- base |> filter(cycle >= minc, scen %in% scen_keep); grp <- c("scen", by)
     
     if ("gender" %in% names(df)) {
@@ -890,10 +892,7 @@ server <- function(input, output, session) {
     #req(input$asr_mode, input$asr_causes, input$view_level, input$scen_sel)
     causes <- input$asr_causes
     scens <- input$scen_sel
-    
-    
     df <- NULL
-    
     if (input$asr_mode == "avg") {
       if (input$view_level == "Overall") {
         df <- bind_rows(asr_overall_avg_1_30, asr_healthy_years_overall_avg_1_30) |>
@@ -905,10 +904,10 @@ server <- function(input, output, session) {
                                    .default = as.character(cause)))
         
         req(nrow(df) > 0)
-        return(df |>
+        df <- df |>
           group_by(cause, scen) |> 
           reframe(age_std_rate = mean(age_std_rate)) |> 
-          pivot_wider(names_from = scen, values_from = age_std_rate))
+          pivot_wider(names_from = scen, values_from = age_std_rate)
         
       } else if (input$view_level == "Gender") {
         df <- asr_gender_all_avg_1_30 |> 
@@ -920,7 +919,7 @@ server <- function(input, output, session) {
                                    .default = as.character(cause)))
         
         req(nrow(df) > 0)
-        return(df |> 
+        df <- df |> 
           mutate(gender = case_when(
             gender == 1 ~ "Male",
             gender == 2 ~ "Female"
@@ -928,7 +927,6 @@ server <- function(input, output, session) {
           group_by(cause, gender, scen) |> 
           reframe(age_std_rate = mean(age_std_rate)) |> 
           pivot_wider(names_from = scen, values_from = age_std_rate)
-        )
         
       } else if (input$view_level == "IMD") {
         df <- pc$asr_imd_all_avg_1_30 |> 
@@ -940,10 +938,10 @@ server <- function(input, output, session) {
                                    .default = as.character(cause)))
         
         req(nrow(df) > 0)
-        return(df |>  
+        df <- df |>  
           group_by(cause, imd10, scen) |> 
           reframe(age_std_rate = mean(age_std_rate)) |> 
-          pivot_wider(names_from = scen, values_from = age_std_rate))
+          pivot_wider(names_from = scen, values_from = age_std_rate)
         
       } else {
         df <- asr_lad_all_avg_1_30 |> 
@@ -962,26 +960,26 @@ server <- function(input, output, session) {
           filter(cause == causes[1], scen == "reference") |> 
           distinct(ladnm)
         
-        dplot <- df |> filter(ladnm %in% top_ids$ladnm)
-        req(nrow(dplot) > 0)
+        df <- df |> filter(ladnm %in% top_ids$ladnm)
+        req(nrow(df) > 0)
         
-        return(dplot |> 
+        df <- df |> 
           group_by(cause, ladnm, scen) |> 
           reframe(age_std_rate = mean(age_std_rate, na.rm = TRUE)) |> 
-          pivot_wider(names_from = scen, values_from = age_std_rate))
+          pivot_wider(names_from = scen, values_from = age_std_rate)
       }
     } else {
       # Non-average mode datasets
       if (input$view_level == "Overall") {
-        return(bind_rows(asr_overall_all, asr_healthy_years_overall) |>
+        df <- bind_rows(asr_overall_all, asr_healthy_years_overall) |>
           filter(cause %in% causes, scen %in% scens, cycle >= MIN_CYCLE) |> 
             mutate(cause = case_when(cause == "dead" ~ "Death (all causes)",
                                      cause == "dead_car" ~ "Death (car)",
                                      cause == "dead_bike" ~ "Death (cyclist)",
                                      cause == "dead_walk" ~ "Death (pedestrian)",
-                                     .default = as.character(cause))))
+                                     .default = as.character(cause)))
       } else if (input$view_level == "Gender") {
-        return(asr_gender_all |> 
+        df <- asr_gender_all |> 
           filter(cause %in% causes, scen %in% scens, cycle >= MIN_CYCLE) |> 
             mutate(cause = case_when(cause == "dead" ~ "Death (all causes)",
                                      cause == "dead_car" ~ "Death (car)",
@@ -989,16 +987,16 @@ server <- function(input, output, session) {
                                      cause == "dead_walk" ~ "Death (pedestrian)",
                                      .default = as.character(cause))) |>
           mutate(gender = ifelse(gender == 1, "Male",
-                                 ifelse(gender == 2, "Female", NA))))
+                                 ifelse(gender == 2, "Female", NA)))
       } else if (input$view_level == "IMD") {
-        return(pc$asr_imd_all |> 
+        df <- pc$asr_imd_all |> 
           filter(cause %in% causes, scen %in% scens, cycle >= MIN_CYCLE) |> 
             mutate(cause = case_when(cause == "dead" ~ "Death (all causes)",
                                      cause == "dead_car" ~ "Death (car)",
                                      cause == "dead_bike" ~ "Death (cyclist)",
                                      cause == "dead_walk" ~ "Death (pedestrian)",
                                      .default = as.character(cause)))
-          )
+          
       } else {
         df <- asr_lad_all_per_cycle |> 
           filter(cause %in% causes, scen %in% scens, cycle >= MIN_CYCLE) |> 
@@ -1011,10 +1009,13 @@ server <- function(input, output, session) {
           df <- df |> filter(ladnm %in% input$lad_sel)
         }
         
-        return(df)
       }
-      
     }
+    
+    if ("scen" %in% names(df))
+      df <- df |> rename(Scenario = scen)
+    
+    df
     
   })
   
@@ -1027,24 +1028,24 @@ server <- function(input, output, session) {
       df  # return processed table
     } else {
       if (input$view_level == "Overall") {
-        ggplot(df, aes(x = cycle, y = age_std_rate, colour = scen, group = scen)) +
-          geom_col(position = position_dodge(width = 0.9), aes(fill = scen)) +
+        ggplot(df, aes(x = cycle, y = age_std_rate, colour = Scenario, group = Scenario)) +
+          geom_col(position = position_dodge(width = 0.9), aes(fill = Scenario)) +
           facet_wrap(vars(cause), scales = "free_y", ncol = 4) +
           labs(title = "ASR per cycle (summed over cycles 1-30)\n\n", 
                x = "Cycle (year)", y = "ASR per 100,000") +
           theme_clean()
         
       } else if (input$view_level == "Gender") {
-        ggplot(df, aes(x = cycle, y = age_std_rate, colour = scen)) +
-          geom_col(position = position_dodge(width = 0.9), aes(fill = scen)) +
+        ggplot(df, aes(x = cycle, y = age_std_rate, colour = Scenario)) +
+          geom_col(position = position_dodge(width = 0.9), aes(fill = Scenario)) +
           facet_wrap(vars(cause, gender), scales = "free_y") +
           labs(title = "ASR per cycle by gender (summed over cycles 1-30)\n\n",
                x = "Cycle (year)", y = "ASR per 100,000") +
           theme_clean()
         
       } else if (input$view_level == "IMD") {
-        ggplot(df, aes(x = imd10, y = age_std_rate, colour = scen)) +
-          geom_col(position = position_dodge(width = 0.9), aes(fill = scen)) +
+        ggplot(df, aes(x = imd10, y = age_std_rate, colour = Scenario)) +
+          geom_col(position = position_dodge(width = 0.9), aes(fill = Scenario)) +
           scale_x_continuous(breaks = c(1:10)) + 
           facet_wrap(vars(cause), scales = "free_y") +
           labs(title = "ASR by IMD (summed over cycles 1-30)\n\n",
@@ -1052,8 +1053,8 @@ server <- function(input, output, session) {
           theme_clean()
         
       } else {
-        ggplot(df, aes(x = cycle, y = age_std_rate, colour = scen)) +
-          geom_col(position = position_dodge(width = 0.9), aes(fill = scen)) +
+        ggplot(df, aes(x = cycle, y = age_std_rate, colour = Scenario)) +
+          geom_col(position = position_dodge(width = 0.9), aes(fill = Scenario)) +
           facet_grid(ladnm ~ cause, scales = "free_y") +
           labs(title = "ASR per cycle by LAD (total for cycles 1-30)",
                x = "Cycle (year)", y = "ASR per 100,000") +
@@ -1094,74 +1095,172 @@ server <- function(input, output, session) {
     }
   })
   
-  
-  # ---------- CSV download ----------
   current_table <- reactive({
-    tab <- input$main_tabs
-    #inner_tab <- input$inner_tabs
-    d <- NULL
+    req(input$main_tabs)
+    
+    tab <- input$main_tabs   # no need for isolate or print
+    
     if (tab == "Population") {
+      
       pd <- pop_data()
-      d <- pd$data |> mutate(across(where(is.numeric), ~ round(., 6)))
+      d  <- pd$data |>
+        mutate(across(where(is.numeric), ~ round(.x, 6)))
+      
     } else if (tab == "Differences vs reference") {
+      
       d <- diff_long()
       
       if (isTRUE(input$diff_cumulative)) {
-        by <- if ("gender" %in% names(d)) "gender" else if ("ladnm" %in% names(d)) "ladnm" else character(0)
         
-        if ("cycle" %in% names(d)){
-          d |> group_by(across(all_of(c("scen", by)))) |> slice_max(order_by = cycle, n = 1, with_ties = FALSE) |>
-            ungroup() |> transmute(scen, across(all_of(by)), final_cycle = cycle, cumulative_value = y, cumulative_value_scaled = y * SCALING) |> 
-            as.data.frame()
-        }else{
-          d |> group_by(across(all_of(c("scen", by)))) |>  
-            ungroup() |> transmute(scen, across(all_of(by)), cumulative_value = y, cumulative_value_scaled = y * SCALING) |> 
-            as.data.frame()
+        by <- intersect(c("gender", "ladnm"), names(d))
+        # safely handle 0, 1 or 2 grouping vars
+        
+        if ("cycle" %in% names(d)) {
+          d <- d |>
+            group_by(across(all_of(c("scen", by)))) |>
+            slice_max(order_by = cycle, n = 1, with_ties = FALSE) |>
+            ungroup() |>
+            transmute(
+              scen,
+              across(all_of(by)),
+              final_cycle            = cycle,
+              cumulative_value       = y,
+              cumulative_value_scaled = y * SCALING
+            )
+        } else {
+          d <- d |>
+            group_by(across(all_of(c("scen", by)))) |>
+            # no slice here; assume one row per group
+            ungroup() |>
+            transmute(
+              scen,
+              across(all_of(by)),
+              cumulative_value       = y,
+              cumulative_value_scaled = y * SCALING
+            )
         }
-      } else d
+      }
+      
     } else if (tab == "Average onset ages") {
-      req(input$avg_kind, input$view_level, input$scen_sel, input$avg_cause, input$avg_death_causes)
-      isolate({ d <- get_onset_ages() })
+      
+      req(input$avg_kind, input$view_level,
+          input$scen_sel, input$avg_cause,
+          input$avg_death_causes)
+      d <- get_onset_ages()
+      
     } else if (tab == "Age Standardised Rates") {
-      isolate({ d <- get_asr_data() })
-    }
-    
-    if (tab == "Exposures"){
+      
+      d <- get_asr_data()
+      
+    } else if (tab == "Exposures") {
       
       view <- input$view_level
-      # Handle missing or non-"Overall" selections
-      lexp <- if (view == "Overall") {
-        d <- exp |> filter(grepl("Overall", grouping))
-      } else if (view == "Gender") {
-        d <- exp |> 
-          filter(grepl("Gender", grouping)) |> 
+      
+      lexp <- switch(
+        view,
+        "Overall"  = exp |> filter(grepl("Overall", grouping)),
+        "Gender"   = exp |>
+          filter(grepl("Gender", grouping)) |>
           mutate(
-            grouping = case_when(
+            grouping = dplyr::case_when(
               grouping == "Gender: 1" ~ "Gender: Male",
               grouping == "Gender: 2" ~ "Gender: Female",
-              TRUE                  ~ grouping      # keep all other values as-is
+              TRUE                    ~ grouping
             )
-          )
-        
-      } else if  (view == "LAD") {
-        d <- exp |> filter(grepl("LAD", grouping))
-      } else if (view == "IMD"){
-        d <- exp |> filter(grepl("IMD", grouping))
-      } else if  (view == "Agegroup"){
-        d <- exp |> filter(grepl("Age", grouping))
-      }
+          ),
+        "LAD"      = exp |> filter(grepl("LAD", grouping)),
+        "IMD"      = exp |> filter(grepl("IMD", grouping)),
+        "Agegroup" = exp |> filter(grepl("Age", grouping)),
+        exp        # fallback
+      )
       
       if (view == "LAD" && length(input$lad_sel)) {
-        d <- lexp <- lexp |> filter(grepl(paste(input$lad_sel, collapse = "|"), grouping))
-      } 
+        lexp <- lexp |>
+          filter(grepl(paste(input$lad_sel, collapse = "|"), grouping))
+      }
       
       if (length(input$scen_sel)) {
-        d <- lexp <- lexp |> filter(grepl(paste(input$scen_sel, collapse = "|"), scen))
+        lexp <- lexp |>
+          filter(grepl(paste(input$scen_sel, collapse = "|"), scen))
       }
+      
+      d <- lexp
+    } else {
+      
+      d <- NULL
     }
-    d
     
+    d
   })
+  
+  
+  # ---------- CSV download ----------
+  # current_table <- reactive({
+  #   req(input$main_tabs)
+  #   tab <- isolate({input$main_tabs})
+  #   
+  #   print(input$main_tabs)
+  #   d <- NULL
+  #   if (input$main_tabs == "Population") {
+  #     pd <- pop_data()
+  #     d <- pd$data |> mutate(across(where(is.numeric), ~ round(., 6)))
+  #   } else if (input$main_tabs == "Differences vs reference") {
+  #     d <- diff_long()
+  #     
+  #     if (isTRUE(input$diff_cumulative)) {
+  #       by <- if ("gender" %in% names(d)) "gender" else if ("ladnm" %in% names(d)) "ladnm" else character(0)
+  #       
+  #       if ("cycle" %in% names(d)){
+  #         d |> group_by(across(all_of(c("scen", by)))) |> slice_max(order_by = cycle, n = 1, with_ties = FALSE) |>
+  #           ungroup() |> transmute(scen, across(all_of(by)), final_cycle = cycle, cumulative_value = y, cumulative_value_scaled = y * SCALING) |> 
+  #           as.data.frame()
+  #       }else{
+  #         d |> group_by(across(all_of(c("scen", by)))) |>  
+  #           ungroup() |> transmute(scen, across(all_of(by)), cumulative_value = y, cumulative_value_scaled = y * SCALING) |> 
+  #           as.data.frame()
+  #       }
+  #     } else d
+  #   } else if (input$main_tabs == "Average onset ages") {
+  #     req(input$avg_kind, input$view_level, input$scen_sel, input$avg_cause, input$avg_death_causes)
+  #     isolate({ d <- get_onset_ages() })
+  #   } else if (input$main_tabs == "Age Standardised Rates") {
+  #     isolate({ d <- get_asr_data() })
+  #   } else if (input$main_tabs == "Exposures"){
+  #     
+  #     view <- input$view_level
+  #     # Handle missing or non-"Overall" selections
+  #     lexp <- if (view == "Overall") {
+  #       d <- exp |> filter(grepl("Overall", grouping))
+  #     } else if (view == "Gender") {
+  #       d <- exp |> 
+  #         filter(grepl("Gender", grouping)) |> 
+  #         mutate(
+  #           grouping = case_when(
+  #             grouping == "Gender: 1" ~ "Gender: Male",
+  #             grouping == "Gender: 2" ~ "Gender: Female",
+  #             TRUE                  ~ grouping      # keep all other values as-is
+  #           )
+  #         )
+  #       
+  #     } else if  (view == "LAD") {
+  #       d <- exp |> filter(grepl("LAD", grouping))
+  #     } else if (view == "IMD"){
+  #       d <- exp |> filter(grepl("IMD", grouping))
+  #     } else if  (view == "Agegroup"){
+  #       d <- exp |> filter(grepl("Age", grouping))
+  #     }
+  #     
+  #     if (view == "LAD" && length(input$lad_sel)) {
+  #       d <- lexp <- lexp |> filter(grepl(paste(input$lad_sel, collapse = "|"), grouping))
+  #     } 
+  #     
+  #     if (length(input$scen_sel)) {
+  #       d <- lexp <- lexp |> filter(grepl(paste(input$scen_sel, collapse = "|"), scen))
+  #     }
+  #   }
+  #   
+  # })
+  
   output$download_csv <- downloadHandler(
     filename = function() { 
       paste0(
@@ -1391,59 +1490,143 @@ server <- function(input, output, session) {
     
   })
   
+  # output$plot_exp <- render_gt({
+  #   req(input$view_level)  # Ensure input is available
+  #   
+  #   lexp <- current_table()
+  #   
+  #   # Ensure data isn’t empty
+  #   req(nrow(lexp) > 0)
+  #   req(c("scen", "value") %in% names(lexp))
+  #   
+  #   # col_fun <- col_numeric(palette = c("lightpink", "lightgreen"), domain = c(0, 1))
+  #   
+  #   print(names(lexp))
+  #   
+  #   wide_df <- lexp |>
+  #     pivot_wider(
+  #       #id_cols = c(grouping, variable),
+  #       names_from = scen,
+  #       values_from = value
+  #     )
+  #   
+  #   scen_cols <- setdiff(names(wide_df), c("grouping", "variable", "stat"))
+  #   
+  #   norm_df <- wide_df |>
+  #     rowwise() |>
+  #     mutate(
+  #       row_min = min(c_across(all_of(scen_cols)), na.rm = TRUE),
+  #       row_max = max(c_across(all_of(scen_cols)), na.rm = TRUE)
+  #     ) |>
+  #     mutate(across(
+  #       all_of(scen_cols),
+  #       function(x) if_else(row_max == row_min, 0.5, (x - row_min) / (row_max - row_min)),
+  #       .names = "{.col}_norm"
+  #     )) |>
+  #     ungroup()
+  #   
+  #   # Create html-colored cell content
+  #   for (scen in scen_cols) {
+  #     norm_col <- paste0(scen, "_norm")
+  #     #html_col <- paste0(scen, "_html")
+  #     norm_df[[scen]] <- mapply(function(val, norm) {
+  #       color <- col_fun(norm)
+  #       sprintf("<div style='background-color:%s; padding:2px;'>%s</div>", color, round(val, 2))
+  #     }, norm_df[[scen]], norm_df[[norm_col]], SIMPLIFY = TRUE)
+  #   }
+  #   
+  #   html_cols <- scen_cols
+  #   
+  #   gt_tbl <- norm_df |>
+  #     dplyr::select(grouping, variable, stat, all_of(html_cols)) |>
+  #     gt() |> #groupname_col = "grouping") |>
+  #     cols_label(!!!setNames(html_cols, html_cols)) |>
+  #     fmt_markdown(columns = all_of(html_cols)) |>
+  #     tab_options(table.font.size = "small") |>
+  #     opt_interactive(use_filters = TRUE,
+  #                     use_sorting = FALSE,
+  #                     use_compact_mode = TRUE)
+  #   
+  #   gt_tbl
+  # })
+  
+  
   output$plot_exp <- render_gt({
-    req(input$view_level)  # Ensure input is available
+    req(input$view_level)
     
     lexp <- current_table()
-    
-    # Ensure data isn’t empty
     req(nrow(lexp) > 0)
+    req(all(c("scen", "value") %in% names(lexp)))
     
-    # col_fun <- col_numeric(palette = c("lightpink", "lightgreen"), domain = c(0, 1))
+    # Avoid printing in reactive contexts (expensive in large apps)
+    # message(names(lexp)) # use message() only for debugging if really needed
     
+    # Pivot wider once
     wide_df <- lexp |>
-      pivot_wider(
-        #id_cols = c(grouping, variable),
-        names_from = scen,
+      tidyr::pivot_wider(
+        names_from  = scen,
         values_from = value
       )
     
+    # Identify scenario columns once
     scen_cols <- setdiff(names(wide_df), c("grouping", "variable", "stat"))
     
-    norm_df <- wide_df |>
-      rowwise() |>
-      mutate(
-        row_min = min(c_across(all_of(scen_cols)), na.rm = TRUE),
-        row_max = max(c_across(all_of(scen_cols)), na.rm = TRUE)
-      ) |>
-      mutate(across(
-        all_of(scen_cols),
-        function(x) if_else(row_max == row_min, 0.5, (x - row_min) / (row_max - row_min)),
-        .names = "{.col}_norm"
-      )) |>
-      ungroup()
+    # Compute row-wise min/max in a fully vectorised way
+    scen_mat <- as.matrix(wide_df[scen_cols])
     
-    # Create html-colored cell content
-    for (scen in scen_cols) {
-      norm_col <- paste0(scen, "_norm")
-      #html_col <- paste0(scen, "_html")
-      norm_df[[scen]] <- mapply(function(val, norm) {
-        color <- col_fun(norm)
-        sprintf("<div style='background-color:%s; padding:2px;'>%s</div>", color, round(val, 2))
-      }, norm_df[[scen]], norm_df[[norm_col]], SIMPLIFY = TRUE)
-    }
+    row_min <- matrixStats::rowMins(scen_mat, na.rm = TRUE)
+    row_max <- matrixStats::rowMaxs(scen_mat, na.rm = TRUE)
     
+    # Normalisation, handling constant rows
+    range <- row_max - row_min
+    # Avoid division by zero: constant rows -> 0.5
+    denom <- ifelse(range == 0 | is.na(range), 1, range)
+    
+    norm_mat <- (scen_mat - row_min) / denom
+    norm_mat[range == 0 | is.na(range), ] <- 0.5
+    
+    # Apply colour function in a vectorised way
+    # (define col_fun once outside render_gt for extra speed)
+    # col_fun <- scales::col_numeric(palette = c("lightpink", "lightgreen"), domain = c(0, 1))
+    
+    # Colours for each normalised value
+    col_mat <- col_fun(as.numeric(norm_mat))
+    col_mat <- matrix(col_mat, nrow = nrow(norm_mat), ncol = ncol(norm_mat))
+    
+    # Build HTML strings vectorised (no mapply in a loop)
+    val_mat <- round(scen_mat, 2)
+    # Build HTML strings as a vector
+    html_vec <- sprintf(
+      "<div style='background-color:%s; padding:2px;'>%s</div>",
+      as.vector(col_mat),
+      as.vector(val_mat)
+    )
+    
+    # Reshape back to matrix with same dims as scen_mat
+    html_mat <- matrix(
+      html_vec,
+      nrow = nrow(scen_mat),
+      ncol = ncol(scen_mat),
+      byrow = FALSE,
+      dimnames = list(NULL, scen_cols)
+    )
+    
+    # Replace original scen columns by HTML columns
+    norm_df <- wide_df
+    norm_df[scen_cols] <- as.data.frame(html_mat, stringsAsFactors = FALSE)
     html_cols <- scen_cols
     
     gt_tbl <- norm_df |>
-      dplyr::select(grouping, variable, stat, all_of(html_cols)) |>
-      gt() |> #groupname_col = "grouping") |>
-      cols_label(!!!setNames(html_cols, html_cols)) |>
-      fmt_markdown(columns = all_of(html_cols)) |>
-      tab_options(table.font.size = "small") |>
-      opt_interactive(use_filters = TRUE,
-                      use_sorting = FALSE,
-                      use_compact_mode = TRUE)
+      dplyr::select(grouping, variable, stat, dplyr::all_of(html_cols)) |>
+      gt::gt() |>
+      gt::cols_label(!!!rlang::set_names(html_cols, html_cols)) |>
+      gt::fmt_markdown(columns = dplyr::all_of(html_cols)) |>
+      gt::tab_options(table.font.size = "small") |>
+      opt_interactive(
+        use_filters      = TRUE,
+        use_sorting      = FALSE,
+        use_compact_mode = TRUE
+      )
     
     gt_tbl
   })
