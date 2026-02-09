@@ -1193,74 +1193,6 @@ server <- function(input, output, session) {
     d
   })
   
-  
-  # ---------- CSV download ----------
-  # current_table <- reactive({
-  #   req(input$main_tabs)
-  #   tab <- isolate({input$main_tabs})
-  #   
-  #   print(input$main_tabs)
-  #   d <- NULL
-  #   if (input$main_tabs == "Population") {
-  #     pd <- pop_data()
-  #     d <- pd$data |> mutate(across(where(is.numeric), ~ round(., 6)))
-  #   } else if (input$main_tabs == "Differences vs reference") {
-  #     d <- diff_long()
-  #     
-  #     if (isTRUE(input$diff_cumulative)) {
-  #       by <- if ("gender" %in% names(d)) "gender" else if ("ladnm" %in% names(d)) "ladnm" else character(0)
-  #       
-  #       if ("cycle" %in% names(d)){
-  #         d |> group_by(across(all_of(c("scen", by)))) |> slice_max(order_by = cycle, n = 1, with_ties = FALSE) |>
-  #           ungroup() |> transmute(scen, across(all_of(by)), final_cycle = cycle, cumulative_value = y, cumulative_value_scaled = y * SCALING) |> 
-  #           as.data.frame()
-  #       }else{
-  #         d |> group_by(across(all_of(c("scen", by)))) |>  
-  #           ungroup() |> transmute(scen, across(all_of(by)), cumulative_value = y, cumulative_value_scaled = y * SCALING) |> 
-  #           as.data.frame()
-  #       }
-  #     } else d
-  #   } else if (input$main_tabs == "Average onset ages") {
-  #     req(input$avg_kind, input$view_level, input$scen_sel, input$avg_cause, input$avg_death_causes)
-  #     isolate({ d <- get_onset_ages() })
-  #   } else if (input$main_tabs == "Age Standardised Rates") {
-  #     isolate({ d <- get_asr_data() })
-  #   } else if (input$main_tabs == "Exposures"){
-  #     
-  #     view <- input$view_level
-  #     # Handle missing or non-"Overall" selections
-  #     lexp <- if (view == "Overall") {
-  #       d <- exp |> filter(grepl("Overall", grouping))
-  #     } else if (view == "Gender") {
-  #       d <- exp |> 
-  #         filter(grepl("Gender", grouping)) |> 
-  #         mutate(
-  #           grouping = case_when(
-  #             grouping == "Gender: 1" ~ "Gender: Male",
-  #             grouping == "Gender: 2" ~ "Gender: Female",
-  #             TRUE                  ~ grouping      # keep all other values as-is
-  #           )
-  #         )
-  #       
-  #     } else if  (view == "LAD") {
-  #       d <- exp |> filter(grepl("LAD", grouping))
-  #     } else if (view == "IMD"){
-  #       d <- exp |> filter(grepl("IMD", grouping))
-  #     } else if  (view == "Agegroup"){
-  #       d <- exp |> filter(grepl("Age", grouping))
-  #     }
-  #     
-  #     if (view == "LAD" && length(input$lad_sel)) {
-  #       d <- lexp <- lexp |> filter(grepl(paste(input$lad_sel, collapse = "|"), grouping))
-  #     } 
-  #     
-  #     if (length(input$scen_sel)) {
-  #       d <- lexp <- lexp |> filter(grepl(paste(input$scen_sel, collapse = "|"), scen))
-  #     }
-  #   }
-  #   
-  # })
-  
   output$download_csv <- downloadHandler(
     filename = function() { 
       paste0(
@@ -1490,67 +1422,6 @@ server <- function(input, output, session) {
     
   })
   
-  # output$plot_exp <- render_gt({
-  #   req(input$view_level)  # Ensure input is available
-  #   
-  #   lexp <- current_table()
-  #   
-  #   # Ensure data isn’t empty
-  #   req(nrow(lexp) > 0)
-  #   req(c("scen", "value") %in% names(lexp))
-  #   
-  #   # col_fun <- col_numeric(palette = c("lightpink", "lightgreen"), domain = c(0, 1))
-  #   
-  #   print(names(lexp))
-  #   
-  #   wide_df <- lexp |>
-  #     pivot_wider(
-  #       #id_cols = c(grouping, variable),
-  #       names_from = scen,
-  #       values_from = value
-  #     )
-  #   
-  #   scen_cols <- setdiff(names(wide_df), c("grouping", "variable", "stat"))
-  #   
-  #   norm_df <- wide_df |>
-  #     rowwise() |>
-  #     mutate(
-  #       row_min = min(c_across(all_of(scen_cols)), na.rm = TRUE),
-  #       row_max = max(c_across(all_of(scen_cols)), na.rm = TRUE)
-  #     ) |>
-  #     mutate(across(
-  #       all_of(scen_cols),
-  #       function(x) if_else(row_max == row_min, 0.5, (x - row_min) / (row_max - row_min)),
-  #       .names = "{.col}_norm"
-  #     )) |>
-  #     ungroup()
-  #   
-  #   # Create html-colored cell content
-  #   for (scen in scen_cols) {
-  #     norm_col <- paste0(scen, "_norm")
-  #     #html_col <- paste0(scen, "_html")
-  #     norm_df[[scen]] <- mapply(function(val, norm) {
-  #       color <- col_fun(norm)
-  #       sprintf("<div style='background-color:%s; padding:2px;'>%s</div>", color, round(val, 2))
-  #     }, norm_df[[scen]], norm_df[[norm_col]], SIMPLIFY = TRUE)
-  #   }
-  #   
-  #   html_cols <- scen_cols
-  #   
-  #   gt_tbl <- norm_df |>
-  #     dplyr::select(grouping, variable, stat, all_of(html_cols)) |>
-  #     gt() |> #groupname_col = "grouping") |>
-  #     cols_label(!!!setNames(html_cols, html_cols)) |>
-  #     fmt_markdown(columns = all_of(html_cols)) |>
-  #     tab_options(table.font.size = "small") |>
-  #     opt_interactive(use_filters = TRUE,
-  #                     use_sorting = FALSE,
-  #                     use_compact_mode = TRUE)
-  #   
-  #   gt_tbl
-  # })
-  
-  
   output$plot_exp <- render_gt({
     req(input$view_level)
     
@@ -1631,8 +1502,6 @@ server <- function(input, output, session) {
     gt_tbl
   })
   
-  
-
 }
 
 shinyApp(ui, server)
