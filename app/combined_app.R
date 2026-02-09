@@ -13,10 +13,10 @@ suppressPackageStartupMessages({
   library(gt)
   library(gtExtras)
   library(bslib)
+  library(matrixStats)
 })
 
 pc <- qs::qread("processed_data/seed = 3/shiny/precomputed_040226_100%V6.qs")
-t <- qs::qread("processed_data/seed = 3/shiny/121225_trips.qs")
 exp <- qs::qread("processed_data/seed = 3/shiny/exp_050226.qs")
 
 SCALING <- 1L
