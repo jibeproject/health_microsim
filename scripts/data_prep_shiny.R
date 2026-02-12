@@ -1,47 +1,54 @@
 # === Load libraries ===
-suppressPackageStartupMessages({
-  library(tidyverse)
-  library(arrow)
-  library(DT)
-  library(purrr)
-  library(stringr)
-  library(esquisse)
-  library(ggplot2)
-  library(plotly)
-  library(readr)
-  library(rlang)
-  library(data.table)
-})
+pkgs <- c(
+  "tidyverse","arrow","DT","purrr","stringr","esquisse",
+  "ggplot2","plotly","readr","rlang","data.table","tcltk"
+)
+
+missing <- pkgs[!sapply(pkgs, requireNamespace, quietly = TRUE)]
+if (length(missing)) install.packages(missing, dependencies = TRUE)
+
+suppressPackageStartupMessages(
+  invisible(lapply(pkgs, library, character.only = TRUE))
+)
 
 # === Data loading function ===
 get_summary <- function(SCEN_NAME, 
                         final_year = 2051, 
-                        microdata_dir_name = "microdata", 
-                        manchester_folder = "", 
+                        zoneID = "oaID",
+                        regionIDs = c(),
+                        microdata_folder = "microdata", 
+                        region_folder = "",
+                        exposure_population = "", 
                         group_vars = NULL, 
                         summarise = TRUE) {
   # final_year <- 2022
   # microdata_dir_name <- "microData"
   # 
   # SCEN_NAME <- "base"
+  if (exposure_population == "") {
+    print("Argument for `exposure_population` within region_folder must be defined, for example: input/health/pp_exposure_2021_base_140725.csv")
+    stop()
+  } else {
+    exposure_population <- paste0(region_folder, "/", exposure_population)
+  }
   
-  print(microdata_dir_name)
+  print(microdata_folder)
   
   #browser()
+  output_dir <- paste0(region_folder, "/scenOutput/", SCEN_NAME)
+  microdata_dir <- paste0(output_dir, "/", microdata_folder)
+  healthDiseaseTracker_file_path <- paste0(microdata_dir, "/pp_healthDiseaseTracker_", final_year, ".csv")
   
-  file_path <- paste0(
-    manchester_folder, "scenOutput/",
-    SCEN_NAME, "/", microdata_dir_name, "/pp_healthDiseaseTracker_", final_year, ".csv"
-  )
-  
-  zones <- read_csv(paste0(manchester_folder, "input/zoneSystem.csv"))
+  zones <- read_csv(paste0(region_folder, "/input/zoneSystem.csv"))
+  zones <- zones %>% rename(zone = !!rlang::sym(zoneID))
+  zones_sel <- zones %>% dplyr::select(dplyr::any_of(unique(c("zone", regionIDs))))
   
   
   # Read health tracker file
-  if (grepl("\\.csv$", file_path)) {
-    m <- read_csv(file_path)#arrow::open_csv_dataset(file_path) |> to_duckdb() |> collect()
+  if (grepl("\\.csv$", healthDiseaseTracker_file_path)) {
+    m <- read_csv(healthDiseaseTracker_file_path)#arrow::open_csv_dataset(file_path) |> to_duckdb() |> collect()
   } else {
-    m <- arrow::open_dataset(file_path)
+    m <- arrow::open_dataset(healthDiseaseTracker_file_path)
   }
   
   m$id <- as.numeric(m$id)
@@ -52,14 +59,14 @@ get_summary <- function(SCEN_NAME,
   names(m)[match(year_cols, names(m))] <- new_names
   
   # Load population files
-  pop_dir_path <- paste0(manchester_folder, "scenOutput/", SCEN_NAME, "/", microdata_dir_name)
+  
 
-  pp_csv_files <- list.files(path = pop_dir_path, pattern = "^pp_\\d{4}\\.csv$", full.names = TRUE)
+  pp_csv_files <- list.files(path = microdata_dir, pattern = "^pp_\\d{4}\\.csv$", full.names = TRUE)
   newborn_data <- lapply(pp_csv_files, function(file) {
     read_csv(file) |> filter(age == 0)
   }) |> bind_rows()
   
-  dd_csv_files <- list.files(path = pop_dir_path, pattern = "^dd_\\d{4}\\.csv$", full.names = TRUE)
+  dd_csv_files <- list.files(path = microdata_dir, pattern = "^dd_\\d{4}\\.csv$", full.names = TRUE)
   dd_data <- lapply(dd_csv_files, read_csv) |> bind_rows()
   
   newborn_data <- newborn_data |> 
@@ -71,27 +78,23 @@ get_summary <- function(SCEN_NAME,
                           right = FALSE, 
                           include.lowest = TRUE)) |> 
     dplyr::select(id, age, agegroup, gender, zone) |> 
-    left_join(zones  |> rename(zone = oaID) |> dplyr::select(zone, ladcd, lsoa21cd)) |> 
+    left_join(zones_sel) |> 
     distinct()
   
-  # Exposure population
-  pop_path <- paste0(manchester_folder, "input/health/pp_exposure_2021_base_140725.csv")
+  # Exposure population  
+  if (!file.exists(exposure_population)) stop("Population exposure file does not exist: ", exposure_population)
   
-  if (!file.exists(pop_path)) stop("Population exposure file does not exist: ", pop_path)
-  
-  synth_pop_2021 <- readr::read_csv(pop_path) |>
+  synth_pop_base <- readr::read_csv(exposure_population) |>
     mutate(agegroup = cut(age, c(0, 25, 45, 65, 85, Inf), 
                           labels = c("0-24", "25-44", "45-64", "65-84", "85+"),
                           right = FALSE, 
                           include.lowest = TRUE))
   
-  synth_pop_2021 <- synth_pop_2021 |> 
+  synth_pop_base <- synth_pop_base |> 
     dplyr::select(id, age, agegroup, gender, zone) |> 
-    left_join(zones  |> 
-                rename(zone = oaID) |> 
-                dplyr::select(zone, ladcd, lsoa21cd))
+    left_join(zones_sel)
   
-  synth_pop <- bind_rows(synth_pop, synth_pop_2021)
+  synth_pop <- bind_rows(synth_pop, synth_pop_base)
   
   # # Filter out early dead and merge population info
   m <- m |> 
@@ -103,7 +106,15 @@ get_summary <- function(SCEN_NAME,
         .
       )
     )) |> 
-    left_join(synth_pop |> dplyr::select(id, age, agegroup, gender, ladcd, lsoa21cd)) 
+    left_join(
+      synth_pop %>% dplyr::select(
+        dplyr::any_of(
+          unique(c("id", "age", "agegroup", "gender", regionIDs)
+          )
+        )
+      ),
+      by = "id"
+    )
   #|> 
   #   mutate(across(starts_with("c"), ~ ifelse(str_detect(., "killed"), "dead", .))) # Ali to update
   
@@ -111,16 +122,24 @@ get_summary <- function(SCEN_NAME,
   setDT(m)
   
   # Melt wide to long on all columns starting with "c"
-  long_data <- melt(m, id.vars = c("id", "age", "agegroup", "gender", "ladcd", "lsoa21cd"), 
-                    measure.vars = patterns("^c"), 
-                    variable.name = "name", value.name = "value")
+  id_vars <- intersect(names(m), c("id", "age", "agegroup", "gender", regionIDs))
+
+  long_data <- melt(
+    m,
+    id.vars = id_vars,
+    measure.vars = patterns("^c"),
+    variable.name = "name",
+    value.name = "value"
+  )
   
   # Cycle from column name
   long_data[, cycle := as.numeric(str_remove(name, "^c"))]
   
   # Split pipe-separated values and unlist into rows
-  long_data <- long_data[, .(value = unlist(strsplit(value, "\\|"))), 
-                         by = .(id, age, agegroup, gender, ladcd, lsoa21cd, name, cycle)]
+  region_cols <- intersect(names(long_data), regionIDs)
+  group_cols <- unique(c(intersect(names(long_data), c("id", "age", "agegroup", "gender")), region_cols, "name", "cycle"))
+
+  long_data <- long_data[, .(value = unlist(strsplit(value, "\\|"))), by = group_cols]
   
   # Trim whitespace and replace terms
   long_data[, value := str_trim(value)]
@@ -171,15 +190,116 @@ get_summary <- function(SCEN_NAME,
 ## final_year = 2022, 
 ## microdata_dir_name = "microData", 
 ## manchester_folder = "/media/ali/Expansion/backup_tabea/manchester-main")
-manchester_folder = "/run/user/1000/gvfs/smb-share:server=ifs-prod-1152-cifs.ifs.uis.private.cam.ac.uk,share=cedar-grp-drive/HealthImpact/Data/Country/UK/JIBE/manchester/"
-manchester_folder <- "/media/ali/Expansion/backup_tabea/manchester-main/"
-fyear <- 2051
+region_folder = tcltk::tk_choose.dir(caption = "Select a study region folder with SILO outputs")
+region_name = basename(region_folder)
+# Check if a folder was selected
+if (!is.na(region_folder)) {
+  cat("Selected folder path:", region_folder, "\n")
+} else {
+  cat("No folder selected.\n")
+}
 
 ## === Prepare general data long ===
-all_data <- list(
-  base = get_summary("100%/base", summarise = FALSE, final_year = fyear, manchester_folder = manchester_folder) |> mutate(scen = "reference"),
-  #green = get_summary("green", summarise = FALSE, final_year = fyear, manchester_folder = manchester_folder) |> mutate(scen = "green"),
-  safeStreet = get_summary("100%/safeStreet", summarise = FALSE, final_year = fyear, manchester_folder = manchester_folder) |> mutate(scen = "safeStreet"),
-  #both = get_summary("both", summarise = FALSE, final_year = fyear, manchester_folder = manchester_folder) |> mutate(scen = "both")
-)
 
+if (grepl("manchester", tolower(basename(region_folder)))) {
+    exposure_population = "input/health/pp_exposure_2021_base_140725.csv"
+    fyear <- 2051
+    zoneID = "oaID"
+    regionIDs <- c("ladcd","lsoa21cd")
+    all_data <- list(
+        base = get_summary("100%/base", 
+                        zoneID = zoneID,
+                        regionIDs = regionIDs,
+                        exposure_population = exposure_population,
+                        summarise = FALSE, 
+                        final_year = fyear, 
+                        region_folder = region_folder
+                ) |> 
+                mutate(scen = "reference"),
+        #green = get_summary("green", summarise = FALSE, final_year = fyear, manchester_folder = manchester_folder) |> mutate(scen = "green"),
+        safeStreet = get_summary("100%/safeStreet", 
+                        zoneID = zoneID,
+                        regionIDs = regionIDs,
+                        exposure_population = exposure_population,
+                        summarise = FALSE, 
+                        final_year = fyear, 
+                        region_folder = region_folder
+                      ) |> mutate(scen = "safeStreet"),
+        #both = get_summary("both", summarise = FALSE, final_year = fyear, manchester_folder = manchester_folder) |> mutate(scen = "both")
+    )
+}else if (grepl("melbourne", tolower(basename(region_folder)))) {
+    exposure_population = "input/health/pp_exposure_2018_base.csv" # this file does not yet exist for melbourne
+    fyear <- 2051
+    regionIDs <- c("SA1_7DIG16","SA2_MAIN16")
+    all_data <- list(
+        base = get_summary("base", 
+                zoneID = "SA1_7DIG16",
+                regionIDs = regionIDs, 
+                exposure_population = exposure_population,
+                summarise = FALSE, 
+                final_year = fyear, 
+                region_folder = region_folder
+              ) |> mutate(scen = "reference"),
+        cycling = get_summary("cycling", 
+                    zoneID = "SA1_7DIG16",
+                    regionIDs = regionIDs, 
+                    exposure_population = exposure_population,
+                    summarise = FALSE, 
+                    final_year = fyear, 
+                    region_folder = region_folder
+                  ) |> mutate(scen = "cycling"),
+    )
+  } else if (grepl("brunswick", tolower(basename(region_folder)))) {
+    zoneID <- "SA1_7DIG16"
+    exposure_population = "input/health/pp_exposure_2018_base_2025-10-29_Brunswick.csv"
+    fyear <- 2030 # this is just a single suburb test case with short run time for now; proof of concept
+    regionIDs <- c("SA2_MAIN16")
+    all_data <- list(
+        base = get_summary("base", 
+                zoneID = zoneID,
+                regionIDs = regionIDs,
+                exposure_population = exposure_population,
+                summarise = FALSE,
+                final_year = fyear,
+                region_folder = region_folder
+              ) |> mutate(scen = "reference"),
+        cycling = get_summary("cycling",
+                zoneID = zoneID,
+                regionIDs = regionIDs,
+                exposure_population = exposure_population,
+                summarise = FALSE,
+                final_year = fyear,
+                region_folder = region_folder
+              ) |> mutate(scen = "cycling")
+  )
+}
+
+combined_all_data <- dplyr::bind_rows(all_data)
+partition_cols <- if (length(regionIDs) > 0) c("scen", tail(regionIDs, 1)) else "scen"
+dir.create("data", showWarnings = FALSE)
+out_dir <- file.path("data", paste(region_name, fyear, paste(partition_cols, collapse = "_"), sep = "_"))
+dir.create(out_dir, recursive = TRUE, showWarnings = FALSE)
+
+out_path <- file.path(out_dir, "all_data.parquet")
+write_ok <- tryCatch({
+  arrow::write_dataset(
+    combined_all_data,
+    out_path,
+    partitioning = partition_cols
+  )
+  TRUE
+}, error = function(e) {
+  message("Failed to write parquet dataset: ", e$message)
+  FALSE
+})
+
+if (isTRUE(write_ok)) {
+  message("Parquet dataset for ", region_name, " to year ", fyear, " partitioned by [", paste(partition_cols, collapse = ", "), "] saved to:\n", normalizePath(out_path))
+}
+
+# Copy zoneSystem.csv to data folder
+file.copy(
+  file.path(region_folder, "input", "zoneSystem.csv"),
+  file.path(out_dir, "zoneSystem.csv"),
+  overwrite = TRUE
+)
