@@ -6,7 +6,7 @@ library(dplyr)  # still needed for verbs but they dispatch to data.table
 ZONES_CSV  <- "/media/ali/Expansion/backup_tabea/manchester-main/input/zoneSystem.csv"
 zones    <- readr::read_csv(ZONES_CSV, show_col_types = FALSE)
 lads <- zones |> distinct(ladcd, ladnm)
-all_data <- arrow::open_dataset("temp/061225/all_data.parquet/") |> filter(cycle != 31) |> to_duckdb()
+all_data <- arrow::open_dataset("app/processed_data/seed = 2/all_data.parquet/") |> filter(cycle != 31) |> to_duckdb()
 
 #all_data <- all_data |> filter(ladcd == "E08000003")
 
@@ -133,6 +133,7 @@ incidence <- left_join(incidence,
 # all_data <- open_dataset("s3://mybucket/data/")
 
 people_raw <- all_data |> 
+  filter(!grepl("dead|null", value)) |> 
   add_agegroups() |> 
   left_join(zones |> 
               dplyr::select(lsoa21cd, imd10) |> 
@@ -533,7 +534,7 @@ pc <- mget(c(
   "healthy_overall","healthy_gender","healthy_lad", "healthy_imd", "healthy_agegroup_cycle",
   "lifey_overall","lifey_gender","lifey_lad", "lifey_imd", "lifey_agegroup_cycle",
   # mean-age sources
-  "incidence_src","inc_death_src",
+  #"incidence_src","inc_death_src",
   # mean-age tables
   "mean_age_dead_raw_by_scen_val",
   "mean_age_dead_weight_by_scen_val",
@@ -555,7 +556,7 @@ pc <- mget(c(
   "asr_lad_all_per_cycle","asr_lad_all_avg_1_30",
   "asr_healthy_years_overall","asr_healthy_years_overall_avg_1_30"
 ))
-precomp_path <- "temp/061225/precomputed_mcr_wgd_100%V4_imd.qs"
+precomp_path <- "app/processed_data/seed = 3/precomputed_100%V6.qs"
 message("Saving precomputed cache: ", precomp_path)
 #saveRDS(pc, precomp_path, compress = "xz")
 qs::qsave(pc, precomp_path)
