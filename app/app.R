@@ -3,26 +3,72 @@
 # with simple on-disk caching in ./data to avoid recomputation
 # ======================================================================
 
-suppressPackageStartupMessages({
-  library(shiny)
-  library(dplyr)
-  library(tidyr)
-  library(arrow)
-  library(readr)
-  library(ggplot2)
-  library(plotly)
-  library(scales)
-  library(forcats)
-  library(purrr)
-  library(here)
-  library(qs)
-  library(DT)
-})
+required_pkgs <- c(
+  "shiny", "dplyr", "tidyr", "arrow", "readr", "ggplot2", "plotly",
+  "scales", "forcats", "purrr", "here", "qs", "DT","tcltk"
+)
 
-options(scipen = 999)  
-# ------------------- Paths (edit these if needed) -------------------
-DATA_PATH  <- "data/all_data.parquet"
-ZONES_CSV  <- "data/zoneSystem.csv"
+# Install any missing packages from CRAN
+missing_pkgs <- setdiff(required_pkgs, rownames(installed.packages()))
+if (length(missing_pkgs) > 0) {
+  message("Installing missing packages: ", paste(missing_pkgs, collapse = ", "))
+  install.packages(missing_pkgs, repos = "https://cloud.r-project.org")
+}
+
+# Load packages quietly
+suppressPackageStartupMessages(
+  lapply(required_pkgs, function(pkg) {
+    library(pkg, character.only = TRUE, quietly = TRUE, warn.conflicts = FALSE)
+  })
+)
+
+options(scipen = 999)
+
+# ------------------- Paths (interactive study region data folder selection) -------------------
+region_folder = tcltk::tk_choose.dir(caption = "Select data/[region] folder containing all_data.parquet")
+region_name = basename(region_folder)
+# Check if a folder was selected
+if (!is.na(region_folder)) {
+  cat("Selected folder path:", region_folder, "\n")
+} else {
+  cat("No folder selected.\n")
+}
+
+DATA_PATH  <- file.path(region_folder, "all_data.parquet")
+ZONES_CSV  <- file.path(region_folder, "zoneSystem.csv")
+
+if (grepl("manchester", tolower(basename(region_folder)))) {
+    study_region <- "Manchester"
+    regionID_code <- "ladcd"
+    regionID_name <- "ladnm"
+    regionID_type <- "LAD"
+    SCEN_LABS_ORDER <- c("Safer Streets & Greening", "Greening", "Safer Streets")
+} else if (grepl("melbourne", tolower(basename(region_folder)))) {
+    study_region <- "Melbourne"
+    regionID_code <- "SA2_MAIN16"
+    regionID_name <- "SA2_MAIN16_NAME"
+    regionID_type <- "SA2"
+    SCEN_LABS_ORDER <- c("Reference", "Cycling")
+} else if (grepl("brunswick", tolower(basename(region_folder)))) {
+    study_region <- "Brunswick"
+    regionID_code <- "SA2_MAIN16"
+    regionID_name <- "SA2_NAME_2016"
+    regionID_type <- "SA2"
+    SCEN_LABS_ORDER <- c("Reference", "Cycling")
+} else {
+  stop("Unknown region folder selected: ", region_folder)
+}
+
+regionIDs <- c(regionID_code, regionID_name)
+
+
+if (!dir.exists(DATA_PATH)) {
+  stop("Data path does not exist: ", DATA_PATH, "\nPlease ensure data_prep_shiny.R has been successfully run prior to processing.")
+}
+
+if (!file.exists(ZONES_CSV)) {
+  stop("Zones CSV does not exist: ", ZONES_CSV)
+}
 
 # Local cache folder (relative to app)
 DATA_DIR <- "data"
@@ -34,8 +80,8 @@ if (!exists("SCALING")) SCALING <- 5L
 
 # ------------------- Load zones (tiny) ------------------------------
 zones    <- readr::read_csv(ZONES_CSV, show_col_types = FALSE)
-stopifnot(all(c("ladcd","ladnm") %in% names(zones)))
-lads <- zones |> distinct(ladcd, ladnm)
+stopifnot(all(regionIDs %in% names(zones)))
+regions <- zones |> distinct(!!rlang::sym(regionID_code), !!rlang::sym(regionID_name))
 
 # ------------------- Load all_data with optional cache --------------
 all_data_cache_path <- file.path(DATA_DIR, "all_data.parquet")
@@ -110,24 +156,24 @@ REBUILD_CACHE <- identical(Sys.getenv("REBUILD_CACHE"), "0")
 # Only RAW mean ages (rename to mean_age)
 REQUIRED_PC <- c(
   # population
-  "people_overall","people_gender","people_lad",
+  "people_overall","people_gender","people_region",
   # diffs
-  "deaths_overall","deaths_gender","deaths_lad",
-  "diseases_overall","diseases_gender","diseases_lad",
-  "healthy_overall","healthy_gender","healthy_lad",
-  "lifey_overall","lifey_gender","lifey_lad",
+  "deaths_overall","deaths_gender","deaths_region",
+  "diseases_overall","diseases_gender","diseases_region",
+  "healthy_overall","healthy_gender","healthy_region",
+  "lifey_overall","lifey_gender","lifey_region",
   # mean-age sources + RAW mean age tables (renamed columns)
   "incidence_src","inc_death_src",
   "mean_age_dead_by_scen_val",
   "mean_age_dead_by_scen_val_gender",
-  "mean_age_dead_by_scen_val_lad",
+  "mean_age_dead_by_scen_val_region",
   "mean_age_onset_by_scen_val",
   "mean_age_onset_by_scen_val_gender",
-  "mean_age_onset_by_scen_val_lad",
+  "mean_age_onset_by_scen_val_region",
   # ASR
   "asr_overall_all","asr_overall_avg_1_30",
   "asr_gender_all","asr_gender_all_avg_1_30",
-  "asr_lad_all_per_cycle","asr_lad_all_avg_1_30",
+  "asr_region_all_per_cycle","asr_region_all_avg_1_30",
   "asr_healthy_years_overall","asr_healthy_years_overall_avg_1_30"
 )
 
@@ -175,14 +221,15 @@ if (!cache_ok) {
     incidence_deaths
   ) |>
     add_agegroups() |>
-    left_join(lads, by = "ladcd")
+    left_join(regions, by = regionID_code)
   
   # ---- Population (at risk) ----
   people_raw <- all_data |>
     add_agegroups() |>
-    group_by(agegroup_cycle, gender, cycle, scen, ladcd) |>
+    # use dynamic grouping so a string column name (regionID_code) is handled safely
+    group_by(across(all_of(c("agegroup_cycle", "gender", "cycle", "scen", regionID_code)))) |>
     summarise(pop = n_distinct(id[!grepl("dead|null", value)]), .groups = "drop") |>
-    left_join(lads, by = "ladcd")
+    left_join(regions, by = regionID_code)
   
   people_overall <- people_raw |>
     group_by(agegroup_cycle, scen, cycle) |>
@@ -192,8 +239,9 @@ if (!cache_ok) {
     group_by(agegroup_cycle, scen, cycle, gender) |>
     summarise(pop = sum(pop, na.rm = TRUE), .groups = "drop")
   
-  people_lad <- people_raw |>
-    group_by(agegroup_cycle, scen, cycle, ladnm) |>
+  people_region <- people_raw |>
+    # dynamic grouping: regionID_name is a string containing the actual column name (e.g. "regionID_name")
+    group_by(across(all_of(c("agegroup_cycle", "scen", "cycle", regionID_name)))) |>
     summarise(pop = sum(pop, na.rm = TRUE), .groups = "drop")
   
   # ---- Healthy & Life years ----
@@ -213,7 +261,8 @@ if (!cache_ok) {
     summarise(value = dplyr::n(), .groups = "drop")
   deaths_gender_raw  <- inc_death |> group_by(scen, cycle, gender) |>
     summarise(value = dplyr::n(), .groups = "drop")
-  deaths_lad_raw     <- inc_death |> group_by(scen, cycle, ladnm) |>
+  deaths_region_raw     <- inc_death |> 
+    group_by(across(all_of(c("scen", "cycle", regionID_name)))) |>
     summarise(value = dplyr::n(), .groups = "drop")
   
   # ---- Disease counts (keep cause) ----
@@ -226,7 +275,7 @@ if (!cache_ok) {
   # ---- Differences vs reference ----
   deaths_overall <- diff_vs_reference(deaths_overall_raw)
   deaths_gender  <- diff_vs_reference(deaths_gender_raw, by = "gender")
-  deaths_lad     <- diff_vs_reference(deaths_lad_raw,   by = "ladnm")
+  deaths_region  <- diff_vs_reference(deaths_region_raw,   by = regionID_name)
   
   diseases_overall <- diff_vs_reference(diseases_all_cycle, by = "cause")
   diseases_gender  <- incidence |>
@@ -235,52 +284,52 @@ if (!cache_ok) {
     group_by(cause, scen, cycle, gender) |>
     summarise(value = dplyr::n(), .groups = "drop") |>
     diff_vs_reference(by = c("gender","cause"))
-  diseases_lad     <- incidence |>
+  diseases_region     <- incidence |>
     filter(!value %in% c("dead","healthy","null")) |>
     rename(cause = value) |>
-    group_by(cause, scen, cycle, ladnm) |>
+    group_by(across(all_of(c("cause", "scen", "cycle", regionID_name)))) |>
     summarise(value = dplyr::n(), .groups = "drop") |>
-    diff_vs_reference(by = c("ladnm","cause"))
+    diff_vs_reference(by = c(regionID_name,"cause"))
   
   healthy_overall  <- healthy_total_cycle |> diff_vs_reference()
   healthy_gender   <- all_data |> filter(value == "healthy") |>
     group_by(scen, cycle, gender) |> summarise(value = n_distinct(id), .groups = "drop") |>
     diff_vs_reference(by = "gender")
-  healthy_lad      <- all_data |> filter(value == "healthy") |>
-    left_join(lads, by = "ladcd") |>
-    group_by(scen, cycle, ladnm) |> summarise(value = n_distinct(id), .groups = "drop") |>
-    diff_vs_reference(by = "ladnm")
+  healthy_region      <- all_data |> filter(value == "healthy") |>
+    left_join(regions, by = regionID_code) |>
+    group_by(across(all_of(c("scen", "cycle", regionID_name)))) |> summarise(value = n_distinct(id), .groups = "drop") |>
+    diff_vs_reference(by = regionID_name)
   
   lifey_overall <- life_years_cycle |> diff_vs_reference()
   lifey_gender  <- all_data |> filter(!grepl("dead", value)) |>
     group_by(scen, cycle, gender) |> summarise(value = n_distinct(id), .groups = "drop") |>
     diff_vs_reference(by = "gender")
-  lifey_lad     <- all_data |> filter(!grepl("dead", value)) |>
-    left_join(lads, by = "ladcd") |>
-    group_by(scen, cycle, ladnm) |> summarise(value = n_distinct(id), .groups = "drop") |>
-    diff_vs_reference(by = "ladnm")
+  lifey_region     <- all_data |> filter(!grepl("dead", value)) |>
+    left_join(regions, by = regionID_code) |>
+    group_by(across(all_of(c("scen", "cycle", regionID_name)))) |> summarise(value = n_distinct(id), .groups = "drop") |>
+    diff_vs_reference(by = regionID_name)
   
   # ---- Mean age (RAW only; rename to mean_age) ----
   inc_death_src <- incidence |>
     filter(value %in% death_values) |>
-    select(scen, value, age_cycle, gender, ladnm)
+    select(scen, value, age_cycle, gender, all_of(regionID_name))
   
   incidence_src <- incidence |>
     filter(!value %in% c("healthy","null") & !value %in% death_values) |>
-    select(scen, value, age_cycle, gender, ladnm)
+    select(scen, value, age_cycle, gender, all_of(regionID_name))
   
   mean_age_dead_by_scen_val        <- inc_death_src |> group_by(scen, value) |>
     summarise(mean_age = mean(age_cycle), .groups="drop")
   mean_age_dead_by_scen_val_gender <- inc_death_src |> group_by(scen, value, gender) |>
     summarise(mean_age = mean(age_cycle), .groups="drop")
-  mean_age_dead_by_scen_val_lad    <- inc_death_src |> group_by(scen, value, ladnm) |>
+  mean_age_dead_by_scen_val_region    <- inc_death_src |> group_by(across(all_of(c("scen", "value", regionID_name)))) |>
     summarise(mean_age = mean(age_cycle), .groups="drop")
   
   mean_age_onset_by_scen_val        <- incidence_src |> group_by(scen, value) |>
     summarise(mean_age = mean(age_cycle), .groups="drop")
   mean_age_onset_by_scen_val_gender <- incidence_src |> group_by(scen, value, gender) |>
     summarise(mean_age = mean(age_cycle), .groups="drop")
-  mean_age_onset_by_scen_val_lad    <- incidence_src |> group_by(scen, value, ladnm) |>
+  mean_age_onset_by_scen_val_region    <- incidence_src |> group_by(across(all_of(c("scen", "value", regionID_name)))) |>
     summarise(mean_age = mean(age_cycle), .groups="drop")
   
   # ---- ASR (age-standardised rates) ----
@@ -389,12 +438,12 @@ if (!cache_ok) {
                              group_vars = "gender", avg_cycles = NULL, min_cycle = MIN_CYCLE)
   asr_gender_all_avg_1_30 <- calc_asr(incidence, all_causes, people_raw, W_GENDER,
                                       group_vars = "gender", avg_cycles = MIN_CYCLE:MAX_CYCLE, min_cycle = MIN_CYCLE)
-  asr_lad_all_per_cycle <- calc_asr(incidence, all_causes, people_raw, W_OVERALL,
-                                    group_vars = "ladcd", avg_cycles = NULL, min_cycle = MIN_CYCLE) |>
-    left_join(lads, by = "ladcd")
-  asr_lad_all_avg_1_30 <- calc_asr(incidence, all_causes, people_raw, W_OVERALL,
-                                   group_vars = "ladcd", avg_cycles = MIN_CYCLE:MAX_CYCLE, min_cycle = MIN_CYCLE) |>
-    left_join(lads, by = "ladcd")
+  asr_region_all_per_cycle <- calc_asr(incidence, all_causes, people_raw, W_OVERALL,
+                                    group_vars = regionID_code, avg_cycles = NULL, min_cycle = MIN_CYCLE) |>
+    left_join(regions, by = regionID_code)
+  asr_region_all_avg_1_30 <- calc_asr(incidence, all_causes, people_raw, W_OVERALL,
+                                   group_vars = regionID_code, avg_cycles = MIN_CYCLE:MAX_CYCLE, min_cycle = MIN_CYCLE) |>
+    left_join(regions, by = regionID_code)
   
   asr_healthy_years_overall <- calc_asr_from_counts(
     healthy_age_counts, people_raw, W_OVERALL,
@@ -431,9 +480,10 @@ scen_label <- function(x) dplyr::recode(
   green      = "Greening",
   both       = "Safer Streets & Greening",
   reference  = "Reference",
+  base       = "Reference",
+  cycling    = "Cycling",
   .default   = x
 )
-SCEN_LABS_ORDER <- c("Safer Streets & Greening", "Greening", "Safer Streets")
 
 # ---- Causes to show on "Cases of major NCDs prevented" ----
 CAUSE_KEEP <- c(
@@ -447,7 +497,7 @@ CAUSE_KEEP <- c(
 )
 
 # ---- Layout & export constants (bigger for PPT) ----
-PLOT_TOP_HEIGHT  <- 980   # tall top charts (esp. LAD facets)
+PLOT_TOP_HEIGHT  <- 980   # tall top charts (esp. region facets)
 PLOT_TIME_HEIGHT <- 580
 PLOT_AVG_HEIGHT  <- 780
 PLOT_POP_HEIGHT  <- 600
@@ -478,11 +528,11 @@ ppt_theme <- function() {
 
 # ----------------------------------------------------------------------
 # Expect these to exist in your environment:
-# people_overall, people_gender, people_lad,
-# all_data, lads, incidence_src,
+# people_overall, people_gender, people_region,
+# all_data, regions, incidence_src,
 # asr_overall_all, asr_overall_avg_1_30,
 # asr_gender_all, asr_gender_all_avg_1_30,
-# asr_lad_all_per_cycle, asr_lad_all_avg_1_30,
+# asr_region_all_per_cycle, asr_region_all_avg_1_30,
 # asr_healthy_years_overall, asr_healthy_years_overall_avg_1_30,
 # pop_share(), add_agegroups(), theme_clean(), add_zero_line(),
 # MIN_CYCLE, MAX_CYCLE, SCALING, diff_vs_reference()
@@ -493,12 +543,12 @@ all_scenarios_lab <- scen_label(all_scenarios_raw)
 
 pop_cycles    <- sort(unique(people_overall$cycle))
 trend_cycles  <- sort(unique(asr_overall_all$cycle))
-all_lads_nm   <- sort(unique(people_lad$ladnm))
+all_regions_nm   <- sort(unique(people_region[[regionID_name]]))
 all_genders   <- sort(unique(people_gender$gender))
 all_causes_asr <- sort(unique(c(unique(asr_overall_all$cause), "healthy_years")))
 
 ui <- fluidPage(
-  titlePanel("Manchester Transport and Health model results"),
+  titlePanel(paste0(study_region, " Transport and Health model results")),
   sidebarLayout(
     sidebarPanel(
       width = 3,
@@ -510,13 +560,13 @@ ui <- fluidPage(
         selected = all_scenarios_raw, multiple = TRUE
       ),
       
-      selectInput("view_level", "View by:", choices = c("Overall","Gender","LAD"),
+      selectInput("view_level", "View by:", choices = c("Overall","Gender", regionID_type),
                   selected = "Overall"),
       conditionalPanel(
-        "input.view_level == 'LAD'",
-        selectizeInput("lad_sel", "LAD(s):",
-                       choices = all_lads_nm, multiple = TRUE,
-                       options = list(placeholder = "Pick LADs (optional)"))
+        paste0("input.view_level == '", regionID_type, "'"),
+        selectizeInput("region_sel", paste0(regionID_type, "(s):"),
+                       choices = all_regions_nm, multiple = TRUE,
+                       options = list(placeholder = "Pick regions (optional)"))
       ),
       tags$hr(),
       
@@ -701,13 +751,13 @@ server <- function(input, output, session) {
                      multiple = TRUE)
     }
   })
-  
-  # ---------- Helper: apply LAD filter when viewing LAD ----------
-  .filter_lad <- function(df) {
-    if (identical(input$view_level, "LAD") &&
-        "ladnm" %in% names(df) &&
-        length(input$lad_sel)) {
-      dplyr::filter(df, ladnm %in% input$lad_sel)
+
+  # ---------- Helper: apply region filter when viewing region ----------
+  .filter_region <- function(df) {
+    if (identical(input$view_level, regionID_type) &&
+        regionID_name %in% names(df) &&
+        length(input$region_sel)) {
+      dplyr::filter(df, .data[[regionID_name]] %in% input$region_sel)
     } else {
       df
     }
@@ -728,11 +778,11 @@ server <- function(input, output, session) {
         list(data = pop_share(dat, c("cycle","scen","gender")), facet = "gender", y = "share", y_lab = "Share of pop.")
       } else list(data = dat, facet = "gender", y = "pop", y_lab = "Population count")
     } else {
-      dat <- people_lad %>% dplyr::filter(scen %in% input$scen_sel, cycle %in% input$pop_cycles)
-      if (length(input$lad_sel)) dat <- dat %>% dplyr::filter(ladnm %in% input$lad_sel)
+      dat <- people_region %>% dplyr::filter(scen %in% input$scen_sel, cycle %in% input$pop_cycles)
+  if (length(input$region_sel)) dat <- dat %>% dplyr::filter(.data[[regionID_name]] %in% input$region_sel)
       if (isTRUE(input$pop_share)) {
-        list(data = pop_share(dat, c("cycle","scen","ladnm")), facet = "ladnm", y = "share", y_lab = "Share of pop.")
-      } else list(data = dat, facet = "ladnm", y = "pop", y_lab = "Population count")
+        list(data = pop_share(dat, c("cycle","scen",regionID_name)), facet = regionID_name, y = "share", y_lab = "Share of pop.")
+      } else list(data = dat, facet = regionID_name, y = "pop", y_lab = "Population count")
     }
   })
   
@@ -775,7 +825,7 @@ server <- function(input, output, session) {
       dplyr::ungroup()
     dplyr::bind_rows(incidence_all, incidence_depression) %>%
       add_agegroups() %>%
-      dplyr::left_join(lads, by = "ladcd")
+      dplyr::left_join(regions, by = regionID_code)
   }
   
   # ---------- Differences base ----------
@@ -789,9 +839,9 @@ server <- function(input, output, session) {
         counts <- src %>% dplyr::group_by(scen, cycle, gender) %>% dplyr::summarise(value = dplyr::n(), .groups = "drop")
         diff_vs_reference(counts, by = "gender")
       } else {
-        counts <- src %>% dplyr::left_join(lads, by = "ladcd") %>%
-          dplyr::group_by(scen, cycle, ladnm) %>% dplyr::summarise(value = dplyr::n(), .groups = "drop")
-        diff_vs_reference(counts, by = "ladnm")
+        counts <- src %>% dplyr::left_join(regions, by = regionID_code) %>%
+          dplyr::group_by(dplyr::across(dplyr::all_of(c("scen", "cycle", regionID_name)))) %>% dplyr::summarise(value = dplyr::n(), .groups = "drop")
+        diff_vs_reference(counts, by = regionID_name)
       }
     } else if (kind == "healthy") {
       src <- all_data %>% dplyr::filter(value == "healthy")
@@ -802,9 +852,9 @@ server <- function(input, output, session) {
         counts <- src %>% dplyr::group_by(scen, cycle, gender) %>% dplyr::summarise(value = dplyr::n_distinct(id), .groups = "drop")
         diff_vs_reference(counts, by = "gender")
       } else {
-        counts <- src %>% dplyr::left_join(lads, by = "ladcd") %>%
-          dplyr::group_by(scen, cycle, ladnm) %>% dplyr::summarise(value = dplyr::n_distinct(id), .groups = "drop")
-        diff_vs_reference(counts, by = "ladnm")
+        counts <- src %>% dplyr::left_join(regions, by = regionID_code) %>%
+          dplyr::group_by(dplyr::across(dplyr::all_of(c("scen", "cycle", regionID_name)))) %>% dplyr::summarise(value = dplyr::n_distinct(id), .groups = "drop")
+        diff_vs_reference(counts, by = regionID_name)
       }
     } else if (kind == "life") {
       src <- all_data %>% dplyr::filter(!grepl("dead", value))
@@ -815,9 +865,9 @@ server <- function(input, output, session) {
         counts <- src %>% dplyr::group_by(scen, cycle, gender) %>% dplyr::summarise(value = dplyr::n_distinct(id), .groups = "drop")
         diff_vs_reference(counts, by = "gender")
       } else {
-        counts <- src %>% dplyr::left_join(lads, by = "ladcd") %>%
-          dplyr::group_by(scen, cycle, ladnm) %>% dplyr::summarise(value = dplyr::n_distinct(id), .groups = "drop")
-        diff_vs_reference(counts, by = "ladnm")
+        counts <- src %>% dplyr::left_join(regions, by = regionID_code) %>%
+          dplyr::group_by(dplyr::across(dplyr::all_of(c("scen", "cycle", regionID_name)))) %>% dplyr::summarise(value = dplyr::n_distinct(id), .groups = "drop")
+        diff_vs_reference(counts, by = regionID_name)
       }
     } else {
       inc <- .incidence_first_onset()
@@ -831,8 +881,8 @@ server <- function(input, output, session) {
         counts <- src %>% dplyr::group_by(cause, scen, cycle, gender) %>% dplyr::summarise(value = dplyr::n(), .groups = "drop")
         diff_vs_reference(counts, by = c("gender","cause"))
       } else {
-        counts <- src %>% dplyr::group_by(cause, scen, cycle, ladnm) %>% dplyr::summarise(value = dplyr::n(), .groups = "drop")
-        diff_vs_reference(counts, by = c("ladnm","cause"))
+  counts <- src %>% dplyr::group_by(dplyr::across(dplyr::all_of(c("cause", "scen", "cycle", regionID_name)))) %>% dplyr::summarise(value = dplyr::n(), .groups = "drop")
+        diff_vs_reference(counts, by = c(regionID_name,"cause"))
       }
     }
   }
@@ -845,7 +895,7 @@ server <- function(input, output, session) {
       
       view <- input$view_level; minc <- input$diff_min_cycle; cumu <- isTRUE(input$diff_cumulative)
       base <- .compute_diff_base(kind, view)
-      by_dims <- switch(view, Overall = character(0), Gender = "gender", LAD = "ladnm")
+      by_dims <- switch(view, Overall = character(0), Gender = "gender", Region = regionID_name)
       if (kind == "diseases") by_dims <- c("cause", by_dims)
       
       base %>%
@@ -873,13 +923,13 @@ server <- function(input, output, session) {
   diff_healthy  <- make_diff_reactive("healthy")
   diff_diseases <- make_diff_reactive("diseases")
   
-  # LAD-filtered wrappers used everywhere below
-  diff_deaths_v   <- reactive({ .filter_lad(diff_deaths()) })
-  diff_life_v     <- reactive({ .filter_lad(diff_life()) })
-  diff_healthy_v  <- reactive({ .filter_lad(diff_healthy()) })
-  diff_diseases_v <- reactive({ .filter_lad(diff_diseases()) })
+  # Region-filtered wrappers used everywhere below
+  diff_deaths_v   <- reactive({ .filter_region(diff_deaths()) })
+  diff_life_v     <- reactive({ .filter_region(diff_life()) })
+  diff_healthy_v  <- reactive({ .filter_region(diff_healthy()) })
+  diff_diseases_v <- reactive({ .filter_region(diff_diseases()) })
   
-  # Filter to requested NCD causes for diseases metric (after LAD filter)
+  # Filter to requested NCD causes for diseases metric (after region filter)
   diff_diseases_sel <- reactive({
     d <- diff_diseases_v()
     if ("cause" %in% names(d)) d <- d %>% dplyr::filter(cause %in% CAUSE_KEEP)
@@ -912,7 +962,7 @@ server <- function(input, output, session) {
       if (is.numeric(d$gender)) d <- d %>% dplyr::mutate(gender = factor(if_else(gender == 1, "Male", "Female")))
       else d <- d %>% dplyr::mutate(gender = as.factor(gender))
     }
-    other <- intersect(c("cause","gender","ladnm"), names(d))
+    other <- intersect(c("cause","gender",regionID_name), names(d))
     
     bars <- d %>%
       dplyr::group_by(dplyr::across(dplyr::all_of(c("scen_lab", other)))) %>%
@@ -920,18 +970,22 @@ server <- function(input, output, session) {
       dplyr::ungroup() %>%
       dplyr::mutate(
         scen_lab = factor(scen_lab, levels = SCEN_LABS_ORDER[SCEN_LABS_ORDER %in% scen_lab]),
-        value_num = y * SCALING,
-        label_val = number_lab0(value_num)
+        value_num = y * SCALING
       )
-    
+
+    # determine facet grouping variables for percent calculation
     facet_vars <- character(0)
-    if ("ladnm" %in% other && "cause" %in% other) facet_vars <- c("ladnm","cause")
-    else if ("ladnm" %in% other) facet_vars <- "ladnm"
+    if (regionID_name %in% other && "cause" %in% other) facet_vars <- c(regionID_name,"cause")
+    else if (regionID_name %in% other) facet_vars <- regionID_name
     else if ("cause" %in% other) facet_vars <- "cause"
-    
+
+    # formatted label: count with comma (thousands separator)
+    bars <- bars %>%
+      dplyr::mutate(label_val = scales::comma(value_num))
+
     bars <- .add_label_pos(bars, value_col = "value_num", facet_vars = facet_vars)
     
-    p <- ggplot(bars, aes(x = scen_lab, y = value_num, fill = scen_lab)) +
+    p <- ggplot(bars, aes(x = scen_lab, y = value_num, fill = scen_lab, text = label_val)) +
       geom_col(width = 0.8) +
       geom_text(aes(y = label_pos, label = label_val), hjust = 0, size = 5.5) +
       scale_y_continuous(expand = expansion(mult = c(0.08, 0.05))) +
@@ -939,20 +993,20 @@ server <- function(input, output, session) {
       labs(title = paste0(unique(d$metric)), x = NULL, y = "Cumulative difference", fill = "Scenario") +
       ppt_theme() + guides(fill = "none")
     
-    if ("gender" %in% other && !"cause" %in% other && !"ladnm" %in% other) {
+    if ("gender" %in% other && !"cause" %in% other && !regionID_name %in% other) {
       pos <- position_dodge(width = 0.75)
-      p <- ggplot(bars, aes(x = scen_lab, y = value_num, fill = gender)) +
+      p <- ggplot(bars, aes(x = scen_lab, y = value_num, fill = gender, text = label_val)) +
         geom_col(position = pos, width = 0.75) +
         geom_text(aes(y = label_pos, label = label_val), position = pos, hjust = 0, size = 5.5) +
         scale_y_continuous(expand = expansion(mult = c(0.08, 0.05))) +
         coord_flip() +
         labs(title = paste0(unique(d$metric)), x = NULL, y = "Cumulative difference", fill = "Gender") +
         ppt_theme()
-    } else if ("cause" %in% other && !"ladnm" %in% other && !"gender" %in% other) {
+    } else if ("cause" %in% other && !regionID_name %in% other && !"gender" %in% other) {
       p <- p + facet_wrap(~ cause, scales = "free_x")
-    } else if ("cause" %in% other && "gender" %in% other && !"ladnm" %in% other) {
+    } else if ("cause" %in% other && "gender" %in% other && !regionID_name %in% other) {
       pos <- position_dodge(width = 0.75)
-      p <- ggplot(bars, aes(x = scen_lab, y = value_num, fill = gender)) +
+      p <- ggplot(bars, aes(x = scen_lab, y = value_num, fill = gender, text = label_val)) +
         geom_col(position = pos, width = 0.75) +
         geom_text(aes(y = label_pos, label = label_val), position = pos, hjust = 0, size = 5.5) +
         scale_y_continuous(expand = expansion(mult = c(0.08, 0.05))) +
@@ -960,10 +1014,10 @@ server <- function(input, output, session) {
         facet_wrap(~ cause, scales = "free_x") +
         labs(title = paste0(unique(d$metric)), x = NULL, y = "Cumulative difference", fill = "Gender") +
         ppt_theme()
-    } else if ("ladnm" %in% other && !"cause" %in% other) {
-      p <- p + facet_wrap(~ ladnm, scales = "free_x", ncol = 2, nrow = 5)
-    } else if ("ladnm" %in% other && "cause" %in% other) {
-      p <- p + facet_grid(ladnm ~ cause, scales = "free_x")
+    } else if (regionID_name %in% other && !"cause" %in% other) {
+      p <- p + facet_wrap(~ regionID_name, scales = "free_x", ncol = 2, nrow = 5)
+    } else if (regionID_name %in% other && "cause" %in% other) {
+      p <- p + facet_grid(regionID_name ~ cause, scales = "free_x")
     }
     p
   }
@@ -980,15 +1034,15 @@ server <- function(input, output, session) {
     
     if ("gender" %in% names(d) && !"cause" %in% names(d)) {
       add(base + aes(linetype = gender) + geom_smooth(se = FALSE))
-    } else if ("ladnm" %in% names(d) && !"cause" %in% names(d)) {
+    } else if (regionID_name %in% names(d) && !"cause" %in% names(d)) {
       add(base + geom_smooth(se = FALSE)) +
-        facet_wrap(~ ladnm, ncol = 2, nrow = 5, scales = "free_y")
-    } else if ("cause" %in% names(d) && !"ladnm" %in% names(d) && !"gender" %in% names(d)) {
+        facet_wrap(~ regionID_name, ncol = 2, nrow = 5, scales = "free_y")
+    } else if ("cause" %in% names(d) && !regionID_name %in% names(d) && !"gender" %in% names(d)) {
       (add(base + geom_smooth(se = FALSE))) + facet_wrap(~ cause, scales = "free_y")
     } else if ("cause" %in% names(d) && "gender" %in% names(d)) {
       (add(base + aes(linetype = gender) + geom_smooth(se = FALSE))) + facet_wrap(~ cause, scales = "free_y")
-    } else if ("cause" %in% names(d) && "ladnm" %in% names(d)) {
-      (add(base + geom_smooth(se = FALSE))) + facet_grid(ladnm ~ cause, scales = "free_y")
+    } else if ("cause" %in% names(d) && regionID_name %in% names(d)) {
+      (add(base + geom_smooth(se = FALSE))) + facet_grid(regionID_name ~ cause, scales = "free_y")
     } else {
       add(base + geom_smooth(se = FALSE))
     }
@@ -997,25 +1051,25 @@ server <- function(input, output, session) {
   # ---- Renders (non-plotly with higher DPI) ----
   # Deaths
   output$plot_deaths_bar     <- renderPlot({ build_bar_plot(diff_deaths_v()) }, res = PLOT_RES_DPI)
-  output$plot_deaths_bar_ly  <- renderPlotly({ ggplotly(build_bar_plot(diff_deaths_v()),  tooltip = c("x","y","fill","label")) })
+  output$plot_deaths_bar_ly  <- renderPlotly({ ggplotly(build_bar_plot(diff_deaths_v()),  tooltip = c("x","y","fill","text")) })
   output$plot_deaths_time    <- renderPlot({ build_time_plot(diff_deaths_v()) }, res = PLOT_RES_DPI)
   output$plot_deaths_time_ly <- renderPlotly({ ggplotly(build_time_plot(diff_deaths_v()), tooltip = c("x","y","colour","linetype")) })
   
   # Life
   output$plot_life_bar     <- renderPlot({ build_bar_plot(diff_life_v()) }, res = PLOT_RES_DPI)
-  output$plot_life_bar_ly  <- renderPlotly({ ggplotly(build_bar_plot(diff_life_v()),  tooltip = c("x","y","fill","label")) })
+  output$plot_life_bar_ly  <- renderPlotly({ ggplotly(build_bar_plot(diff_life_v()),  tooltip = c("x","y","fill","text")) })
   output$plot_life_time    <- renderPlot({ build_time_plot(diff_life_v()) }, res = PLOT_RES_DPI)
   output$plot_life_time_ly <- renderPlotly({ ggplotly(build_time_plot(diff_life_v()), tooltip = c("x","y","colour","linetype")) })
   
   # Healthy
   output$plot_healthy_bar     <- renderPlot({ build_bar_plot(diff_healthy_v()) }, res = PLOT_RES_DPI)
-  output$plot_healthy_bar_ly  <- renderPlotly({ ggplotly(build_bar_plot(diff_healthy_v()),  tooltip = c("x","y","fill","label")) })
+  output$plot_healthy_bar_ly  <- renderPlotly({ ggplotly(build_bar_plot(diff_healthy_v()),  tooltip = c("x","y","fill","text")) })
   output$plot_healthy_time    <- renderPlot({ build_time_plot(diff_healthy_v()) }, res = PLOT_RES_DPI)
   output$plot_healthy_time_ly <- renderPlotly({ ggplotly(build_time_plot(diff_healthy_v()), tooltip = c("x","y","colour","linetype")) })
   
-  # Diseases (filtered by LAD + cause keep)
+  # Diseases (filtered by region + cause keep)
   output$plot_diseases_bar     <- renderPlot({ build_bar_plot(diff_diseases_sel()) }, res = PLOT_RES_DPI)
-  output$plot_diseases_bar_ly  <- renderPlotly({ ggplotly(build_bar_plot(diff_diseases_sel()),  tooltip = c("x","y","fill","label")) })
+  output$plot_diseases_bar_ly  <- renderPlotly({ ggplotly(build_bar_plot(diff_diseases_sel()),  tooltip = c("x","y","fill","text")) })
   output$plot_diseases_time    <- renderPlot({ build_time_plot(diff_diseases_sel()) }, res = PLOT_RES_DPI)
   output$plot_diseases_time_ly <- renderPlotly({ ggplotly(build_time_plot(diff_diseases_sel()), tooltip = c("x","y","colour","linetype")) })
   
@@ -1126,28 +1180,28 @@ server <- function(input, output, session) {
           ppt_theme()
         
       } else {
-        df <- mean_age_dead_by_scen_val_lad %>%
+        df <- mean_age_dead_by_scen_val_region %>%
           dplyr::filter(value %in% causes, scen %in% input$scen_sel) %>%
           dplyr::mutate(
             scen_lab  = factor(scen_label(scen), levels = SCEN_LABS_ORDER[SCEN_LABS_ORDER %in% scen_label(scen)]),
             value_lab = death_value_lab(value)
           )
-        if (length(input$lad_sel)) df <- df %>% dplyr::filter(ladnm %in% input$lad_sel)
+  if (length(input$region_sel)) df <- df %>% dplyr::filter(.data[[regionID_name]] %in% input$region_sel)
         req(nrow(df) > 0)
         
         lab_df <- df %>%
-          group_by(ladnm, value_lab) %>%
+          group_by(across(all_of(c(regionID_name, "value_lab")))) %>%
           summarise(mx = max(mean_age, na.rm = TRUE), .groups = "drop_last") %>%
           mutate(label_pos = ifelse(mx > 0, 0.02 * mx, 0.98 * mx))
-        df <- df %>% left_join(lab_df, by = c("ladnm","value_lab"))
+        df <- df %>% left_join(lab_df, by = c(regionID_name,"value_lab"))
         
         ggplot(df, aes(x = scen_lab, y = mean_age, fill = scen_lab)) +
           geom_col(width = 0.8) +
           geom_text(aes(y = label_pos, label = number_lab0(mean_age)), hjust = 0, size = 5.5) +
           scale_y_continuous(expand = expansion(mult = c(0.08, 0.05))) +
           coord_flip() +
-          facet_grid(ladnm ~ value_lab, scales = "free_x") +
-          labs(title = "Mean age at death (by LAD)", x = NULL, y = "Years") +
+          facet_grid(regionID_name ~ value_lab, scales = "free_x") +
+          labs(title = paste0("Mean age at death (by ", regionID_type, ")"), x = NULL, y = "Years") +
           ppt_theme() + guides(fill = "none")
       }
       
@@ -1191,31 +1245,31 @@ server <- function(input, output, session) {
           ppt_theme()
         
       } else {
-        df <- mean_age_onset_by_scen_val_lad %>%
+        df <- mean_age_onset_by_scen_val_region %>%
           dplyr::filter(value == cause, scen %in% input$scen_sel) %>%
           dplyr::mutate(scen_lab = factor(scen_label(scen), levels = SCEN_LABS_ORDER[SCEN_LABS_ORDER %in% scen_label(scen)]))
-        if (length(input$lad_sel)) df <- df %>% dplyr::filter(ladnm %in% input$lad_sel)
+  if (length(input$region_sel)) df <- df %>% dplyr::filter(.data[[regionID_name]] %in% input$region_sel)
         req(nrow(df) > 0)
         
         lab_df <- df %>%
-          group_by(ladnm) %>%
+          group_by(across(all_of(c(regionID_name)))) %>%
           summarise(mx = max(mean_age, na.rm = TRUE), .groups = "drop") %>%
           mutate(label_pos = ifelse(mx > 0, 0.02 * mx, 0.98 * mx))
-        df <- df %>% left_join(lab_df, by = "ladnm")
+        df <- df %>% left_join(lab_df, by = regionID_name)
         
         ggplot(df, aes(x = scen_lab, y = mean_age, fill = scen_lab)) +
           geom_col(width = 0.8) +
           geom_text(aes(y = label_pos, label = number_lab0(mean_age)), hjust = 0, size = 5.5) +
           scale_y_continuous(expand = expansion(mult = c(0.08, 0.05))) +
           coord_flip() +
-          facet_wrap(~ ladnm, scales = "free_x", ncol = 2, nrow = 5) +
-          labs(title = paste0("Mean age at onset (by LAD) — ", cause), x = NULL, y = "Years") +
+          facet_wrap(~ regionID_name, scales = "free_x", ncol = 2, nrow = 5) +
+          labs(title = paste0("Mean age at onset (by ", regionID_type, ") — ", cause), x = NULL, y = "Years") +
           ppt_theme() + guides(fill = "none")
       }
     }
   })
   output$plot_avg    <- renderPlot({ build_avg_plot() }, res = PLOT_RES_DPI)
-  output$plot_avg_ly <- renderPlotly({ ggplotly(build_avg_plot(), tooltip = c("x","y","fill","label")) })
+  output$plot_avg_ly <- renderPlotly({ ggplotly(build_avg_plot(), tooltip = c("x","y","fill","text")) })
   output$dl_avg_png  <- downloadHandler(
     filename = function() "average_ages.png",
     content  = function(file) ggplot2::ggsave(file, build_avg_plot(), width = PNG_WIDTH_IN, height = PNG_HEIGHT_IN, units = "in", dpi = PNG_DPI, bg = "white")
@@ -1240,13 +1294,13 @@ server <- function(input, output, session) {
           dplyr::select(scenario, gender, value, mean_age) %>%
           dplyr::arrange(scenario, gender, value)
       } else {
-        df <- mean_age_dead_by_scen_val_lad %>%
+        df <- mean_age_dead_by_scen_val_region %>%
           dplyr::filter(value %in% causes, scen %in% input$scen_sel) %>%
           dplyr::mutate(scenario = scen_label(scen),
                         value = death_value_lab(value))
-        if (length(input$lad_sel)) df <- df %>% dplyr::filter(ladnm %in% input$lad_sel)
-        df %>% dplyr::select(scenario, ladnm, value, mean_age) %>%
-          dplyr::arrange(scenario, ladnm, value)
+  if (length(input$region_sel)) df <- df %>% dplyr::filter(.data[[regionID_name]] %in% input$region_sel)
+        df %>% dplyr::select(scenario, all_of(regionID_name), value, mean_age) %>%
+          dplyr::arrange(scenario, regionID_name, value)
       }
     } else {
       cause <- input$avg_cause; req(cause)
@@ -1263,12 +1317,12 @@ server <- function(input, output, session) {
           dplyr::select(scenario, gender, value, mean_age) %>%
           dplyr::arrange(scenario, gender)
       } else {
-        df <- mean_age_onset_by_scen_val_lad %>%
+        df <- mean_age_onset_by_scen_val_region %>%
           dplyr::filter(value == cause, scen %in% input$scen_sel) %>%
           dplyr::mutate(scenario = scen_label(scen))
-        if (length(input$lad_sel)) df <- df %>% dplyr::filter(ladnm %in% input$lad_sel)
-        df %>% dplyr::select(scenario, ladnm, value, mean_age) %>%
-          dplyr::arrange(scenario, ladnm)
+  if (length(input$region_sel)) df <- df %>% dplyr::filter(.data[[regionID_name]] %in% input$region_sel)
+        df %>% dplyr::select(scenario, all_of(regionID_name), value, mean_age) %>%
+          dplyr::arrange(scenario, regionID_name)
       }
     }
   })
@@ -1279,8 +1333,8 @@ server <- function(input, output, session) {
   asr_overall_avg_1_30               <- to_chr_cause(asr_overall_avg_1_30)
   asr_gender_all                     <- to_chr_cause(asr_gender_all)
   asr_gender_all_avg_1_30            <- to_chr_cause(asr_gender_all_avg_1_30)
-  asr_lad_all_per_cycle              <- to_chr_cause(asr_lad_all_per_cycle)
-  asr_lad_all_avg_1_30               <- to_chr_cause(asr_lad_all_avg_1_30)
+  asr_region_all_per_cycle              <- to_chr_cause(asr_region_all_per_cycle)
+  asr_region_all_avg_1_30               <- to_chr_cause(asr_region_all_avg_1_30)
   asr_healthy_years_overall          <- to_chr_cause(asr_healthy_years_overall)
   asr_healthy_years_overall_avg_1_30 <- to_chr_cause(asr_healthy_years_overall_avg_1_30)
   
@@ -1335,23 +1389,23 @@ server <- function(input, output, session) {
           ppt_theme()
         
       } else {
-        df <- asr_lad_all_avg_1_30 %>%
+        df <- asr_region_all_avg_1_30 %>%
           dplyr::filter(cause %in% causes) %>%
           dplyr::mutate(scen_lab = factor(scen_label(scen),
                                           levels = SCEN_LABS_ORDER[SCEN_LABS_ORDER %in% scen_label(scen)]))
-        if (length(input$lad_sel)) df <- df %>% dplyr::filter(ladnm %in% input$lad_sel)
+  if (length(input$region_sel)) df <- df %>% dplyr::filter(.data[[regionID_name]] %in% input$region_sel)
         req(nrow(df) > 0)
         pos <- position_dodge2(width = 0.8, padding = 0.08, preserve = "single")
         
         mx   <- max(df$age_std_rate, na.rm = TRUE)
         lpos <- if (mx > 0) 0.02 * mx else 0.98 * mx
         
-        ggplot(df, aes(x = reorder(ladnm, age_std_rate), y = age_std_rate, fill = scen_lab)) +
+        ggplot(df, aes(x = reorder(regionID_name, age_std_rate), y = age_std_rate, fill = scen_lab)) +
           geom_col(position = pos, width = 0.8) +
           geom_text(aes(y = lpos, label = number_lab0(age_std_rate)), position = pos, hjust = 0, size = 5.0) +
           scale_y_continuous(expand = expansion(mult = c(0.10, 0.06))) +
           coord_flip() +
-          labs(title = "ASR by LAD (avg cycles 1–30)", x = NULL, y = "ASR per 100,000", fill = "Scenario") +
+          labs(title = paste0("ASR by ", regionID_type, " (avg cycles 1–30)"), x = NULL, y = "ASR per 100,000", fill = "Scenario") +
           ppt_theme()
       }
       
@@ -1381,17 +1435,17 @@ server <- function(input, output, session) {
                x = "Cycle (year)", y = "ASR per 100,000", colour = "Scenario", linetype = "Gender") +
           ppt_theme()
       } else {
-        dat <- asr_lad_all_per_cycle %>%
+        dat <- asr_region_all_per_cycle %>%
           dplyr::filter(cause %in% causes, cycle >= MIN_CYCLE) %>%
           dplyr::mutate(scen_lab = factor(scen_label(scen),
                                           levels = SCEN_LABS_ORDER[SCEN_LABS_ORDER %in% scen_label(scen)]))
         req(nrow(dat) > 0)
-        if (length(input$lad_sel)) dat <- dat %>% dplyr::filter(ladnm %in% input$lad_sel)
+  if (length(input$region_sel)) dat <- dat %>% dplyr::filter(.data[[regionID_name]] %in% input$region_sel)
         req(nrow(dat) > 0)
         ggplot(dat, aes(x = cycle, y = age_std_rate, colour = scen_lab)) +
           geom_smooth(se = FALSE) +
-          facet_grid(ladnm ~ cause, scales = "free_y") +
-          labs(title = "ASR per cycle by LAD (smoothed, cycles 1–30)",
+          facet_grid(regionID_name ~ cause, scales = "free_y") +
+          labs(title = paste0("ASR per cycle by ", regionID_type, " (smoothed, cycles 1–30)"),
                x = "Cycle (year)", y = "ASR per 100,000", colour = "Scenario") +
           ppt_theme()
       }
@@ -1422,7 +1476,7 @@ server <- function(input, output, session) {
                   "Cases of major NCDs prevented"          = diff_diseases_sel()
       )
       req(nrow(d) > 0)
-      other <- intersect(c("cause","gender","ladnm"), names(d))
+      other <- intersect(c("cause","gender",regionID_name), names(d))
       d %>%
         dplyr::mutate(scen_lab = scen_label(scen)) %>%
         dplyr::group_by(dplyr::across(dplyr::all_of(c("scen_lab", other)))) %>%
