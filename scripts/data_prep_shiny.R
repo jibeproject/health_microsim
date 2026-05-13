@@ -5,7 +5,6 @@ suppressPackageStartupMessages({
   library(DT)
   library(purrr)
   library(stringr)
-  library(esquisse)
   library(ggplot2)
   library(plotly)
   library(readr)
@@ -171,15 +170,20 @@ get_summary <- function(SCEN_NAME,
 ## final_year = 2022, 
 ## microdata_dir_name = "microData", 
 ## manchester_folder = "/media/ali/Expansion/backup_tabea/manchester-main")
-manchester_folder = "/run/user/1000/gvfs/smb-share:server=ifs-prod-1152-cifs.ifs.uis.private.cam.ac.uk,share=cedar-grp-drive/HealthImpact/Data/Country/UK/JIBE/manchester/"
-manchester_folder <- "/media/ali/Expansion/backup_tabea/manchester-main/"
-fyear <- 2051
+#manchester_folder = "/run/user/1000/gvfs/smb-share:server=ifs-prod-1152-cifs.ifs.uis.private.cam.ac.uk,share=cedar-grp-drive/HealthImpact/Data/Country/UK/JIBE/manchester/"
+manchester_folder <- "/media/ali/Expansion/backup_tabea/Ali/manchester/"
+
+#/media/ali/Expansion/backup_tabea/Ali/manchester/scenOutput/base/microData
+fyear <- 2029
 
 ## === Prepare general data long ===
 all_data <- list(
-  base = get_summary("100%/base", summarise = FALSE, final_year = fyear, manchester_folder = manchester_folder) |> mutate(scen = "reference"),
-  #green = get_summary("green", summarise = FALSE, final_year = fyear, manchester_folder = manchester_folder) |> mutate(scen = "green"),
-  safeStreet = get_summary("100%/safeStreet", summarise = FALSE, final_year = fyear, manchester_folder = manchester_folder) |> mutate(scen = "safeStreet"),
+  base = get_summary("base", summarise = FALSE, final_year = fyear, manchester_folder = manchester_folder) |> mutate(scen = "reference"),
+  green = get_summary("green", summarise = FALSE, final_year = fyear, manchester_folder = manchester_folder) |> mutate(scen = "green")#,
+  #safeStreet = get_summary("100%/safeStreet", summarise = FALSE, final_year = fyear, manchester_folder = manchester_folder) |> mutate(scen = "safeStreet"),
   #both = get_summary("both", summarise = FALSE, final_year = fyear, manchester_folder = manchester_folder) |> mutate(scen = "both")
 )
+
+all_data <- bind_rows(all_data)
+arrow::write_dataset(all_data, "temp/130526_stability_test.parquet/", partitioning = c("scen", "ladcd"))
 
