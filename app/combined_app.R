@@ -14,6 +14,7 @@ suppressPackageStartupMessages({
   library(gtExtras)
   library(bslib)
   library(matrixStats)
+  library(shinyWidgets)
 })
 
 #pc <- qs2::qs_read("processed_data/stable/precomputed_310326_100%")
@@ -139,14 +140,13 @@ ui <- page_sidebar(
           condition = "input.main_tabs == 'Differences vs reference'",
           radioButtons("metric_kind", "Metric:", 
                        choices = c(
-            "Diseases postponed (Δ diseases)" = "diseases",
             "Δ Impact factor"                 = "imp_fac",
+            "Diseases postponed (Δ diseases)" = "diseases",
             "Deaths postponed (Δ deaths)"     = "deaths",
             "Δ Healthy years"                 = "healthy",
             "Δ Life years"                    = "life"
-            
           ),
-          selected = "deaths"),
+          selected = "imp_fac"),
           sliderInput("diff_min_cycle", "Start cycle:",
                       min = min(trend_cycles), max = max(trend_cycles),
                       value = MIN_CYCLE, step = 1),
@@ -166,9 +166,15 @@ ui <- page_sidebar(
         conditionalPanel(
           condition = "input.main_tabs == 'Age Standardised Rates' || (input.main_tabs == 'Differences vs reference' && 
           input.metric_kind == 'diseases')",
-          selectizeInput("asr_causes", "Causes:", choices =  append(all_causes_asr, death_values),
+          shinyWidgets::pickerInput("asr_causes", "Causes:", choices =  append(all_causes_asr, death_values),
                          selected = c("coronary_heart_disease","stroke"),
-                         multiple = TRUE)#,
+                         multiple = TRUE,
+                         options = list(
+                           `actions-box` = TRUE,
+                           `deselect-all-text` = "None...",
+                           `select-all-text` = "Yeah, all !",
+                           `none-selected-text` = "zero"
+                         ))#,
         )
         
       ),
@@ -268,10 +274,23 @@ server <- function(input, output, session) {
   # ---------- Avg ages cause picker ----------
   output$avg_cause_ui <- renderUI({
     if (input$avg_kind == "onset") {
-      selectizeInput("avg_cause", "Disease (onset):",
-                     multiple = TRUE,
-                  choices = all_causes_except_dead,
-                  selected = "coronary_heart_disease")
+      # selectizeInput("avg_cause", "Disease (onset):",
+      #                multiple = TRUE,
+      #             choices = all_causes_except_dead,
+      #             selected = "coronary_heart_disease")
+      
+      
+      shinyWidgets::pickerInput("avg_cause", 
+                                "Disease (onset):",
+                                choices = all_causes_except_dead,
+                                selected = "coronary_heart_disease",
+                                multiple = TRUE,
+                                options = list(
+                                  `actions-box` = TRUE,
+                                  `deselect-all-text` = "None...",
+                                  `select-all-text` = "Yeah, all !",
+                                  `none-selected-text` = "zero"
+                                ))
     } else {
       selectizeInput(
         "avg_death_causes", 
