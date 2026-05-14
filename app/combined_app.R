@@ -81,8 +81,8 @@ pop_cycles    <- sort(unique(pc$people_overall$cycle))
 trend_cycles  <- sort(unique(pc$asr_overall_all$cycle))
 all_lads_nm   <- sort(unique(pc$people_lad$ladnm))
 all_genders   <- sort(unique(pc$people_gender$gender))
-all_causes_asr <- pc$asr_overall_all |> distinct(cause) |> filter(!grepl("dead", cause)) |> pull() #
-all_causes_except_dead <- pc$asr_overall_all |> distinct(cause) |> filter(!grepl("dead", cause)) |> pull()
+all_causes_asr <- pc$asr_overall_all |> distinct(cause) |> filter(!grepl("dead", cause)) |> pull() |> sort() #
+all_causes_except_dead <- pc$asr_overall_all |> distinct(cause) |> filter(!grepl("dead", cause)) |> pull() |> sort()
 selected_views <- c("Overall","Gender","LAD")
 additional_selected_views <- c("IMD")
 
