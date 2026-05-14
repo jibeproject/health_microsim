@@ -171,8 +171,8 @@ ui <- page_sidebar(
                          multiple = TRUE,
                          options = list(
                            `actions-box` = TRUE,
-                           `deselect-all-text` = "None...",
-                           `select-all-text` = "Yeah, all !",
+                           `deselect-all-text` = "None",
+                           `select-all-text` = "Select all",
                            `none-selected-text` = "zero"
                          ))#,
         )
@@ -287,8 +287,8 @@ server <- function(input, output, session) {
                                 multiple = TRUE,
                                 options = list(
                                   `actions-box` = TRUE,
-                                  `deselect-all-text` = "None...",
-                                  `select-all-text` = "Yeah, all !",
+                                  `deselect-all-text` = "None",
+                                  `select-all-text` = "Select all",
                                   `none-selected-text` = "zero"
                                 ))
     } else {
