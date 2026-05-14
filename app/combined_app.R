@@ -8,7 +8,7 @@ suppressPackageStartupMessages({
   library(plotly) 
   library(scales) 
   library(here)
-  library(qs)
+  library(qs2)
   library(DT)
   library(gt)
   library(gtExtras)
@@ -16,14 +16,17 @@ suppressPackageStartupMessages({
   library(matrixStats)
 })
 
-pc <- qs::qread("processed_data/seed = 3/shiny/precomputed_040226_100%V6.qs")
-exp <- qs::qread("processed_data/seed = 3/shiny/exp_050226.qs")
+#pc <- qs2::qs_read("processed_data/stable/precomputed_310326_100%")
+#pc <- qs2::qs_read("/home/ali/GH/health_microsim/temp/010426_stability_fixed/processsed_data/010426_precomputed_100%V7.qs2")
+pc <- qs2::qs_read(here("app/processed_data/all_data_130526.qs2"))
+#pc <- qs::qread("processed_data/seed = 2/shiny/precomputed_mcr_ref_ss_green_100%V6.qs")
+#exp <- qs2::qread("processed_data/seed = 3/shiny/exp_050226.qs")
 
 SCALING <- 1L
 
 
 MIN_CYCLE <- 1
-MAX_CYCLE <- 30
+MAX_CYCLE <- max(pc$people_overall$cycle)
 
 col_fun <- col_numeric(palette = c("lightpink", "lightgreen"), domain = c(0, 1))
 
@@ -612,7 +615,7 @@ server <- function(input, output, session) {
     if (isTRUE(input$diff_table)) {
       gt_output("diff_summary_gt")
     } else {
-      plotlyOutput("diff_summary_plot", height = "100vh")
+      plotOutput("diff_summary_plot", height = "100vh")
     }
   })
   
@@ -638,7 +641,7 @@ server <- function(input, output, session) {
   })
   
   # Use the function in renderPlot
-  output$diff_summary_plot <- renderPlotly({
+  output$diff_summary_plot <- renderPlot({
     data <- get_processed_data()
     cumdf <- data$raw
     by <- data$by
@@ -718,6 +721,14 @@ server <- function(input, output, session) {
           ) +
           guides(color = "none")
         
+        p <- ggplot(cumdf) +
+          aes(x = cumulative_value, y = factor, fill = factor) +
+          geom_bar(stat = "summary", fun = "sum") +
+          scale_fill_hue(direction = 1) +
+          theme_minimal()
+          
+        
+        
       }
       
     }else{
@@ -751,6 +762,8 @@ server <- function(input, output, session) {
             x = "Index of Multiple Deprivation (IMD)",
             color = "Scenario"
           )
+        
+        
       }
       
     }
@@ -760,12 +773,16 @@ server <- function(input, output, session) {
     }else if ("imd10" %in% names(cumdf) && "cause" %in% names(cumdf))  {
       p <- p + facet_wrap(~cause)
     }else if ("imd10" %in% names(cumdf) && "factor" %in% names(cumdf))  {
-      p <- p + facet_wrap(~factor, scales = "free_y")
+      p <- p + facet_wrap(vars(imd10, scen))#facet_wrap(~factor, scales = "free_y")
     }else if("ladnm" %in% names(cumdf))  {
       p <- p + facet_wrap(~ladnm)
     }
     
-    plotly::ggplotly(p + labs(title = paste(data$metric_lab, if (isTRUE(input$diff_cumulative)) "(sum)" else "(median)")))
+    p
+    
+    #plotly::ggplotly(p)
+    
+    #plotly::ggplotly(p + labs(title = paste(data$metric_lab, if (isTRUE(input$diff_cumulative)) "(sum)" else "(median)")))
     
   })
   
@@ -1286,8 +1303,6 @@ server <- function(input, output, session) {
           mutate(pt = trip_count/tt * 100,
                  gender = as.factor(case_when(gender == 1 ~ "Male", 
                                                             gender == 2 ~ "Female")))
-                 
-        
         
         facet_vars <- vars(gender)
       }else if(input$view_level == "LAD"){
