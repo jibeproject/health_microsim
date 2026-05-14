@@ -615,7 +615,7 @@ server <- function(input, output, session) {
     if (isTRUE(input$diff_table)) {
       gt_output("diff_summary_gt")
     } else {
-      plotOutput("diff_summary_plot", height = "100vh")
+      plotlyOutput("diff_summary_plot", height = "100vh")
     }
   })
   
@@ -641,7 +641,7 @@ server <- function(input, output, session) {
   })
   
   # Use the function in renderPlot
-  output$diff_summary_plot <- renderPlot({
+  output$diff_summary_plot <- renderPlotly({
     data <- get_processed_data()
     cumdf <- data$raw
     by <- data$by
