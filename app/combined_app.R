@@ -141,10 +141,7 @@ ui <- page_sidebar(
           radioButtons("metric_kind", "Metric:", 
                        choices = c(
             "Δ Impact factor"                 = "imp_fac",
-            "Diseases postponed (Δ diseases)" = "diseases",
-            "Deaths postponed (Δ deaths)"     = "deaths",
-            "Δ Healthy years"                 = "healthy",
-            "Δ Life years"                    = "life"
+            "Diseases postponed (Δ diseases)" = "diseases"
           ),
           selected = "imp_fac"),
           sliderInput("diff_min_cycle", "Start cycle:",
@@ -159,9 +156,15 @@ ui <- page_sidebar(
         ),
         conditionalPanel(
           condition = "input.main_tabs == 'Age Standardised Rates'",
-          selectInput("asr_mode", "ASR view:",
-                      choices = c("Average 1-30 (bars)"="avg","Over time (smoothed)"="trend"),
-                      selected = "Over time (smoothed)")
+          selectInput(
+            "asr_mode", 
+            "ASR view:",
+            choices = setNames(
+              c("avg", "trend"), 
+              c(paste0("Average 1-", MAX_CYCLE, " (bars)"), "Over time (smoothed)")
+            ),
+            selected = "Over time (smoothed)"
+          )
         ),
         conditionalPanel(
           condition = "input.main_tabs == 'Age Standardised Rates' || (input.main_tabs == 'Differences vs reference' && 
@@ -1067,7 +1070,7 @@ server <- function(input, output, session) {
         ggplot(df, aes(x = cycle, y = age_std_rate, colour = Scenario, group = Scenario)) +
           geom_col(position = position_dodge(width = 0.9), aes(fill = Scenario)) +
           facet_wrap(vars(cause), scales = "free_y", ncol = 4) +
-          labs(title = "ASR per cycle (summed over cycles 1-30)\n\n", 
+          labs(title = paste0("ASR per cycle (summed over cycles 1-", MAX_CYCLE, ")\n\n"), 
                x = "Cycle (year)", y = "ASR per 100,000") +
           theme_clean()
         
@@ -1075,7 +1078,7 @@ server <- function(input, output, session) {
         ggplot(df, aes(x = cycle, y = age_std_rate, colour = Scenario)) +
           geom_col(position = position_dodge(width = 0.9), aes(fill = Scenario)) +
           facet_wrap(vars(cause, gender), scales = "free_y") +
-          labs(title = "ASR per cycle by gender (summed over cycles 1-30)\n\n",
+          labs(title = paste0("ASR per cycle (summed over cycles 1-", MAX_CYCLE, ")\n\n"),
                x = "Cycle (year)", y = "ASR per 100,000") +
           theme_clean()
         
@@ -1084,7 +1087,7 @@ server <- function(input, output, session) {
           geom_col(position = position_dodge(width = 0.9), aes(fill = Scenario)) +
           scale_x_continuous(breaks = c(1:10)) + 
           facet_wrap(vars(cause), scales = "free_y") +
-          labs(title = "ASR by IMD (summed over cycles 1-30)\n\n",
+          labs(title = paste0("ASR per cycle (summed over cycles 1-", MAX_CYCLE, ")\n\n"),
                x = "IMD", y = "ASR per 100,000") +
           theme_clean()
         
@@ -1092,7 +1095,7 @@ server <- function(input, output, session) {
         ggplot(df, aes(x = cycle, y = age_std_rate, colour = Scenario)) +
           geom_col(position = position_dodge(width = 0.9), aes(fill = Scenario)) +
           facet_grid(ladnm ~ cause, scales = "free_y") +
-          labs(title = "ASR per cycle by LAD (total for cycles 1-30)",
+          labs(title = paste0("ASR per cycle (summed over cycles 1-", MAX_CYCLE, ")\n\n"),
                x = "Cycle (year)", y = "ASR per 100,000") +
           theme_clean()
       }
