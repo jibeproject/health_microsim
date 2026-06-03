@@ -87,7 +87,7 @@ get_exp_summary <- function(inp_dir, zones, scen = "base"){
   # read all and bind rows
   all_exposure <- do.call(rbind, lapply(files, read_with_year))
   
-  all_exposure <- add_zones_and_scen(df = all_exposure, zones, scen = "reference")
+  all_exposure <- add_zones_and_scen(df = all_exposure, zones, scen = scen)
   
   
   # Add agegroup column and calculate total_PA
@@ -119,3 +119,18 @@ get_exp_summary <- function(inp_dir, zones, scen = "base"){
 }
 
 base_exp <- get_exp_summary(inp_dir, zones, scen = "reference")
+
+all_quantiles |>
+  filter(grepl("50%", stat), grouping == "Overall") |>
+  pivot_wider(
+    names_from = scen,
+    values_from = value
+  ) |>
+  mutate(
+    across(
+      -c(variable, year, stat, grouping, reference),
+      ~ .x - reference,
+      .names = "diff_{.col}"
+    )
+  ) |>
+  arrange(variable)
