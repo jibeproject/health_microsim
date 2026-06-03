@@ -1,13 +1,20 @@
 library(dtplyr)
 library(arrow)
 library(data.table)
-library(dplyr)  # still needed for verbs but they dispatch to data.table
+library(dplyr)
+library(duckdb)# still needed for verbs but they dispatch to data.table
+library(qs2)
 
 ZONES_CSV  <- "/media/ali/Expansion/backup_tabea/manchester-main/input/zoneSystem.csv"
 zones    <- readr::read_csv(ZONES_CSV, show_col_types = FALSE)
 lads <- zones |> distinct(ladcd, ladnm)
-all_data <- arrow::open_dataset("app/processed_data/seed = 2/all_data.parquet/") |> filter(cycle != 31) |> to_duckdb()
+all_data <- arrow::open_dataset("temp/all_data_but_gd_020626.parquet/") |> filter(cycle != 31, !is.na(value)) |> to_duckdb()
 
+#all_data <- arrow::open_dataset("/media/ali/Expansion/backup_tabea/Ali/manchester/base.parquet") |> to_duckdb()
+
+#all_data <- arrow::open_dataset("temp/120526_stability_test.parquet/") |> to_duckdb()
+
+#all_data <- arrow::open_dataset("temp/130526_stability_test.parquet/") |> to_duckdb()
 #all_data <- all_data |> filter(ladcd == "E08000003")
 
 MIN_CYCLE <- 1
@@ -96,7 +103,7 @@ align_age_levels <- function(w, people_age) {
 # #collect()
 
 incidence_all <- all_data |>
-  filter(!stringr::str_detect(value, "dead|healthy|null|depression")) |>
+  filter(!stringr::str_detect(value, "dead|healthy|null|depression"), !is.na(value)) |>
   group_by(id, scen, value) |>
   #arrow::to_duckdb() |>
   slice_min(order_by = cycle, n = 1, with_ties = FALSE) |>
@@ -336,26 +343,26 @@ weighted_mean_by <- function(df, group_keys) {
     summarise(mean_age_weighted = weighted.mean(age_cycle, w), .groups = "drop")
 }
 
-mean_age_dead_raw_by_scen_val           <- inc_death_src |> group_by(scen, value) |> summarise(mean_age_raw = mean(age_cycle), .groups="drop")
+mean_age_dead_raw_by_scen_val           <- inc_death_src |> group_by(scen, value) |> summarise(mean_age_raw = mean(age_cycle, na.rm = T), .groups="drop")
 mean_age_dead_weight_by_scen_val        <- weighted_mean_by(inc_death_src, c("scen","value"))
-mean_age_dead_raw_by_scen_val_gender    <- inc_death_src |> group_by(scen, value, gender) |> summarise(mean_age_raw = mean(age_cycle), .groups="drop")
+mean_age_dead_raw_by_scen_val_gender    <- inc_death_src |> group_by(scen, value, gender) |> summarise(mean_age_raw = mean(age_cycle, na.rm = T), .groups="drop")
 mean_age_dead_weight_by_scen_val_gender <- weighted_mean_by(inc_death_src, c("scen","value","gender"))
 
-mean_age_dead_raw_by_scen_val_imd    <- inc_death_src |> group_by(scen, value, imd10) |> summarise(mean_age_raw = mean(age_cycle), .groups="drop")
+mean_age_dead_raw_by_scen_val_imd    <- inc_death_src |> group_by(scen, value, imd10) |> summarise(mean_age_raw = mean(age_cycle, na.rm = T), .groups="drop")
 mean_age_dead_weight_by_scen_val_imd <- weighted_mean_by(inc_death_src, c("scen","value","imd10"))
 
-mean_age_dead_raw_by_scen_val_lad       <- inc_death_src |> group_by(scen, value, ladnm) |> summarise(mean_age_raw = mean(age_cycle), .groups="drop")
+mean_age_dead_raw_by_scen_val_lad       <- inc_death_src |> group_by(scen, value, ladnm) |> summarise(mean_age_raw = mean(age_cycle, na.rm = T), .groups="drop")
 
-mean_age_onset_raw_by_scen_val           <- incidence_src |> group_by(scen, value) |> summarise(mean_age_raw = mean(age_cycle), .groups="drop")
+mean_age_onset_raw_by_scen_val           <- incidence_src |> group_by(scen, value) |> summarise(mean_age_raw = mean(age_cycle, na.rm = T), .groups="drop")
 mean_age_onset_weight_by_scen_val        <- weighted_mean_by(incidence_src, c("scen","value"))
-mean_age_onset_raw_by_scen_val_gender    <- incidence_src |> group_by(scen, value, gender) |> summarise(mean_age_raw = mean(age_cycle), .groups="drop")
+mean_age_onset_raw_by_scen_val_gender    <- incidence_src |> group_by(scen, value, gender) |> summarise(mean_age_raw = mean(age_cycle, na.rm = T), .groups="drop")
 mean_age_onset_weight_by_scen_val_gender <- weighted_mean_by(incidence_src, c("scen","value","gender"))
 
-mean_age_onset_raw_by_scen_val_imd    <- incidence_src |> group_by(scen, value, imd10) |> summarise(mean_age_raw = mean(age_cycle), .groups="drop")
+mean_age_onset_raw_by_scen_val_imd    <- incidence_src |> group_by(scen, value, imd10) |> summarise(mean_age_raw = mean(age_cycle, na.rm = T), .groups="drop")
 mean_age_onset_weight_by_scen_val_imd <- weighted_mean_by(incidence_src, c("scen","value","imd10"))
 
 
-mean_age_onset_raw_by_scen_val_lad       <- incidence_src |> group_by(scen, value, ladnm) |> summarise(mean_age_raw = mean(age_cycle), .groups="drop")
+mean_age_onset_raw_by_scen_val_lad       <- incidence_src |> group_by(scen, value, ladnm) |> summarise(mean_age_raw = mean(age_cycle, na.rm = T), .groups="drop")
 
 # ---- ASR (age-standardised rates) ----
 ref_weights_overall <- people_raw |>
@@ -556,7 +563,7 @@ pc <- mget(c(
   "asr_lad_all_per_cycle","asr_lad_all_avg_1_30",
   "asr_healthy_years_overall","asr_healthy_years_overall_avg_1_30"
 ))
-precomp_path <- "app/processed_data/seed = 3/precomputed_100%V6.qs"
+precomp_path <- "app/processed_data/all_data_110226.qs2" # "app/processed_data/130526_100%.qs2"
 message("Saving precomputed cache: ", precomp_path)
 #saveRDS(pc, precomp_path, compress = "xz")
-qs::qsave(pc, precomp_path)
+qs2::qs_save(pc, precomp_path)
