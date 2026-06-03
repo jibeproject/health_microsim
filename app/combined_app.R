@@ -19,9 +19,10 @@ suppressPackageStartupMessages({
 
 #pc <- qs2::qs_read("processed_data/stable/precomputed_310326_100%")
 #pc <- qs2::qs_read("/home/ali/GH/health_microsim/temp/010426_stability_fixed/processsed_data/010426_precomputed_100%V7.qs2")
-pc <- qs2::qs_read(here("app/processed_data/all_data_130526.qs2"))
+pc <- qs2::qs_read("data/all_data_but_gd_020626.qs2")
 #pc <- qs::qread("processed_data/seed = 2/shiny/precomputed_mcr_ref_ss_green_100%V6.qs")
 #exp <- qs2::qread("processed_data/seed = 3/shiny/exp_050226.qs")
+exp <- qs2::qs_read("data/030626_exp.qs2")
 
 SCALING <- 1L
 
@@ -189,9 +190,6 @@ ui <- page_sidebar(
     full_screen = TRUE,
     nav_panel("Differences vs reference",
               uiOutput("table_diff_summary", height = "100vh"),
-              #tags$hr(),
-              #h5("Summary (cumulative at latest cycle, or sum if non-cumulative)"),
-              #plotlyOutput("plot_diffly", height = "35vh")
     ),
     nav_panel("Age Standardised Rates",
               uiOutput("plot_asrly")#, height = "85vh"),
@@ -277,12 +275,6 @@ server <- function(input, output, session) {
   # ---------- Avg ages cause picker ----------
   output$avg_cause_ui <- renderUI({
     if (input$avg_kind == "onset") {
-      # selectizeInput("avg_cause", "Disease (onset):",
-      #                multiple = TRUE,
-      #             choices = all_causes_except_dead,
-      #             selected = "coronary_heart_disease")
-      
-      
       shinyWidgets::pickerInput("avg_cause", 
                                 "Disease (onset):",
                                 choices = all_causes_except_dead,
@@ -1477,7 +1469,7 @@ server <- function(input, output, session) {
       )
     
     # Identify scenario columns once
-    scen_cols <- setdiff(names(wide_df), c("grouping", "variable", "stat"))
+    scen_cols <- setdiff(names(wide_df), c("grouping", "variable", "stat", "year"))
     
     # Compute row-wise min/max in a fully vectorised way
     scen_mat <- as.matrix(wide_df[scen_cols])
@@ -1525,11 +1517,11 @@ server <- function(input, output, session) {
     html_cols <- scen_cols
     
     gt_tbl <- norm_df |>
-      dplyr::select(grouping, variable, stat, dplyr::all_of(html_cols)) |>
+      dplyr::select(grouping, year, variable, stat, dplyr::all_of(html_cols)) |>
       gt::gt() |>
       gt::cols_label(!!!rlang::set_names(html_cols, html_cols)) |>
       gt::fmt_markdown(columns = dplyr::all_of(html_cols)) |>
-      gt::tab_options(table.font.size = "small") |>
+      gt::tab_options(table.font.size = "small", ihtml.use_pagination = FALSE) |>
       opt_interactive(
         use_filters      = TRUE,
         use_sorting      = FALSE,
