@@ -1,8 +1,5 @@
 # ======================================================================
 # Local Shiny: Population, Differences, Mean Ages (death/onset), ASR
-# + Disease picker for Δ diseases
-# + Robust gender fix (handles 1/2, M/F strings)
-# + NEW: Impact summary tab (deaths prevented, life years, healthy) by scenario
 # ======================================================================
 
 suppressPackageStartupMessages({
@@ -29,8 +26,11 @@ stopifnot(all(c("ladcd","ladnm") %in% names(zones)))
 lads <- zones |> distinct(ladcd, ladnm)
 
 # Adjust path if needed
-pc <- qs::qread(here("Y:/HealthImpact/Data/Country/UK/JIBE_health_output_data/211025/precomputed_mcr_wgd_100%V2.qs"))
+pc <- qs::qread(here("Y:/HealthImpact/Data/Country/UK/JIBE/manchester/scenOutput/091125_100%/shiny_app_data/precomputed_mcr_wogd_100%V3.qs"))
 list2env(pc, envir = environment())
+deaths_gender <- deaths_gender %>% mutate(diff = diff*-1)
+deaths_lad <- deaths_lad %>% mutate(diff = diff*-1)
+deaths_overall <- deaths_overall %>% mutate(diff = diff*-1)
 
 MIN_CYCLE <- 1
 MAX_CYCLE <- 30
@@ -830,11 +830,15 @@ server <- function(input, output, session) {
     )
     
     long <- bind_rows(
-      tbls$deaths |> mutate(metric = lab_map["deaths"]),
-      tbls$lifey  |> mutate(metric = lab_map["lifey"]),
-      tbls$healthy|> mutate(metric = lab_map["healthy"])
+      tbls$deaths |> 
+      mutate(metric = lab_map["deaths"]),
+      tbls$lifey  |> 
+        mutate(metric = lab_map["lifey"]),
+      tbls$healthy |> 
+        mutate(metric = lab_map["healthy"])
     ) |>
       filter(cycle >= minc, scen %in% scen_keep)
+    
     
     # Grouping columns by view
     by <- switch(view,
