@@ -3,10 +3,11 @@ library(arrow)
 library(data.table)
 library(dplyr)  # still needed for verbs but they dispatch to data.table
 
-ZONES_CSV  <- "/media/ali/Expansion/backup_tabea/manchester-main/input/zoneSystem.csv"
+# ZONES_CSV  <- "/media/ali/Expansion/backup_tabea/manchester-main/input/zoneSystem.csv"
+ZONES_CSV <- "manchester/health/processed/zoneSystem.csv"
 zones    <- readr::read_csv(ZONES_CSV, show_col_types = FALSE)
 lads <- zones |> distinct(ladcd, ladnm)
-all_data <- arrow::open_dataset("app/processed_data/seed = 2/all_data.parquet/") |> filter(cycle != 31) |> to_duckdb()
+all_data <- arrow::open_dataset("X:/HealthImpact/Data/Country/UK/JIBE/manchester/scenOutput/random_stability_310326/processsed_data/all_data_fixed_310326.parquet") |> filter(cycle != 31) |> to_duckdb()
 
 #all_data <- all_data |> filter(ladcd == "E08000003")
 
@@ -114,6 +115,10 @@ incidence_depression <- all_data |>
   collect()
 
 incidence_deaths <- all_data |> filter(grepl("dead", value)) |> collect() # %in% death_values) #|> collect()
+
+##testing additional, do delete
+
+all_data_read <- all_data |> collect()
 
 incidence <- bind_rows(incidence_all |> 
                          collect(), 
