@@ -93,7 +93,8 @@ prevalence <- read_csv(
     )
   ),
   show_col_types = FALSE
-)
+) %>%
+  arrange(SA2_MAIN16, age, sex, cause)
 cat("✓ Prevalence data loaded. Rows:", nrow(prevalence), "\n")
 
 ## The following is commented out as the prevalence data already contains probabilities
