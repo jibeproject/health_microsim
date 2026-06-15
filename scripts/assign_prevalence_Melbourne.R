@@ -124,6 +124,45 @@ synth_pop_wprob <- synth_pop |>
   filter(age > 18)
 cat("✓ Prevalence joined. Rows:", nrow(synth_pop_wprob), "\n")
 
+disease_cols <- c(
+  "bladder_cancer",
+  "breast_cancer",
+  "colon_cancer",
+  "copd",
+  "coronary_heart_disease",
+  "depression",
+  "diabetes",
+  "endometrial_cancer",
+  "esophageal_cancer",
+  "gastric_cardia_cancer",
+  "head_neck_cancer",
+  "kidney_cancer",
+  "liver_cancer",
+  "lung_cancer",
+  "malignant_melanoma",
+  "myeloid_leukemia",
+  "myeloma",
+  "parkinson",
+  "prostate_cancer",
+  "rectum_cancer",
+  "stroke"
+)
+
+# Optional: check which are actually present in your prevalence-wider data
+missing_diseases <- setdiff(disease_cols, names(synth_pop_wprob))
+missing_diseases
+
+# Keep only diseases that actually exist in the data
+existing_disease_cols <- intersect(disease_cols, names(synth_pop_wprob))
+
+# Optional: warn if any are missing
+missing_disease_cols <- setdiff(disease_cols, existing_disease_cols)
+if (length(missing_disease_cols) > 0) {
+  message("Warning: these disease columns are missing and will be skipped: ",
+          paste(missing_disease_cols, collapse = ", "))
+}
+
+
 # Function to allocate disease statuses based on probability
 
 set.seed(123)
@@ -132,7 +171,7 @@ allocate_disease <- function(df) {
   df %>%
     mutate(
       across(
-        copd:stroke,
+        all_of(existing_disease_cols),
         ~ ifelse(runif(n()) < ., 1, 0),
         .names = "{.col}_status"
       )
@@ -140,30 +179,37 @@ allocate_disease <- function(df) {
 }
 
 # Apply function to assign diseases
+status_cols <- paste0(existing_disease_cols, "_status")
 cat("Allocating disease statuses...\n")
 synth_pop_prev <- allocate_disease(synth_pop_wprob) %>%
-  select(id, age, sex, SA2_MAIN16, ends_with("_status"))  %>%
-  # Ensure we only keep relevant columns
+  select(
+    id,
+    age,
+    sex,
+    SA2_MAIN16,
+    all_of(status_cols)   # instead of ends_with("_status")
+  ) %>%
   mutate(
     sex = case_when(
       sex == 1 ~ "male",
       sex == 2 ~ "female",
-      TRUE ~ as.character(sex)
+      TRUE     ~ as.character(sex)
     )
   )
 cat("✓ Disease statuses allocated. Rows:", nrow(synth_pop_prev), "\n")
 
 # Save
 cat("Pivoting data to long format...\n")
-synth_pop_prev_long <- synth_pop_prev |> pivot_longer(
-  cols = copd_status:stroke_status,
-  names_to = "diseases",
-  values_to = "values"
-) |>
-  mutate(diseases = str_remove(diseases, "_status")) |>
-  select(id, diseases, values) |>
-  filter(values !=0) |>
-  select(!values) |>
+
+synth_pop_prev_long <- synth_pop_prev %>%
+  pivot_longer(
+    cols = all_of(status_cols),
+    names_to = "diseases",
+    values_to = "values"
+  ) %>%
+  mutate(diseases = str_remove(diseases, "_status")) %>%
+  filter(values == 1) %>%
+  select(id, diseases) %>%
   group_by(id) %>%
   summarise(diseases = paste(diseases, collapse = " "), .groups = "drop")
 cat("✓ Data pivoted to long format. Rows:", nrow(synth_pop_prev_long), "\n")
