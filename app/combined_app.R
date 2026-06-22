@@ -22,7 +22,7 @@ suppressPackageStartupMessages({
 pc <- qs2::qs_read("data/all_data_but_gd_020626.qs2")
 #pc <- qs::qread("processed_data/seed = 2/shiny/precomputed_mcr_ref_ss_green_100%V6.qs")
 #exp <- qs2::qread("processed_data/seed = 3/shiny/exp_050226.qs")
-exp <- qs2::qs_read("data/030626_exp.qs2")
+exp <- qs2::qs_read("data/030626_fixed_exp.qs2")
 
 SCALING <- 1L
 
