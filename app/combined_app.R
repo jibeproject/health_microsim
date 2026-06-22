@@ -975,6 +975,7 @@ server <- function(input, output, session) {
           pivot_wider(names_from = scen, values_from = age_std_rate)
         
       } else {
+        
         df <- asr_lad_all_avg_1_30 |> 
           filter(cause %in% causes, scen %in% scens) |> 
           mutate(cause = case_when(cause == "dead" ~ "Death (all causes)",
@@ -986,12 +987,6 @@ server <- function(input, output, session) {
         if (length(input$lad_sel)) 
           df <- df |> filter(ladnm %in% input$lad_sel)
         
-        req(nrow(df) > 0)
-        top_ids <- df |> 
-          filter(cause == causes[1], scen == "reference") |> 
-          distinct(ladnm)
-        
-        df <- df |> filter(ladnm %in% top_ids$ladnm)
         req(nrow(df) > 0)
         
         df <- df |> 
