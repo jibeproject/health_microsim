@@ -51,7 +51,8 @@ lad_popup <- setNames(
     sprintf(
       paste0("<b>%s</b><hr style='margin:4px 0'/>",
              "Population: %s<br/>",
-             "Age: mean %.0f (min %d, max %d)<br/>",
+             "Age groups: &lt;18 %.0f%%, 18-24 %.0f%%, 25-44 %.0f%%, ",
+             "45-65 %.0f%%, 66+ %.0f%%<br/>",
              "Gender: %.0f%% male / %.0f%% female<hr style='margin:4px 0'/>",
              "<b>IMD quintile (%% of population)</b><br/>",
              "Q1 (most deprived): %.0f%%<br/>",
@@ -59,7 +60,7 @@ lad_popup <- setNames(
              "Q5 (least deprived): %.0f%%"),
       r$ladnm,
       formatC(r$n_people, big.mark = ",", format = "d"),
-      r$age_mean, as.integer(r$age_min), as.integer(r$age_max),
+      r$pct_u18, r$pct_18_24, r$pct_25_44, r$pct_45_65, r$pct_66plus,
       r$pct_male, r$pct_female,
       r$imd_q1, r$imd_q2, r$imd_q3, r$imd_q4, r$imd_q5)
   }, character(1)),
@@ -92,17 +93,21 @@ resolve_stat <- function(metric, pctile)
 # pre-format the demographic profile strings once (same across scenarios)
 prof_fmt <- prof |>
   mutate(
+    imd_quintile = ceiling(imd10 / 2),   # 1-2->1, 3-4->2, ... 9-10->5
     profile_html = sprintf(
       paste0("<hr style='margin:3px 0'/><b>Profile</b><br/>",
              "Population: %s<br/>",
-             "Age: mean %.0f (min %d, max %d)<br/>",
+             "Age groups:<br/>",
+             "&nbsp;&lt;18: %.0f%% &nbsp; 18-24: %.0f%%<br/>",
+             "&nbsp;25-44: %.0f%% &nbsp; 45-65: %.0f%%<br/>",
+             "&nbsp;66+: %.0f%%<br/>",
              "Gender: %.0f%% male / %.0f%% female<br/>",
-             "IMD decile: %s"),
+             "IMD quintile: %d"),
       formatC(n_people, big.mark = ",", format = "d"),
-      age_mean, as.integer(age_min), as.integer(age_max),
-      pct_male, pct_female, imd10)
+      pct_u18, pct_18_24, pct_25_44, pct_45_65, pct_66plus,
+      pct_male, pct_female, as.integer(imd_quintile))
   ) |>
-  select(lsoa21cd, profile_html, imd10)
+  select(lsoa21cd, profile_html, imd10, imd_quintile)
 
 # ---- UI ---------------------------------------------------------------------
 ui <- fluidPage(
@@ -128,6 +133,12 @@ ui <- fluidPage(
         selectInput("cmp_scenario", "Scenario (vs base)",
                     choices = other_scn,
                     selected = other_scn[1])),
+      selectInput("imd_filter", "IMD quintile",
+                  choices = c("All quintiles" = "all",
+                              "Q1 (most deprived)" = "1",
+                              "Q2" = "2", "Q3" = "3", "Q4" = "4",
+                              "Q5 (least deprived)" = "5"),
+                  selected = "all"),
       hr(),
       downloadButton("dl_png", "Save faceted PNG"),
       helpText("Click an LSOA to see how it changes across scenarios.")
@@ -232,10 +243,18 @@ server <- function(input, output, session) {
     labels <- paste0(head_line, scn_lines, dat$profile_html) |> lapply(htmltools::HTML)
     
     fill_cols <- pal(v)
+    fill_op   <- rep(0.8, nrow(dat))
+    # IMD quintile filter: dim + grey LSOAs not in the selected quintile
+    if (input$imd_filter != "all") {
+      keep <- !is.na(dat$imd_quintile) &
+        dat$imd_quintile == as.integer(input$imd_filter)
+      fill_cols[!keep] <- "#e8e8e8"
+      fill_op[!keep]   <- 0.15
+    }
     
     leafletProxy("map", data = dat) |> clearShapes() |> clearControls() |>
       addPolygons(layerId = ~lsoa21cd,
-                  fillColor = fill_cols, fillOpacity = 0.8,
+                  fillColor = fill_cols, fillOpacity = fill_op,
                   color = "white", weight = 0.4, label = labels,
                   highlightOptions = highlightOptions(weight = 2, color = "#222",
                                                       bringToFront = TRUE)) |>
