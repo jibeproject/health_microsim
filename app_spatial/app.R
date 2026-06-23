@@ -20,6 +20,7 @@ library(tidyr)
 library(leaflet)
 library(ggplot2)
 library(viridisLite)
+library(base64enc)
 
 # ---- locate data ------------------------------------------------------------
 app_dir <- tryCatch(
@@ -34,6 +35,36 @@ med  <- readRDS("exposure_medians_by_lsoa.rds")   # list(wide, long)
 prof <- readRDS("lsoa_profile.rds")               # demographics
 lsoa <- readRDS("gm_lsoa_boundaries.rds")        # sf, EPSG:27700
 lsoa_wgs <- st_transform(lsoa, 4326)
+lad      <- readRDS("gm_lad_boundaries.rds")      # sf, EPSG:27700 (10 GM LADs)
+lad_wgs  <- st_transform(lad, 4326)
+lad_prof <- readRDS("lad_profile.rds")            # per-LAD demographic profile
+
+# point-on-surface for placing LAD name labels (inside each polygon)
+lad_centroids <- suppressWarnings(
+  sf::st_point_on_surface(lad_wgs)
+)
+
+# pre-build the click-popup HTML for each LAD, keyed by lad code
+lad_popup <- setNames(
+  vapply(seq_len(nrow(lad_prof)), function(i) {
+    r <- lad_prof[i, ]
+    sprintf(
+      paste0("<b>%s</b><hr style='margin:4px 0'/>",
+             "Population: %s<br/>",
+             "Age: mean %.0f (min %d, max %d)<br/>",
+             "Gender: %.0f%% male / %.0f%% female<hr style='margin:4px 0'/>",
+             "<b>IMD quintile (%% of population)</b><br/>",
+             "Q1 (most deprived): %.0f%%<br/>",
+             "Q2: %.0f%%<br/>Q3: %.0f%%<br/>Q4: %.0f%%<br/>",
+             "Q5 (least deprived): %.0f%%"),
+      r$ladnm,
+      formatC(r$n_people, big.mark = ",", format = "d"),
+      r$age_mean, as.integer(r$age_min), as.integer(r$age_max),
+      r$pct_male, r$pct_female,
+      r$imd_q1, r$imd_q2, r$imd_q3, r$imd_q4, r$imd_q5)
+  }, character(1)),
+  lad_prof$ladcd
+)
 
 long <- med$long
 
@@ -88,17 +119,18 @@ ui <- fluidPage(
                   selected = "p50"),
       uiOutput("stat_note"),
       hr(),
-      checkboxInput("compare", "Compare scenarios (colour = base, hover = all)",
-                    value = TRUE),
-      conditionalPanel("!input.compare",
-                       selectInput("scenario", "Scenario", choices = scenarios,
-                                   selected = base_name)),
-      radioButtons("classify", "Colour scale",
-                   c("Quantile (7)" = "quantile", "Continuous" = "continuous"),
-                   selected = "quantile"),
+      radioButtons("view", "Map shows",
+                   c("Absolute (base)"   = "absolute",
+                     "% change vs base"  = "pctchange"),
+                   selected = "absolute"),
+      conditionalPanel(
+        "input.view == 'pctchange'",
+        selectInput("cmp_scenario", "Scenario (vs base)",
+                    choices = other_scn,
+                    selected = other_scn[1])),
       hr(),
       downloadButton("dl_png", "Save faceted PNG"),
-      helpText("Stats computed across all individuals in each LSOA.")
+      helpText("Click an LSOA to see how it changes across scenarios.")
     ),
     mainPanel(width = 9, leafletOutput("map", height = 720))
   )
@@ -125,19 +157,26 @@ server <- function(input, output, session) {
   
   map_sf <- reactive({
     st <- stat_used()
-    colour_scn <- if (input$compare) base_name else input$scenario
-    colour_vals <- long |>
-      filter(metric == input$metric, stat == st, scenario == colour_scn) |>
-      select(lsoa21cd, colour_value = value, n_people)
+    # all scenarios wide, per LSOA, for this metric+stat
+    wide_scn <- long |>
+      filter(metric == input$metric, stat == st) |>
+      select(lsoa21cd, scenario, value) |>
+      pivot_wider(names_from = scenario, values_from = value)
+    
     dat <- lsoa_wgs |>
-      left_join(colour_vals, by = "lsoa21cd") |>
-      left_join(prof_fmt,     by = "lsoa21cd")
-    if (input$compare) {
-      wide_scn <- long |>
-        filter(metric == input$metric, stat == st) |>
-        select(lsoa21cd, scenario, value) |>
-        pivot_wider(names_from = scenario, values_from = value)
-      dat <- dat |> left_join(wide_scn, by = "lsoa21cd")
+      left_join(wide_scn, by = "lsoa21cd") |>
+      left_join(prof_fmt, by = "lsoa21cd")
+    
+    # colour value depends on view mode
+    if (input$view == "pctchange") {
+      scn <- input$cmp_scenario
+      base_v <- dat[[base_name]]
+      scn_v  <- dat[[scn]]
+      # % change vs base; guard divide-by-zero -> NA
+      dat$colour_value <- ifelse(is.na(base_v) | base_v == 0,
+                                 NA_real_, 100 * (scn_v - base_v) / base_v)
+    } else {
+      dat$colour_value <- dat[[base_name]]
     }
     dat
   })
@@ -151,53 +190,122 @@ server <- function(input, output, session) {
     if (all(is.na(v))) {
       leafletProxy("map", data = dat) |> clearShapes() |> clearControls() |>
         addPolygons(fillColor = "#dddddd", fillOpacity = 0.5,
-                    color = "white", weight = 0.4, label = ~lsoa21cd)
+                    color = "white", weight = 0.4, label = ~lsoa21cd) |>
+        addPolylines(data = lad_wgs, color = "#111111", weight = 2.5,
+                     opacity = 1, group = "LAD boundaries")
       return(invisible())
     }
     
-    make_quantile_pal <- function(values, n = 7) {
-      vv <- values[!is.na(values)]
-      if (length(unique(vv)) < 3) return(NULL)
-      ok <- function(k) {
-        br <- quantile(vv, probs = seq(0,1,length.out=k+1), names=FALSE, type=7)
-        length(unique(br)) == length(br)
-      }
-      k <- n; while (k > 2 && !ok(k)) k <- k - 1
-      if (!ok(k)) return(NULL)
-      colorQuantile("viridis", vv, n = k, na.color = "#dddddd")
+    # ---- palette: viridis for absolute, diverging centred on 0 for % change
+    if (input$view == "pctchange") {
+      rng <- max(abs(v), na.rm = TRUE)
+      if (!is.finite(rng) || rng == 0) rng <- 1
+      # reverse RdBu so red = increase vs base, blue = decrease
+      pal <- colorNumeric(rev(RColorBrewer::brewer.pal(11, "RdBu")),
+                          domain = c(-rng, rng), na.color = "#dddddd")
+      legend_title <- paste0(metric_labels[[input$metric]],
+                             "<br/><small>% change: ", input$cmp_scenario,
+                             " vs base (", stat_labels[[st]], ")</small>")
+    } else {
+      pal <- colorNumeric("viridis", v, na.color = "#dddddd")
+      legend_title <- paste0(metric_labels[[input$metric]],
+                             "<br/><small>", stat_labels[[st]], " - base</small>")
     }
-    pal <- NULL
-    if (input$classify == "quantile") pal <- make_quantile_pal(v, 7)
-    if (is.null(pal)) pal <- colorNumeric("viridis", v, na.color = "#dddddd")
     
     fmt <- function(x) formatC(x, digits = 3, format = "g")
     
-    if (input$compare) {
-      scn_order <- c(base_name, other_scn)
-      scn_lines <- vapply(seq_len(nrow(dat)), function(i)
-        paste(vapply(scn_order, function(s)
-          sprintf("%s: %s", s, fmt(dat[[s]][i])), character(1)),
-          collapse = "<br/>"), character(1))
-      labels <- sprintf("<b>%s</b><br/>%s (%s)<br/>%s%s",
-                        dat$lsoa21cd, metric_labels[[input$metric]], stat_labels[[st]],
-                        scn_lines, dat$profile_html) |> lapply(htmltools::HTML)
-      legend_title <- paste0(metric_labels[[input$metric]],
-                             "<br/><small>", stat_labels[[st]], " - base</small>")
+    # hover label: name + all scenario values (absolute) + profile
+    scn_order <- c(base_name, other_scn)
+    scn_lines <- vapply(seq_len(nrow(dat)), function(i)
+      paste(vapply(scn_order, function(s)
+        sprintf("%s: %s", s, fmt(dat[[s]][i])), character(1)),
+        collapse = "<br/>"), character(1))
+    if (input$view == "pctchange") {
+      head_line <- sprintf("<b>%s</b><br/>%s (%s)<br/><i>%s vs base: %s%%</i><br/>",
+                           dat$lsoa21cd, metric_labels[[input$metric]], stat_labels[[st]],
+                           input$cmp_scenario,
+                           ifelse(is.na(v), "-", formatC(v, digits = 1, format = "f")))
     } else {
-      labels <- sprintf("<b>%s</b><br/>%s (%s)<br/>%s: %s%s",
-                        dat$lsoa21cd, metric_labels[[input$metric]], stat_labels[[st]],
-                        input$scenario, fmt(v), dat$profile_html) |> lapply(htmltools::HTML)
-      legend_title <- paste0(metric_labels[[input$metric]],
-                             "<br/><small>", stat_labels[[st]], "</small>")
+      head_line <- sprintf("<b>%s</b><br/>%s (%s)<br/>",
+                           dat$lsoa21cd, metric_labels[[input$metric]], stat_labels[[st]])
     }
+    labels <- paste0(head_line, scn_lines, dat$profile_html) |> lapply(htmltools::HTML)
+    
+    fill_cols <- pal(v)
     
     leafletProxy("map", data = dat) |> clearShapes() |> clearControls() |>
-      addPolygons(fillColor = ~pal(v), fillOpacity = 0.8,
+      addPolygons(layerId = ~lsoa21cd,
+                  fillColor = fill_cols, fillOpacity = 0.8,
                   color = "white", weight = 0.4, label = labels,
                   highlightOptions = highlightOptions(weight = 2, color = "#222",
                                                       bringToFront = TRUE)) |>
-      addLegend(pal = pal, values = v, opacity = 0.9,
-                title = HTML(legend_title), position = "bottomright")
+      addPolylines(data = lad_wgs, color = "#111111", weight = 2.5, opacity = 1,
+                   label = lapply(lad_wgs$lad21cd, function(cd) {
+                     h <- lad_popup[[cd]]
+                     htmltools::HTML(if (is.null(h)) cd else h)
+                   }),
+                   highlightOptions = highlightOptions(weight = 4, color = "#000",
+                                                       bringToFront = TRUE),
+                   group = "LAD boundaries") |>
+      addLabelOnlyMarkers(data = lad_centroids,
+                          label = ~lad21nm,
+                          labelOptions = labelOptions(noHide = TRUE, direction = "center",
+                                                      textOnly = TRUE,
+                                                      style = list("font-weight" = "bold",
+                                                                   "color" = "#111111",
+                                                                   "text-shadow" =
+                                                                     "0 0 3px #fff, 0 0 3px #fff")),
+                          group = "LAD boundaries") |>
+      addLegend(pal = pal, values = if (input$view == "pctchange") c(-rng, rng) else v,
+                opacity = 0.9, title = HTML(legend_title), position = "bottomright") |>
+      addLayersControl(
+        overlayGroups = "LAD boundaries",
+        options = layersControlOptions(collapsed = FALSE),
+        position = "topright")
+  })
+  
+  # ---- LSOA click -> scenario comparison chart popup ------------------------
+  observeEvent(input$map_shape_click, {
+    click <- input$map_shape_click
+    id <- click$id
+    if (is.null(id) || !grepl("^E01", id)) return()   # only LSOA ids (E01...)
+    
+    st <- stat_used()
+    vals <- long |>
+      filter(metric == input$metric, stat == st, lsoa21cd == id) |>
+      select(scenario, value)
+    if (nrow(vals) == 0) return()
+    ord <- c(base_name, other_scn)
+    vals <- vals[match(ord, vals$scenario), ]
+    vals$scenario <- ord
+    base_v <- vals$value[vals$scenario == base_name]
+    
+    # draw a small bar chart to a temp PNG and embed as base64 in the popup
+    f <- tempfile(fileext = ".png")
+    png(f, width = 360, height = 240, res = 96)
+    op <- par(mar = c(4.5, 4, 3, 1))
+    cols <- ifelse(vals$scenario == base_name, "#666666",
+                   ifelse(vals$value >= base_v, "#b2182b", "#2166ac"))
+    bp <- barplot(vals$value, names.arg = vals$scenario, col = cols, border = NA,
+                  las = 2, cex.names = 0.8,
+                  main = id, ylab = metric_labels[[input$metric]])
+    abline(h = base_v, lty = 2, col = "#444444")
+    par(op); dev.off()
+    
+    uri <- paste0("data:image/png;base64,",
+                  base64enc::base64encode(f))
+    pct_lines <- paste(vapply(other_scn, function(s) {
+      sv <- vals$value[vals$scenario == s]
+      pc <- if (is.na(base_v) || base_v == 0) NA else 100 * (sv - base_v) / base_v
+      sprintf("%s: %s%%", s, ifelse(is.na(pc), "-", formatC(pc, digits = 1, format = "f")))
+    }, character(1)), collapse = "<br/>")
+    
+    popup_html <- sprintf(
+      "<b>%s</b> (%s)<br/><img src='%s' width='340'/><br/><small>%% change vs base:<br/>%s</small>",
+      metric_labels[[input$metric]], stat_labels[[st]], uri, pct_lines)
+    
+    leafletProxy("map") |> clearPopups() |>
+      addPopups(lng = click$lng, lat = click$lat, popup = popup_html)
   })
   
   output$dl_png <- downloadHandler(
