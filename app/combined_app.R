@@ -8,22 +8,23 @@ suppressPackageStartupMessages({
   library(plotly) 
   library(scales) 
   library(here)
-  library(qs)
+  library(qs2)
   library(DT)
   library(gt)
   library(gtExtras)
   library(bslib)
   library(matrixStats)
+  library(shinyWidgets)
 })
 
-pc <- qs::qread("processed_data/seed = 3/shiny/precomputed_040226_100%V6.qs")
-exp <- qs::qread("processed_data/seed = 3/shiny/exp_050226.qs")
+pc <- qs2::qs_read("data/all_data_but_gd_020626_fixed.qs2")
+exp <- qs2::qs_read("data/030626_fixed_exp.qs2")
 
 SCALING <- 1L
 
 
 MIN_CYCLE <- 1
-MAX_CYCLE <- 30
+MAX_CYCLE <- max(pc$people_overall$cycle)
 
 col_fun <- col_numeric(palette = c("lightpink", "lightgreen"), domain = c(0, 1))
 
@@ -77,8 +78,8 @@ pop_cycles    <- sort(unique(pc$people_overall$cycle))
 trend_cycles  <- sort(unique(pc$asr_overall_all$cycle))
 all_lads_nm   <- sort(unique(pc$people_lad$ladnm))
 all_genders   <- sort(unique(pc$people_gender$gender))
-all_causes_asr <- pc$asr_overall_all |> distinct(cause) |> filter(!grepl("dead", cause)) |> pull() #
-all_causes_except_dead <- pc$asr_overall_all |> distinct(cause) |> filter(!grepl("dead", cause)) |> pull()
+all_causes_asr <- pc$asr_overall_all |> distinct(cause) |> filter(!grepl("dead", cause)) |> pull() |> sort() #
+all_causes_except_dead <- pc$asr_overall_all |> distinct(cause) |> filter(!grepl("dead", cause)) |> pull() |> sort()
 selected_views <- c("Overall","Gender","LAD")
 additional_selected_views <- c("IMD")
 
@@ -86,100 +87,105 @@ ui <- page_sidebar(
   theme = bs_theme(bootswatch = "yeti"),
   title = paste0("Travel and Health Explorer"),
   sidebar = sidebar(
-      selectInput("scen_sel", "Scenarios:", choices = all_scenarios,
-                  selected = all_scenarios, multiple = TRUE),
-      selectInput("view_level", "View by:", choices = selected_views,
-                  selected = "Overall"),
-      conditionalPanel(
-        "input.view_level == 'LAD'",
-        selectizeInput("lad_sel", "LAD(s):",
-                       choices = all_lads_nm, multiple = TRUE,
-                       options = list(placeholder = "Pick LADs (optional)"))
-      ),
-      
-      conditionalPanel(
-        #condition = "input.tabs == 'Travel & Exposures'",
-        condition = "input.main_tabs == 'Travel & Exposures' && 
+    selectInput("scen_sel", "Scenarios:", choices = all_scenarios,
+                selected = all_scenarios, multiple = TRUE),
+    selectInput("view_level", "View by:", choices = selected_views,
+                selected = "Overall"),
+    conditionalPanel(
+      "input.view_level == 'LAD'",
+      selectizeInput("lad_sel", "LAD(s):",
+                     choices = all_lads_nm, multiple = TRUE,
+                     options = list(placeholder = "Pick LADs (optional)"))
+    ),
+    
+    conditionalPanel(
+      #condition = "input.tabs == 'Travel & Exposures'",
+      condition = "input.main_tabs == 'Travel & Exposures' && 
         input.inner_tabs == 'Travel Behaviour'",
-        radioButtons(
-          "metrics_picker", "Metrics:",
-          choices = c(
-            "Trip Mode Share (%)",
-            "Trip Mode Share by Distance (%)",
-            "Combined Trip Distance by Modes",
-            "Trip Duration by Mode"
-          ),
-          selected = "Trip Mode Share (%)"
-        )
+      radioButtons(
+        "metrics_picker", "Metrics:",
+        choices = c(
+          "Trip Mode Share (%)",
+          "Trip Mode Share by Distance (%)",
+          "Combined Trip Distance by Modes",
+          "Trip Duration by Mode"
+        ),
+        selected = "Trip Mode Share (%)"
+      )
+    ),
+    
+    
+    conditionalPanel(
+      condition = "input.main_tabs == 'Differences vs reference'",
+      checkboxInput("diff_table", "Table", FALSE)
+    ),
+    
+    
+    tags$hr(),
+    tabsetPanel(
+      id = "control_tabs", type = "pills",
+      conditionalPanel(
+        condition = "input.main_tabs == 'Population'",
+        selectizeInput("pop_cycles", "Cycles to show (bars):",
+                       choices = pop_cycles, selected = c(2,10,MAX_CYCLE), multiple = TRUE),
+        radioButtons("pop_style", "Bar style:", c("Stacked"="stack","Side-by-side"="dodge"),
+                     inline = TRUE),
+        checkboxInput("pop_share", "Show shares (else counts)", value = TRUE)
       ),
-      
       
       conditionalPanel(
         condition = "input.main_tabs == 'Differences vs reference'",
-        checkboxInput("diff_table", "Table", FALSE)
+        radioButtons("metric_kind", "Metric:", 
+                     choices = c(
+                       "Δ Impact factor"                 = "imp_fac",
+                       "Diseases postponed (Δ diseases)" = "diseases"
+                     ),
+                     selected = "imp_fac"),
+        sliderInput("diff_min_cycle", "Start cycle:",
+                    min = min(trend_cycles), max = max(trend_cycles),
+                    value = MIN_CYCLE, step = 1),
+        checkboxInput("diff_cumulative", "Cumulative over cycles", value = TRUE)
       ),
-      
-      
-      tags$hr(),
-      tabsetPanel(
-        id = "control_tabs", type = "pills",
-        conditionalPanel(
-          condition = "input.main_tabs == 'Population'",
-          selectizeInput("pop_cycles", "Cycles to show (bars):",
-                         choices = pop_cycles, selected = c(2,10,MAX_CYCLE), multiple = TRUE),
-          radioButtons("pop_style", "Bar style:", c("Stacked"="stack","Side-by-side"="dodge"),
-                       inline = TRUE),
-          checkboxInput("pop_share", "Show shares (else counts)", value = TRUE)
-        ),
-        
-        conditionalPanel(
-          condition = "input.main_tabs == 'Differences vs reference'",
-          radioButtons("metric_kind", "Metric:", 
-                       choices = c(
-            "Diseases postponed (Δ diseases)" = "diseases",
-            "Δ Impact factor"                 = "imp_fac",
-            "Deaths postponed (Δ deaths)"     = "deaths",
-            "Δ Healthy years"                 = "healthy",
-            "Δ Life years"                    = "life"
-            
+      conditionalPanel(
+        condition = "input.main_tabs == 'Average onset ages'", 
+        selectInput("avg_kind", "Average age of:", choices = c("Death"="death","Disease onset"="onset")),
+        uiOutput("avg_cause_ui")
+      ),
+      conditionalPanel(
+        condition = "input.main_tabs == 'Age Standardised Rates'",
+        selectInput(
+          "asr_mode", 
+          "ASR view:",
+          choices = setNames(
+            c("avg", "trend"), 
+            c(paste0("Average 1-", MAX_CYCLE, " (bars)"), "Over time (smoothed)")
           ),
-          selected = "deaths"),
-          sliderInput("diff_min_cycle", "Start cycle:",
-                      min = min(trend_cycles), max = max(trend_cycles),
-                      value = MIN_CYCLE, step = 1),
-          checkboxInput("diff_cumulative", "Cumulative over cycles", value = TRUE)
-        ),
-        conditionalPanel(
-          condition = "input.main_tabs == 'Average onset ages'", 
-          selectInput("avg_kind", "Average age of:", choices = c("Death"="death","Disease onset"="onset")),
-          uiOutput("avg_cause_ui")
-        ),
-        conditionalPanel(
-          condition = "input.main_tabs == 'Age Standardised Rates'",
-          selectInput("asr_mode", "ASR view:",
-                      choices = c("Average 1-30 (bars)"="avg","Over time (smoothed)"="trend"),
-                      selected = "Over time (smoothed)")
-        ),
-        conditionalPanel(
-          condition = "input.main_tabs == 'Age Standardised Rates' || (input.main_tabs == 'Differences vs reference' && 
-          input.metric_kind == 'diseases')",
-          selectizeInput("asr_causes", "Causes:", choices =  append(all_causes_asr, death_values),
-                         selected = c("coronary_heart_disease","stroke"),
-                         multiple = TRUE)#,
+          selected = "Over time (smoothed)"
         )
-        
       ),
-      tags$hr(),
-      downloadButton("download_csv", "Download current table (CSV)")
+      conditionalPanel(
+        condition = "input.main_tabs == 'Age Standardised Rates' || (input.main_tabs == 'Differences vs reference' && 
+          input.metric_kind == 'diseases')",
+        shinyWidgets::pickerInput("asr_causes", "Causes:", choices =  append(all_causes_asr, death_values),
+                                  selected = c("coronary_heart_disease","stroke"),
+                                  multiple = TRUE,
+                                  options = list(
+                                    `actions-box` = TRUE,
+                                    `deselect-all-text` = "None",
+                                    `select-all-text` = "Select all",
+                                    `none-selected-text` = "zero"
+                                  ))#,
+      )
+      
     ),
+    tags$hr(),
+    downloadButton("download_csv", "Download current table (CSV)")
+  ),
   navset_card_underline(
     id = "main_tabs",
     full_screen = TRUE,
     nav_panel("Differences vs reference",
               uiOutput("table_diff_summary", height = "100vh"),
-              #tags$hr(),
-              #h5("Summary (cumulative at latest cycle, or sum if non-cumulative)"),
-              #plotlyOutput("plot_diffly", height = "35vh")
     ),
     nav_panel("Age Standardised Rates",
               uiOutput("plot_asrly")#, height = "85vh"),
@@ -265,10 +271,17 @@ server <- function(input, output, session) {
   # ---------- Avg ages cause picker ----------
   output$avg_cause_ui <- renderUI({
     if (input$avg_kind == "onset") {
-      selectizeInput("avg_cause", "Disease (onset):",
-                     multiple = TRUE,
-                  choices = all_causes_except_dead,
-                  selected = "coronary_heart_disease")
+      shinyWidgets::pickerInput("avg_cause", 
+                                "Disease (onset):",
+                                choices = all_causes_except_dead,
+                                selected = "coronary_heart_disease",
+                                multiple = TRUE,
+                                options = list(
+                                  `actions-box` = TRUE,
+                                  `deselect-all-text` = "None",
+                                  `select-all-text` = "Select all",
+                                  `none-selected-text` = "zero"
+                                ))
     } else {
       selectizeInput(
         "avg_death_causes", 
@@ -368,7 +381,7 @@ server <- function(input, output, session) {
       dil <- dil |> filter(ladnm %in% input$lad_sel)
       hl <- hl |> filter(ladnm %in% input$lad_sel)
       ll <- ll |> filter(ladnm %in% input$lad_sel)
-
+      
     }
     
     do <- pc$diseases_overall
@@ -474,22 +487,22 @@ server <- function(input, output, session) {
           labs(title = ttl, x = "Index of Multiple Deprivation (IMD)", y = ylab)
         
       }else{
-      
-      ggplot(d, aes(x = cycle, y = y, colour = scen)) +
-        geom_smooth(se = FALSE, method = "loess") + add_zero_line() +
-        labs(title = ttl, x = "Cycle (year)", y = ylab) +
-        {
-          if ("factor" %in% names(d)) {
-            facet_wrap(~ factor, scales = "free_y")
-          } else if  ("cause" %in% names(d)) {
-            # if ("imd10" %in% names(d))
-            #   write_csv(d, "imd_cum.csv")
-            facet_wrap(~ cause, scales = "free_y")
-          }else {
-            list()   # add nothing
-          }
-        } +
-        theme_clean()
+        
+        ggplot(d, aes(x = cycle, y = y, colour = scen)) +
+          geom_smooth(se = FALSE, method = "loess") + add_zero_line() +
+          labs(title = ttl, x = "Cycle (year)", y = ylab) +
+          {
+            if ("factor" %in% names(d)) {
+              facet_wrap(~ factor, scales = "free_y")
+            } else if  ("cause" %in% names(d)) {
+              # if ("imd10" %in% names(d))
+              #   write_csv(d, "imd_cum.csv")
+              facet_wrap(~ cause, scales = "free_y")
+            }else {
+              list()   # add nothing
+            }
+          } +
+          theme_clean()
       }
     }
   })
@@ -540,19 +553,19 @@ server <- function(input, output, session) {
     if (!isTRUE(input$diff_cumulative)) {
       
       if ("cycle" %in% names(d)) {
-      
-      d <- d |> 
-        group_by(across(all_of(c("scen", by)))) |>
-        slice_max(order_by = cycle, n = 1, with_ties = FALSE) |>
-        ungroup() |>
-        transmute(
-          metric = metric_lab, scen,
-          !!!(if (length(by)) rlang::syms(by) else NULL),
-          final_cycle = cycle,
-          cumulative_value = y,
-          !!!if (SCALING == 1) NULL else list(cumulative_value_scaled = y * SCALING)
-        ) |>
-        arrange(scen, across(all_of(by)))
+        
+        d <- d |> 
+          group_by(across(all_of(c("scen", by)))) |>
+          slice_max(order_by = cycle, n = 1, with_ties = FALSE) |>
+          ungroup() |>
+          transmute(
+            metric = metric_lab, scen,
+            !!!(if (length(by)) rlang::syms(by) else NULL),
+            final_cycle = cycle,
+            cumulative_value = y,
+            !!!if (SCALING == 1) NULL else list(cumulative_value_scaled = y * SCALING)
+          ) |>
+          arrange(scen, across(all_of(by)))
       }else{
         
         d <- d |> 
@@ -599,7 +612,7 @@ server <- function(input, output, session) {
           ) |>
           arrange(scen, across(all_of(by)))
       }
-        
+      
     }
     
     list(raw = d, by = by, metric_lab = metric_lab)
@@ -668,10 +681,10 @@ server <- function(input, output, session) {
             position = position_dodge(width = 1),
             color = "black"
           ) +
-        
+          
           coord_flip() +
           theme_minimal()
-          
+        
       }else{
         
         p <- ggplot(cumdf) +
@@ -690,20 +703,20 @@ server <- function(input, output, session) {
     else if (grepl("Impact", data$metric_lab)){
       
       if (!"imd10" %in% names(cumdf)){
-      
-      p <- ggplot(cumdf) +
-        aes(x = scen, y = cumulative_value, fill = factor) +
-        geom_bar(stat = "summary", fun = bar_chart_func, position = "dodge2") +
-        scale_fill_hue(direction = 1) +
-        geom_text(
-          aes(label = cumulative_value, y = cumulative_value / 2),
-          size = ifelse("gender" %in% names(cumdf), 2, 3),
-          position = position_dodge(width = 1),
-          color = "black"
-        ) +
-        coord_flip() +
-        labs(x = "") +
-        theme_minimal() 
+        
+        p <- ggplot(cumdf) +
+          aes(x = scen, y = cumulative_value, fill = factor) +
+          geom_bar(stat = "summary", fun = bar_chart_func, position = "dodge2") +
+          scale_fill_hue(direction = 1) +
+          geom_text(
+            aes(label = cumulative_value, y = cumulative_value / 2),
+            size = ifelse("gender" %in% names(cumdf), 2, 3),
+            position = position_dodge(width = 1),
+            color = "black"
+          ) +
+          coord_flip() +
+          labs(x = "") +
+          theme_minimal() 
       }else{
         
         p <- ggplot(cumdf) +
@@ -718,12 +731,20 @@ server <- function(input, output, session) {
           ) +
           guides(color = "none")
         
+        p <- ggplot(cumdf) +
+          aes(x = cumulative_value, y = factor, fill = factor) +
+          geom_bar(stat = "summary", fun = "sum") +
+          scale_fill_hue(direction = 1) +
+          theme_minimal()
+        
+        
+        
       }
       
     }else{
       
       if (!"imd10" %in% names(cumdf)){
-      
+        
         p <- ggplot(cumdf, aes(x = scen, y = cumulative_value, fill = scen)) +
           geom_col(position = "dodge") +
           geom_text(
@@ -751,6 +772,8 @@ server <- function(input, output, session) {
             x = "Index of Multiple Deprivation (IMD)",
             color = "Scenario"
           )
+        
+        
       }
       
     }
@@ -760,19 +783,23 @@ server <- function(input, output, session) {
     }else if ("imd10" %in% names(cumdf) && "cause" %in% names(cumdf))  {
       p <- p + facet_wrap(~cause)
     }else if ("imd10" %in% names(cumdf) && "factor" %in% names(cumdf))  {
-      p <- p + facet_wrap(~factor, scales = "free_y")
+      p <- p + facet_wrap(vars(imd10, scen))#facet_wrap(~factor, scales = "free_y")
     }else if("ladnm" %in% names(cumdf))  {
       p <- p + facet_wrap(~ladnm)
     }
     
-    plotly::ggplotly(p + labs(title = paste(data$metric_lab, if (isTRUE(input$diff_cumulative)) "(sum)" else "(median)")))
+    p
+    
+    #plotly::ggplotly(p)
+    
+    #plotly::ggplotly(p + labs(title = paste(data$metric_lab, if (isTRUE(input$diff_cumulative)) "(sum)" else "(median)")))
     
   })
   
   get_onset_ages <- reactive({
     # req(input$avg_kind, input$view_level, input$scen_sel, input$avg_cause, input$avg_death_causes,
     #     input$lad_sel)          
-          
+    
     view <- input$view_level
     
     dt <- NULL
@@ -863,7 +890,7 @@ server <- function(input, output, session) {
     
     dt <- get_onset_ages()
     get_normalized_table(dt |> 
-                            pivot_wider(names_from = scen, values_from = mean_age_raw_years)) |>
+                           pivot_wider(names_from = scen, values_from = mean_age_raw_years)) |>
       dplyr::select(-matches("min|max|norm")) |> 
       gt() |>
       tab_options(table.font.size = "small") |>
@@ -944,6 +971,7 @@ server <- function(input, output, session) {
           pivot_wider(names_from = scen, values_from = age_std_rate)
         
       } else {
+        
         df <- asr_lad_all_avg_1_30 |> 
           filter(cause %in% causes, scen %in% scens) |> 
           mutate(cause = case_when(cause == "dead" ~ "Death (all causes)",
@@ -956,12 +984,6 @@ server <- function(input, output, session) {
           df <- df |> filter(ladnm %in% input$lad_sel)
         
         req(nrow(df) > 0)
-        top_ids <- df |> 
-          filter(cause == causes[1], scen == "reference") |> 
-          distinct(ladnm)
-        
-        df <- df |> filter(ladnm %in% top_ids$ladnm)
-        req(nrow(df) > 0)
         
         df <- df |> 
           group_by(cause, ladnm, scen) |> 
@@ -973,30 +995,30 @@ server <- function(input, output, session) {
       if (input$view_level == "Overall") {
         df <- bind_rows(asr_overall_all, asr_healthy_years_overall) |>
           filter(cause %in% causes, scen %in% scens, cycle >= MIN_CYCLE) |> 
-            mutate(cause = case_when(cause == "dead" ~ "Death (all causes)",
-                                     cause == "dead_car" ~ "Death (car)",
-                                     cause == "dead_bike" ~ "Death (cyclist)",
-                                     cause == "dead_walk" ~ "Death (pedestrian)",
-                                     .default = as.character(cause)))
+          mutate(cause = case_when(cause == "dead" ~ "Death (all causes)",
+                                   cause == "dead_car" ~ "Death (car)",
+                                   cause == "dead_bike" ~ "Death (cyclist)",
+                                   cause == "dead_walk" ~ "Death (pedestrian)",
+                                   .default = as.character(cause)))
       } else if (input$view_level == "Gender") {
         df <- asr_gender_all |> 
           filter(cause %in% causes, scen %in% scens, cycle >= MIN_CYCLE) |> 
-            mutate(cause = case_when(cause == "dead" ~ "Death (all causes)",
-                                     cause == "dead_car" ~ "Death (car)",
-                                     cause == "dead_bike" ~ "Death (cyclist)",
-                                     cause == "dead_walk" ~ "Death (pedestrian)",
-                                     .default = as.character(cause))) |>
+          mutate(cause = case_when(cause == "dead" ~ "Death (all causes)",
+                                   cause == "dead_car" ~ "Death (car)",
+                                   cause == "dead_bike" ~ "Death (cyclist)",
+                                   cause == "dead_walk" ~ "Death (pedestrian)",
+                                   .default = as.character(cause))) |>
           mutate(gender = ifelse(gender == 1, "Male",
                                  ifelse(gender == 2, "Female", NA)))
       } else if (input$view_level == "IMD") {
         df <- pc$asr_imd_all |> 
           filter(cause %in% causes, scen %in% scens, cycle >= MIN_CYCLE) |> 
-            mutate(cause = case_when(cause == "dead" ~ "Death (all causes)",
-                                     cause == "dead_car" ~ "Death (car)",
-                                     cause == "dead_bike" ~ "Death (cyclist)",
-                                     cause == "dead_walk" ~ "Death (pedestrian)",
-                                     .default = as.character(cause)))
-          
+          mutate(cause = case_when(cause == "dead" ~ "Death (all causes)",
+                                   cause == "dead_car" ~ "Death (car)",
+                                   cause == "dead_bike" ~ "Death (cyclist)",
+                                   cause == "dead_walk" ~ "Death (pedestrian)",
+                                   .default = as.character(cause)))
+        
       } else {
         df <- asr_lad_all_per_cycle |> 
           filter(cause %in% causes, scen %in% scens, cycle >= MIN_CYCLE) |> 
@@ -1031,7 +1053,7 @@ server <- function(input, output, session) {
         ggplot(df, aes(x = cycle, y = age_std_rate, colour = Scenario, group = Scenario)) +
           geom_col(position = position_dodge(width = 0.9), aes(fill = Scenario)) +
           facet_wrap(vars(cause), scales = "free_y", ncol = 4) +
-          labs(title = "ASR per cycle (summed over cycles 1-30)\n\n", 
+          labs(title = paste0("ASR per cycle (summed over cycles 1-", MAX_CYCLE, ")\n\n"), 
                x = "Cycle (year)", y = "ASR per 100,000") +
           theme_clean()
         
@@ -1039,7 +1061,7 @@ server <- function(input, output, session) {
         ggplot(df, aes(x = cycle, y = age_std_rate, colour = Scenario)) +
           geom_col(position = position_dodge(width = 0.9), aes(fill = Scenario)) +
           facet_wrap(vars(cause, gender), scales = "free_y") +
-          labs(title = "ASR per cycle by gender (summed over cycles 1-30)\n\n",
+          labs(title = paste0("ASR per cycle (summed over cycles 1-", MAX_CYCLE, ")\n\n"),
                x = "Cycle (year)", y = "ASR per 100,000") +
           theme_clean()
         
@@ -1048,7 +1070,7 @@ server <- function(input, output, session) {
           geom_col(position = position_dodge(width = 0.9), aes(fill = Scenario)) +
           scale_x_continuous(breaks = c(1:10)) + 
           facet_wrap(vars(cause), scales = "free_y") +
-          labs(title = "ASR by IMD (summed over cycles 1-30)\n\n",
+          labs(title = paste0("ASR per cycle (summed over cycles 1-", MAX_CYCLE, ")\n\n"),
                x = "IMD", y = "ASR per 100,000") +
           theme_clean()
         
@@ -1056,7 +1078,7 @@ server <- function(input, output, session) {
         ggplot(df, aes(x = cycle, y = age_std_rate, colour = Scenario)) +
           geom_col(position = position_dodge(width = 0.9), aes(fill = Scenario)) +
           facet_grid(ladnm ~ cause, scales = "free_y") +
-          labs(title = "ASR per cycle by LAD (total for cycles 1-30)",
+          labs(title = paste0("ASR per cycle (summed over cycles 1-", MAX_CYCLE, ")\n\n"),
                x = "Cycle (year)", y = "ASR per 100,000") +
           theme_clean()
       }
@@ -1065,7 +1087,7 @@ server <- function(input, output, session) {
   
   
   output$plot_asrly <- renderUI({
-      plot_obj <- build_asr_plot()
+    plot_obj <- build_asr_plot()
     
     if (inherits(plot_obj, "ggplot")) {
       output$plot_asr <- renderPlotly({
@@ -1265,7 +1287,7 @@ server <- function(input, output, session) {
       facet_vars <- vars("")
       
       fs <- 3
-
+      
       if (input$view_level == "Overall") {
         tp <- t$trips_percentage_combined |> 
           group_by(scen, mode) |> 
@@ -1285,9 +1307,7 @@ server <- function(input, output, session) {
           ungroup() |> 
           mutate(pt = trip_count/tt * 100,
                  gender = as.factor(case_when(gender == 1 ~ "Male", 
-                                                            gender == 2 ~ "Female")))
-                 
-        
+                                              gender == 2 ~ "Female")))
         
         facet_vars <- vars(gender)
       }else if(input$view_level == "LAD"){
@@ -1301,7 +1321,7 @@ server <- function(input, output, session) {
         
         facet_vars <- vars(LAD_origin)
         fs <- 1
-      
+        
         
       }
       
@@ -1322,55 +1342,55 @@ server <- function(input, output, session) {
                  geom_col() +
                  scale_fill_hue(direction = 1) +
                  theme_minimal(base_size = 12) +
-                   theme(
-                     panel.grid.major = element_blank(),
-                     panel.grid.minor = element_blank(),
-                     axis.ticks.y = element_blank(),
-                     plot.title = element_text(hjust = 0.5, face = "bold"),
-                     axis.text.y = element_blank(),
-                     axis.text.x = element_text(face = "bold"),
-                     strip.placement = "outside",
-                     strip.text = element_text(face = "bold"),
-                     legend.text = element_text(face = "bold"),
-                     legend.title = element_text(face = "bold")
-                   ) +
+                 theme(
+                   panel.grid.major = element_blank(),
+                   panel.grid.minor = element_blank(),
+                   axis.ticks.y = element_blank(),
+                   plot.title = element_text(hjust = 0.5, face = "bold"),
+                   axis.text.y = element_blank(),
+                   axis.text.x = element_text(face = "bold"),
+                   strip.placement = "outside",
+                   strip.text = element_text(face = "bold"),
+                   legend.text = element_text(face = "bold"),
+                   legend.title = element_text(face = "bold")
+                 ) +
                  geom_text(aes(label = ifelse(pt > 2, paste0(round(pt, 1), "%"), "")),
                            position = position_stack(vjust = .5),
                            size = fs) +
                  
                  facet_wrap(facet_vars) +
-                   labs(
-                     title = "Transport Mode Share (%)",
-                     y = "Proportion (%)",
-                     x = "Scenario",
-                     fill = "Transport Mode"
-                   )
+                 labs(
+                   title = "Transport Mode Share (%)",
+                   y = "Proportion (%)",
+                   x = "Scenario",
+                   fill = "Transport Mode"
                  )
+      )
     }
     
     else if (input$metrics_picker == "Combined Trip Distance by Modes") {
       
       if (input$view_level == "Overall") {
-      
-      pop <- people_overall |> 
-        filter(cycle == 0) |> 
-        group_by(scen) |> 
-        reframe(pop = sum(pop))
-      
-      td <- t$combined_distance |> 
-        filter(grepl("All", ladnm)) |> 
-        group_by(scen, mode) |> 
-        reframe(total_dist = sum(sumDistance)) |> 
-        left_join(pop) |> mutate(med_dist = total_dist/pop)
-      
-      ggplotly(ggplot(td) +
-        aes(x = med_dist, y = mode, fill = scen) +
-        geom_bar(stat = "summary", fun = "sum", position = "dodge2") +
-        scale_fill_hue(direction = 1) +
-        theme_minimal()
-      )
+        
+        pop <- people_overall |> 
+          filter(cycle == 0) |> 
+          group_by(scen) |> 
+          reframe(pop = sum(pop))
+        
+        td <- t$combined_distance |> 
+          filter(grepl("All", ladnm)) |> 
+          group_by(scen, mode) |> 
+          reframe(total_dist = sum(sumDistance)) |> 
+          left_join(pop) |> mutate(med_dist = total_dist/pop)
+        
+        ggplotly(ggplot(td) +
+                   aes(x = med_dist, y = mode, fill = scen) +
+                   geom_bar(stat = "summary", fun = "sum", position = "dodge2") +
+                   scale_fill_hue(direction = 1) +
+                   theme_minimal()
+        )
       }else{
-      
+        
         ggplotly(
           ggplot(t$combined_distance) +
             aes(x = mode, y = avgDistance, fill = scen) +
@@ -1390,35 +1410,35 @@ server <- function(input, output, session) {
                  fill = "Scenario")
         )
       }
-        
-      } else if (input$metrics_picker == "Trip Duration by Mode") {
-        ggplotly(ggplot(t$avg_time_combined) +
-                   aes(x = mode, y = avgTime, fill = scen) +
-                   geom_col(position = "dodge2") +
-                   geom_text(aes(label = round(avgTime, 1),
-                                 y = avgTime),
-                             size = 2, #hjust = -0.1, 
-                             hjust = 1.1, 
-                             vjust = 0.2,
-                             position = position_dodge(1),
-                             inherit.aes = TRUE
-                   ) +
-                   scale_fill_hue(direction = 1) +
-                   labs(title = "Average weekly time (in hours) by mode per person and location",
-                        fill = "Scenario",
-                        x = "", y = "Hours") +
-                   coord_flip() +
-                   theme_minimal() +
-                   facet_wrap(vars(LAD_origin))
-        )        
-      } else if (input$metrics_picker == "Zero Mode") {
-        plot_ly(
-          data = data.frame(category = LETTERS[1:4], count = c(10, 5, 15, 20)),
-          x = ~category, y = ~count, type = "bar"
-        ) %>%
-          layout(title = "Zero Mode Metrics", yaxis = list(title = "Count"))
-      }
-
+      
+    } else if (input$metrics_picker == "Trip Duration by Mode") {
+      ggplotly(ggplot(t$avg_time_combined) +
+                 aes(x = mode, y = avgTime, fill = scen) +
+                 geom_col(position = "dodge2") +
+                 geom_text(aes(label = round(avgTime, 1),
+                               y = avgTime),
+                           size = 2, #hjust = -0.1, 
+                           hjust = 1.1, 
+                           vjust = 0.2,
+                           position = position_dodge(1),
+                           inherit.aes = TRUE
+                 ) +
+                 scale_fill_hue(direction = 1) +
+                 labs(title = "Average weekly time (in hours) by mode per person and location",
+                      fill = "Scenario",
+                      x = "", y = "Hours") +
+                 coord_flip() +
+                 theme_minimal() +
+                 facet_wrap(vars(LAD_origin))
+      )        
+    } else if (input$metrics_picker == "Zero Mode") {
+      plot_ly(
+        data = data.frame(category = LETTERS[1:4], count = c(10, 5, 15, 20)),
+        x = ~category, y = ~count, type = "bar"
+      ) %>%
+        layout(title = "Zero Mode Metrics", yaxis = list(title = "Count"))
+    }
+    
     
   })
   
@@ -1440,7 +1460,7 @@ server <- function(input, output, session) {
       )
     
     # Identify scenario columns once
-    scen_cols <- setdiff(names(wide_df), c("grouping", "variable", "stat"))
+    scen_cols <- setdiff(names(wide_df), c("grouping", "variable", "stat", "year"))
     
     # Compute row-wise min/max in a fully vectorised way
     scen_mat <- as.matrix(wide_df[scen_cols])
@@ -1488,11 +1508,11 @@ server <- function(input, output, session) {
     html_cols <- scen_cols
     
     gt_tbl <- norm_df |>
-      dplyr::select(grouping, variable, stat, dplyr::all_of(html_cols)) |>
+      dplyr::select(grouping, year, variable, stat, dplyr::all_of(html_cols)) |>
       gt::gt() |>
       gt::cols_label(!!!rlang::set_names(html_cols, html_cols)) |>
       gt::fmt_markdown(columns = dplyr::all_of(html_cols)) |>
-      gt::tab_options(table.font.size = "small") |>
+      gt::tab_options(table.font.size = "small", ihtml.use_pagination = FALSE) |>
       opt_interactive(
         use_filters      = TRUE,
         use_sorting      = FALSE,
