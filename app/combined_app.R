@@ -17,8 +17,8 @@ suppressPackageStartupMessages({
   library(shinyWidgets)
 })
 
-pc <- qs2::qs_read("data/all_data_but_gd_020626_fixed.qs2")
-exp <- qs2::qs_read("data/030626_fixed_exp.qs2")
+pc <- qs2::qs_read("data/240626_sdata.qs2")
+exp <- qs2::qs_read("data/240626_exp.qs2")
 
 SCALING <- 1L
 
