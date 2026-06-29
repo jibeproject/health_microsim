@@ -37,7 +37,13 @@ lsoa <- readRDS("gm_lsoa_boundaries.rds")        # sf, EPSG:27700
 lsoa_wgs <- st_transform(lsoa, 4326)
 lad      <- readRDS("gm_lad_boundaries.rds")      # sf, EPSG:27700 (10 GM LADs)
 lad_wgs  <- st_transform(lad, 4326)
+
+# dissolved outer boundary of Greater Manchester (all 10 LADs as one outline)
+gm_outline <- suppressWarnings(
+  sf::st_union(lad_wgs) |> sf::st_boundary()
+)
 lad_prof <- readRDS("lad_profile.rds")            # per-LAD demographic profile
+lad_imd_metric <- readRDS("lad_imd_metric.rds")   # LAD x metric x stat x quintile x scenario
 
 # point-on-surface for placing LAD name labels (inside each polygon)
 lad_centroids <- suppressWarnings(
@@ -140,8 +146,15 @@ ui <- fluidPage(
                               "Q5 (least deprived)" = "5"),
                   selected = "all"),
       hr(),
+      selectInput("lad_pick", "LAD detail (metric by IMD)",
+                  choices = c("Select a LAD..." = "",
+                              setNames(lad_prof$ladcd, lad_prof$ladnm)),
+                  selected = ""),
+      uiOutput("lad_chart"),
+      hr(),
       downloadButton("dl_png", "Save faceted PNG"),
-      helpText("Click an LSOA to see how it changes across scenarios.")
+      helpText("Click an LSOA to see how it changes across scenarios. ",
+               "Click a LAD border (or use the dropdown) for its IMD breakdown.")
     ),
     mainPanel(width = 9, leafletOutput("map", height = 720))
   )
@@ -202,21 +215,27 @@ server <- function(input, output, session) {
       leafletProxy("map", data = dat) |> clearShapes() |> clearControls() |>
         addPolygons(fillColor = "#dddddd", fillOpacity = 0.5,
                     color = "white", weight = 0.4, label = ~lsoa21cd) |>
-        addPolylines(data = lad_wgs, color = "#111111", weight = 2.5,
+        addPolylines(data = lad_wgs, layerId = ~paste0("LAD_", lad21cd),
+                     color = "#111111", weight = 2.5,
                      opacity = 1, group = "LAD boundaries")
       return(invisible())
     }
     
     # ---- palette: viridis for absolute, diverging centred on 0 for % change
     if (input$view == "pctchange") {
-      rng <- max(abs(v), na.rm = TRUE)
-      if (!is.finite(rng) || rng == 0) rng <- 1
-      # reverse RdBu so red = increase vs base, blue = decrease
+      # data-driven symmetric cap: use the 98th percentile of |value| so the
+      # colours fill the real range (PM2.5 changes ~3%, mMETs can be ~80%),
+      # with a small floor so near-zero data still shows some colour.
+      cap <- stats::quantile(abs(v), 0.98, na.rm = TRUE)
+      if (!is.finite(cap) || cap < 1) cap <- 1
+      cap <- as.numeric(cap)
+      v_clamped <- pmax(pmin(v, cap), -cap)
       pal <- colorNumeric(rev(RColorBrewer::brewer.pal(11, "RdBu")),
-                          domain = c(-rng, rng), na.color = "#dddddd")
+                          domain = c(-cap, cap), na.color = "#dddddd")
       legend_title <- paste0(metric_labels[[input$metric]],
                              "<br/><small>% change: ", input$cmp_scenario,
-                             " vs base (", stat_labels[[st]], ")</small>")
+                             " vs base (", stat_labels[[st]], "), &plusmn;",
+                             formatC(cap, digits = 1, format = "f"), "%</small>")
     } else {
       pal <- colorNumeric("viridis", v, na.color = "#dddddd")
       legend_title <- paste0(metric_labels[[input$metric]],
@@ -242,7 +261,7 @@ server <- function(input, output, session) {
     }
     labels <- paste0(head_line, scn_lines, dat$profile_html) |> lapply(htmltools::HTML)
     
-    fill_cols <- pal(v)
+    fill_cols <- if (input$view == "pctchange") pal(v_clamped) else pal(v)
     fill_op   <- rep(0.8, nrow(dat))
     # IMD quintile filter: dim + grey LSOAs not in the selected quintile
     if (input$imd_filter != "all") {
@@ -258,7 +277,8 @@ server <- function(input, output, session) {
                   color = "white", weight = 0.4, label = labels,
                   highlightOptions = highlightOptions(weight = 2, color = "#222",
                                                       bringToFront = TRUE)) |>
-      addPolylines(data = lad_wgs, color = "#111111", weight = 2.5, opacity = 1,
+      addPolylines(data = lad_wgs, layerId = ~paste0("LAD_", lad21cd),
+                   color = "#111111", weight = 2.5, opacity = 1,
                    label = lapply(lad_wgs$lad21cd, function(cd) {
                      h <- lad_popup[[cd]]
                      htmltools::HTML(if (is.null(h)) cd else h)
@@ -275,7 +295,9 @@ server <- function(input, output, session) {
                                                                    "text-shadow" =
                                                                      "0 0 3px #fff, 0 0 3px #fff")),
                           group = "LAD boundaries") |>
-      addLegend(pal = pal, values = if (input$view == "pctchange") c(-rng, rng) else v,
+      addPolylines(data = gm_outline, color = "#1a1a1a", weight = 5, opacity = 1,
+                   group = "LAD boundaries") |>
+      addLegend(pal = pal, values = if (input$view == "pctchange") c(-cap, cap) else v,
                 opacity = 0.9, title = HTML(legend_title), position = "bottomright") |>
       addLayersControl(
         overlayGroups = "LAD boundaries",
@@ -284,12 +306,80 @@ server <- function(input, output, session) {
   })
   
   # ---- LSOA click -> scenario comparison chart popup ------------------------
+  # build the LAD-by-IMD chart for a given LAD code; returns a base64 data URI
+  lad_imd_chart_uri <- function(ladcode) {
+    st <- stat_used()
+    cmp <- if (is.null(input$cmp_scenario)) other_scn[1] else input$cmp_scenario
+    d <- lad_imd_metric |>
+      filter(ladcd == ladcode, metric == input$metric, stat == st,
+             scenario %in% c(base_name, cmp))
+    if (nrow(d) == 0) return(NULL)
+    wide <- d |>
+      select(imd_quintile, scenario, value) |>
+      tidyr::pivot_wider(names_from = scenario, values_from = value) |>
+      arrange(imd_quintile)
+    q   <- wide$imd_quintile
+    bv  <- wide[[base_name]]
+    sv  <- wide[[cmp]]
+    pc  <- ifelse(is.na(bv) | bv == 0, NA, 100 * (sv - bv) / bv)
+    ladnm <- lad_prof$ladnm[match(ladcode, lad_prof$ladcd)]
+    
+    f <- tempfile(fileext = ".png")
+    png(f, width = 440, height = 340, res = 96)
+    op <- par(mfrow = c(2, 1), mar = c(2.2, 4, 2.2, 1), oma = c(2, 0, 1.5, 0))
+    m <- rbind(base = bv, scn = sv)
+    barplot(m, beside = TRUE, names.arg = paste0("Q", q),
+            col = c("#999999", "#1f78b4"), border = NA,
+            ylab = "value", main = "Absolute (base vs scenario)",
+            cex.main = 0.95, cex.names = 0.85)
+    legend("topright", c("base", cmp), fill = c("#999999", "#1f78b4"),
+           border = NA, bty = "n", cex = 0.8)
+    cols <- ifelse(is.na(pc), "#cccccc", ifelse(pc >= 0, "#b2182b", "#2166ac"))
+    barplot(pc, names.arg = paste0("Q", q), col = cols, border = NA,
+            ylab = "% change", main = "% change vs base",
+            cex.main = 0.95, cex.names = 0.85)
+    abline(h = 0, col = "#444444")
+    mtext(sprintf("%s - %s (%s)", ladnm, metric_labels[[input$metric]], stat_labels[[st]]),
+          outer = TRUE, cex = 0.95, font = 2)
+    mtext("IMD quintile (Q1 = most deprived)", side = 1, outer = TRUE, cex = 0.8)
+    par(op); dev.off()
+    paste0("data:image/png;base64,", base64enc::base64encode(f))
+  }
+  
+  # the chart panel below the map: driven by the LAD dropdown
+  output$lad_chart <- renderUI({
+    if (is.null(input$lad_pick) || input$lad_pick == "")
+      return(helpText("Select a LAD (or click a border) for its metric change by IMD quintile."))
+    uri <- lad_imd_chart_uri(input$lad_pick)
+    if (is.null(uri)) return(helpText("No data for this LAD / metric combination."))
+    tags$img(src = uri, width = "100%", style = "max-width:440px;")
+  })
+  
   observeEvent(input$map_shape_click, {
     click <- input$map_shape_click
     id <- click$id
-    if (is.null(id) || !grepl("^E01", id)) return()   # only LSOA ids (E01...)
+    if (is.null(id)) return()
     
     st <- stat_used()
+    
+    # ---- LAD border click -> set the dropdown (which renders the chart) ------
+    if (grepl("^LAD_", id)) {
+      ladcode <- sub("^LAD_", "", id)
+      updateSelectInput(session, "lad_pick", selected = ladcode)
+      uri <- lad_imd_chart_uri(ladcode)
+      if (!is.null(uri)) {
+        ladnm <- lad_prof$ladnm[match(ladcode, lad_prof$ladcd)]
+        leafletProxy("map") |> clearPopups() |>
+          addPopups(lng = click$lng, lat = click$lat,
+                    popup = sprintf("<b>%s</b><br/><img src='%s' width='400'/>",
+                                    ladnm, uri))
+      }
+      return()
+    }
+    
+    # ---- LSOA click -> scenario comparison chart -----------------------------
+    if (!grepl("^E01", id)) return()   # only LSOA ids (E01...)
+    
     vals <- long |>
       filter(metric == input$metric, stat == st, lsoa21cd == id) |>
       select(scenario, value)
