@@ -60,7 +60,7 @@ select_synth_pop_file <- function() {
   list(
     file_path = file_choice,
     region = region_match,
-    scenario = scenario_match
+    scenario = stringr::str_split_i(scenario_match, " ", 1)
   )
 }
 
@@ -83,24 +83,21 @@ zones <- read_csv(
 cat("✓ Zones data loaded. Rows:", nrow(zones), "\n")
 
 # Disease prevalence data
+# NOTE: reads the SA2-level prevalence output (SM_prev) from health_data_Melbourne.Rmd,
+# NOT the SILO/MITO incidence file (health_transitions_melbourne.csv).
+# Using incidence rates for baseline prevalence assignment would undercount chronic
+# diseases by 10-50x (annual incidence << period prevalence for COPD, diabetes, etc.).
 cat("Loading prevalence data...\n")
 prevalence <- read_csv(
   here(
     paste0(
-      "../",
-      study_region,
-      "/input/health/health_transitions_melbourne.csv"
+      "melbourne/health/processed/health_transitions_melbourne_prevalence_SA2.csv"
     )
   ),
   show_col_types = FALSE
 ) %>%
   arrange(SA2_MAIN16, age, sex, cause)
 cat("✓ Prevalence data loaded. Rows:", nrow(prevalence), "\n")
-
-## The following is commented out as the prevalence data already contains probabilities
-# %>%
-#   mutate(prob = 1 - exp(-rate), # Convert rates to probabilities
-#          cause = str_replace_all(cause, fixed("parkinson’s_disease"), "parkinson"))
   
 ### Assign geographies
 cat("Assigning geographies...\n")
@@ -125,6 +122,7 @@ synth_pop_wprob <- synth_pop |>
 cat("✓ Prevalence joined. Rows:", nrow(synth_pop_wprob), "\n")
 
 disease_cols <- c(
+  "all_cause_dementia",
   "bladder_cancer",
   "breast_cancer",
   "colon_cancer",
