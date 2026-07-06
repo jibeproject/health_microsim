@@ -2262,10 +2262,66 @@ depression_prevalence <- gbdpyr_interp %>%
   mutate(prob = 1 - exp(-rate))
 
 # Parkinson's disease prevalence (GBD age/sex only; no SES disaggregation available)
-parkinson_prevalence <- gbdpyr_interp %>%
-  filter(measure == "Prevalence" & cause == "Parkinson's disease" & year == 2018) %>%
+# Parkinson's was not included in the main GBD download, so it is loaded from a
+# separately downloaded GBD 2021 file and processed with the identical pipeline.
+parkinson_gbd_raw <- read.csv(
+  here("melbourne/health/original/GBD/Parkinsons/2018/IHME-GBD_2021_DATA-933bcb4f-1.csv")
+)
+
+# GBD 2021 downloads use 'measure_name', 'sex_name', etc. Rename to match the
+# column names used by the rest of the pipeline.
+parkinson_gbd_raw <- parkinson_gbd_raw %>%
+  rename(measure  = measure_name,
+         sex      = sex_name,
+         age      = age_name,
+         cause    = cause_name,
+         metric   = metric_name,
+         location = location_name)
+
+# Apply the same pre-processing as the main gbdp block
+parkinson_gbdp <- parkinson_gbd_raw %>%
+  filter(metric %in% "Rate", measure %in% "Prevalence") %>%
+  select(-any_of(c("location", "upper", "lower",
+                   "measure_id", "location_id", "sex_id",
+                   "age_id", "cause_id", "metric_id"))) %>%
+  filter(!age %in% "All ages") %>%
+  mutate(rate_1 = val / 100000) %>%
+  mutate(age = gsub(" years", "", age)) %>%
+  tidyr::extract(age, c("from_age", "to_age"), "(.+)-(.+)",
+                 remove = FALSE, convert = TRUE) %>%
+  mutate(
+    from_age = case_when(age == "95+" ~ 95L, age == "<5" ~ 0L, TRUE ~ from_age),
+    to_age   = case_when(age == "95+" ~ 99L, age == "<5" ~ 4L, TRUE ~ to_age),
+    agediff  = to_age - from_age + 1,
+    val1yr   = rate_1
+  ) %>%
+  rename(agegroup = age)
+
+# Stretched 5-year-to-1-year frame (used for validation join after interpolation)
+parkinson_gbdpyrd5 <- parkinson_gbdp[
+    rep(seq_len(nrow(parkinson_gbdp)), parkinson_gbdp$agediff), ] %>%
+  mutate(ageyr = from_age + sequence(parkinson_gbdp$agediff) - 1) %>%
+  select(measure, ageyr, sex, agegroup, from_age, to_age, cause, year, val1yr, rate_1)
+
+# Interpolate from 5-year age groups to single years using the same function
+# (disagg_smooth_spline) as all other GBD diseases
+parkinson_grp <- parkinson_gbdp %>%
+  group_by(measure, year, sex, cause) %>%
+  arrange(measure, year, sex, cause, from_age)
+
+parkinson_interp <- group_modify(parkinson_grp, disagg_smooth_spline) %>%
+  ungroup() %>%
+  left_join(parkinson_gbdpyrd5, by = c("measure", "year", "ageyr", "sex", "cause"))
+
+# Extract 2018 prevalence and compute annual probability
+parkinson_prevalence <- parkinson_interp %>%
+  filter(measure == "Prevalence" & year == 2018) %>%
   rename(rate = val_interpolated) %>%
   mutate(prob = 1 - exp(-rate))
+
+cat("parkinson_prevalence: rows =", nrow(parkinson_prevalence),
+    "| ages =", n_distinct(parkinson_prevalence$ageyr),
+    "| sexes =", paste(sort(unique(parkinson_prevalence$sex)), collapse = ", "), "\n")
 
 ```
 
@@ -2920,8 +2976,10 @@ SA2_SES <- data_melbourne %>%
   ungroup() %>%
   # Join IRSD decile lookup so SA2_SES carries both the derived quintile (for
   # backwards-compatibility) and the ABS-based IRSD decile and Melbourne-local decile
-  left_join(SA2_IRSD %>% dplyr::select(sa2_code, irsd_decile_nat, irsd_decile_mel,
-                                        irsd_quintile_mel),
+  left_join(SA2_IRSD %>%
+              mutate(sa2_code = as.character(sa2_code)) %>%
+              dplyr::select(sa2_code, irsd_decile_nat, irsd_decile_mel,
+                            irsd_quintile_mel),
             by = "sa2_code")
 
 missing_SES <- SA2_SES %>%
@@ -2992,10 +3050,13 @@ chronic diseases (annual incidence << period prevalence for COPD, diabetes, etc.
 
 ```{r}
 
-# --- Cancers: cancer_prevalence_area already has SA2-level prevalence probs ---
+# --- Cancers: cancer_prevalence_area has 5-digit Atlas SA2 codes; convert to
+# 9-digit SA2_MAINCODE_2016 to match the synthetic population's SA2_MAIN16. ---
 SM_prev_cancer <- cancer_prevalence_area %>%
+  left_join(SA2_Melb %>% dplyr::select(SA2_5DIGITCODE_2016, SA2_MAINCODE_2016),
+            by = c("sa2_code" = "SA2_5DIGITCODE_2016")) %>%
   mutate(sex = case_when(sex == "Male" ~ 1, sex == "Female" ~ 2)) %>%
-  dplyr::select(SA2_MAIN16 = sa2_code, age, sex, cause, prob) %>%
+  dplyr::select(SA2_MAIN16 = SA2_MAINCODE_2016, age, sex, cause, prob) %>%
   filter(!is.na(SA2_MAIN16))
 
 # --- CVD/diabetes/COPD/dementia/stroke: map socio quintile → SA2 via SA2_SES ---
@@ -3036,15 +3097,30 @@ SM_prev_parkinson <- parkinson_prevalence %>%
   unnest(SA2_MAIN16) %>%
   ungroup()
 
-# --- Combine and standardise cause names (match SILO/MITO Diseases.java) ---
+# --- Combine and standardise cause names to lowercase snake_case ---
+# Each component block keeps its original cause names; standardisation is done
+# here so the output matches the disease_cols list in assign_prevalence_Melbourne.R.
 SM_prev <- bind_rows(SM_prev_cancer, SM_prev_non_cancer, SM_prev_depression,
                      SM_prev_parkinson) %>%
   dplyr::select(SA2_MAIN16, age, sex, cause, prob) %>%
-  mutate(cause = case_when(
-    cause == "head_and_neck_cancer" ~ "head_neck_cancer",
-    TRUE                            ~ cause
-  )) %>%
+  mutate(
+    cause = tolower(cause),
+    cause = gsub(" ", "_", cause),
+    cause = case_when(
+      cause == "chronic_obstructive_pulmonary_disease"  ~ "copd",
+      cause == "diabetes_type_2"                        ~ "diabetes",
+      cause == "diabetes_mellitus_type_2"                ~ "diabetes",
+      cause == "alzheimer's_disease_and_other_dementias" ~ "all_cause_dementia",
+      cause == "head_and_neck_cancer"                   ~ "head_neck_cancer",
+      cause == "ischemic_heart_disease"                 ~ "coronary_heart_disease",
+      TRUE                                              ~ cause
+    )
+  ) %>%
   filter(!is.na(SA2_MAIN16), !is.na(prob))
+
+cat("SM_prev: rows =", nrow(SM_prev), "| unique causes =", n_distinct(SM_prev$cause), "\n")
+cat("Causes present:\n")
+print(sort(unique(SM_prev$cause)))
 
 # write prevalence output for use in assign_prevalence_Melbourne.R
 write_csv(SM_prev,
