@@ -2977,7 +2977,6 @@ SA2_SES <- data_melbourne %>%
   # Join IRSD decile lookup so SA2_SES carries both the derived quintile (for
   # backwards-compatibility) and the ABS-based IRSD decile and Melbourne-local decile
   left_join(SA2_IRSD %>%
-              mutate(sa2_code = as.character(sa2_code)) %>%
               dplyr::select(sa2_code, irsd_decile_nat, irsd_decile_mel,
                             irsd_quintile_mel),
             by = "sa2_code")
@@ -3394,15 +3393,15 @@ for (i in seq_along(chunks)) {
 
 ## Prevalence trends
 
-Prevalence rates for 2018 and subsequent years. We have not identified
-useful prevalence projections for the relevant diseases.
+Prevalence rates for 2018 and subsequent years. 
 
 This consists of prevalence rates from GBD for 2018 to 2021 for all
 relevant diseases, plus rates from AIHW for specific years for diabetes,
-dementia \[and COPD\]. **SP note: the COPD figures from AIHW are much
+dementia and COPD. 
+<!-- SP note: the COPD figures from AIHW are much
 lower than from GBD, and this may be because the AIHW figures only cover
 ICD J43-J44, whereas the GBD figures cover J41-J44. Possibly the COPD
-figures here are not useful and should be discarded.**
+figures here are not useful and should be discarded. -->
 
 ```{r}
 # GBD prevalence for all relevant diseases, 2018-21
