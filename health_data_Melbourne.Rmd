@@ -49,6 +49,8 @@ library(knitr)
 library(jsonlite)
 library(kableExtra)
 library(gt)
+library(rjson)
+library(ggforce)
 library(here) # to get files from the current working directory
 
 # set root directory one level up from currentdirectory
@@ -109,7 +111,8 @@ health_outcomes_risks <- tibble::tribble(
   "Depressive disorders", "GBD (F32-F33.9, F34.1)", "#", "PA (F32-F33)", "#", "#", "#",
   "All cause dementia",  "GBD (F00-F02.0, F02.8-F03.91, F06.2, G30-G31.1, G31.8-G32.89)", "#","PA (F01-F03)", "#", "#", "#",
   "Diabetes type 2", "GBD (E11-E11.1, E11.3-E11.9)", "AIHW (E11)", "PA", "#", "#", "#",
-  "Chronic obstructive pulmonary disease",  "GBD (J41-J42.4, J43-J44.9)", "AIHW (J40-J44)","PA", "#", "#", "#"
+  "Chronic obstructive pulmonary disease",  "GBD (J41-J42.4, J43-J44.9)", "AIHW (J40-J44)","PA", "#", "#", "#",
+  "Parkinson disease",  "GBD (G20)", "AIHW (G20)","PA", "#", "#", "#",
 )
 
 inputs <- kableExtra::kable(
@@ -1748,7 +1751,8 @@ prev_agesex_all <- gbdpyr %>%
                        "Other pharynx cancer", "Bladder cancer", "Prostate cancer", 
                        "Malignant skin melanoma", "Depressive disorders", 
                        "Major depressive disorder", "Alzheimer's disease and other dementias", 
-                       "Diabetes mellitus type 2", "Chronic obstructive pulmonary disease")) %>%
+                       "Diabetes mellitus type 2", "Chronic obstructive pulmonary disease",
+                       "Parkinson's disease")) %>%
   dplyr::select(year, cause, age = ageyr, sex, rate = val_interpolated) %>%
   mutate(cause = case_when(
     cause == "Ischemic heart disease"    ~ "Coronary heart disease",
@@ -1760,6 +1764,7 @@ prev_agesex_all <- gbdpyr %>%
     cause == "Major depressive disorder" ~ "Major depression",
     cause == "Alzheimer's disease and other dementias" ~ "All cause dementia",
     cause == "Diabetes mellitus type 2"  ~ "Diabetes type 2",
+    cause == "Parkinson's disease"       ~ "Parkinson",
     .default = cause
   ))
 
@@ -2224,8 +2229,8 @@ cvd_dem_dia_copd_prev <-  cvd_dem_dia_copd_prev %>%
   mutate(socio = as.numeric(case_when(
     socio == "1 (most deprived)" ~ 1,
     socio == "2" ~ 2,
-    socio == "3" ~ 3, 
-    socio == "3" ~ 4,
+    socio == "3" ~ 3,
+    socio == "4" ~ 4,
     socio == "5 (least deprived)"  ~ 5,
     TRUE ~ NA_real_ ))) %>% # Assign NA for non-classified 
   mutate(sex=as.character(sex)) %>% 
@@ -2255,6 +2260,68 @@ depression_prevalence <- gbdpyr_interp %>%
   filter(measure == "Prevalence" & cause == "Depressive disorders" & year == 2018) %>%
   rename(rate = val_interpolated) %>%
   mutate(prob = 1 - exp(-rate))
+
+# Parkinson's disease prevalence (GBD age/sex only; no SES disaggregation available)
+# Parkinson's was not included in the main GBD download, so it is loaded from a
+# separately downloaded GBD 2021 file and processed with the identical pipeline.
+parkinson_gbd_raw <- read.csv(
+  here("melbourne/health/original/GBD/Parkinsons/2018/IHME-GBD_2021_DATA-933bcb4f-1.csv")
+)
+
+# GBD 2021 downloads use 'measure_name', 'sex_name', etc. Rename to match the
+# column names used by the rest of the pipeline.
+parkinson_gbd_raw <- parkinson_gbd_raw %>%
+  rename(measure  = measure_name,
+         sex      = sex_name,
+         age      = age_name,
+         cause    = cause_name,
+         metric   = metric_name,
+         location = location_name)
+
+# Apply the same pre-processing as the main gbdp block
+parkinson_gbdp <- parkinson_gbd_raw %>%
+  filter(metric %in% "Rate", measure %in% "Prevalence") %>%
+  select(-any_of(c("location", "upper", "lower",
+                   "measure_id", "location_id", "sex_id",
+                   "age_id", "cause_id", "metric_id"))) %>%
+  filter(!age %in% "All ages") %>%
+  mutate(rate_1 = val / 100000) %>%
+  mutate(age = gsub(" years", "", age)) %>%
+  tidyr::extract(age, c("from_age", "to_age"), "(.+)-(.+)",
+                 remove = FALSE, convert = TRUE) %>%
+  mutate(
+    from_age = case_when(age == "95+" ~ 95L, age == "<5" ~ 0L, TRUE ~ from_age),
+    to_age   = case_when(age == "95+" ~ 99L, age == "<5" ~ 4L, TRUE ~ to_age),
+    agediff  = to_age - from_age + 1,
+    val1yr   = rate_1
+  ) %>%
+  rename(agegroup = age)
+
+# Stretched 5-year-to-1-year frame (used for validation join after interpolation)
+parkinson_gbdpyrd5 <- parkinson_gbdp[
+    rep(seq_len(nrow(parkinson_gbdp)), parkinson_gbdp$agediff), ] %>%
+  mutate(ageyr = from_age + sequence(parkinson_gbdp$agediff) - 1) %>%
+  select(measure, ageyr, sex, agegroup, from_age, to_age, cause, year, val1yr, rate_1)
+
+# Interpolate from 5-year age groups to single years using the same function
+# (disagg_smooth_spline) as all other GBD diseases
+parkinson_grp <- parkinson_gbdp %>%
+  group_by(measure, year, sex, cause) %>%
+  arrange(measure, year, sex, cause, from_age)
+
+parkinson_interp <- group_modify(parkinson_grp, disagg_smooth_spline) %>%
+  ungroup() %>%
+  left_join(parkinson_gbdpyrd5, by = c("measure", "year", "ageyr", "sex", "cause"))
+
+# Extract 2018 prevalence and compute annual probability
+parkinson_prevalence <- parkinson_interp %>%
+  filter(measure == "Prevalence" & year == 2018) %>%
+  rename(rate = val_interpolated) %>%
+  mutate(prob = 1 - exp(-rate))
+
+cat("parkinson_prevalence: rows =", nrow(parkinson_prevalence),
+    "| ages =", n_distinct(parkinson_prevalence$ageyr),
+    "| sexes =", paste(sort(unique(parkinson_prevalence$sex)), collapse = ", "), "\n")
 
 ```
 
@@ -2684,7 +2751,65 @@ SA2_Melb <- read.csv(here("melbourne/health/original/ABS/SA2_2016_AUST.csv")) %>
   dplyr::select(SA2_MAINCODE_2016, SA2_5DIGITCODE_2016, GCCSA_NAME_2016) %>%
   filter(GCCSA_NAME_2016 == "Greater Melbourne")
 
-# assemble all required files
+```
+
+## IRSD decile lookup for Greater Melbourne SA2s
+
+The ABS SEIFA file (catalogue 2033.0.55.001) contains the Index of Relative
+Socio-Economic Disadvantage (IRSD) score and national decile for each SA2.
+We compute Melbourne-specific decile ranks (i.e. relative disadvantage within
+the study area, analogous to Manchester's IMD deciles) in addition to retaining
+the national decile for comparability.
+
+This lookup (`SA2_IRSD`) is used to replace the coarse quintile `socio`
+variable with a 10-group decile in the health transitions prevalence output
+(`SM_prev`). Note: for conditions where only quintile-level relative-risk data
+are available (AIHW sources), deciles are mapped back to their parent quintile
+for the disaggregation step — upgrading to true decile-level RRs requires new
+data acquisition.
+
+```{r}
+
+# Load IRSD scores from ABS SEIFA 2016 SA2 file
+# Source: ABS Catalogue 2033.0.55.001, Table 1 (SA2 IRSD)
+# if the file structure differs.
+irsd_raw <- read_xls(
+  here("melbourne/health/original/ABS/2033055001 - sa2 indexes.xls"),
+  sheet = "Table 2",
+  skip  = 5
+)
+
+# Identify and rename the key columns: SA2 code, IRSD score, national decile
+irsd_raw <- irsd_raw %>%
+  rename_with(~c("sa2_code_str", "sa2_name", "sa2_population", "irsd_score", "irsd_rank", "irsd_decile_nat", "irsd_percentile_nat"),
+              .cols = c(1:4, 6:8)) %>%
+  mutate(sa2_code = suppressWarnings(as.numeric(sa2_code_str))) %>%
+  filter(!is.na(sa2_code)) %>% 
+  select(sa2_code, sa2_name, irsd_score, irsd_decile_nat) 
+
+# Build Melbourne-specific IRSD decile (10 groups, equal count within Melbourne)
+SA2_IRSD <- irsd_raw %>%
+  filter(sa2_code %in% SA2_Melb$SA2_MAINCODE_2016) %>%
+  dplyr::select(sa2_code, sa2_name, irsd_score, irsd_decile_nat) %>%
+  arrange(irsd_score) %>%
+  mutate(
+    # Melbourne-local decile (1 = most disadvantaged within Melbourne)
+    irsd_decile_mel = ntile(irsd_score, 10),
+    # For joining to quintile-level RR data: map decile pairs → quintile
+    # decile 1-2 → quintile 1, 3-4 → 2, 5-6 → 3, 7-8 → 4, 9-10 → 5
+    irsd_quintile_mel = ceiling(irsd_decile_mel / 2)
+  )
+
+# Save for downstream use
+saveRDS(SA2_IRSD, file = here("melbourne/health/processed/sa2_irsd_deciles.rds"))
+
+cat("IRSD decile lookup built for", nrow(SA2_IRSD), "SA2s in Greater Melbourne.\n")
+cat("Melbourne-local decile distribution:\n")
+print(table(SA2_IRSD$irsd_decile_mel))
+
+```
+
+```{r}
 data_melbourne <- mort_disagg %>% 
   bind_rows(cancer_incidence_area, cancer_prevalence_area, 
             cvd_dem_dia_copd_inc, cvd_dem_dia_copd_prev, 
@@ -2701,6 +2826,7 @@ data_melbourne <- mort_disagg %>%
     cause == "depressive disorders"                    ~ "depression",
     cause == "diabetes mellitus type 2"                ~ "diabetes",
     cause == "diabetes type 2"                         ~ "diabetes",
+    cause == "parkinson"                               ~ "parkinson",
     .default = cause
   )) %>%
   mutate(cause = gsub(" ", "_", cause)) %>%
@@ -2849,7 +2975,13 @@ SA2_SES <- data_melbourne %>%
   mutate(socio = ifelse(is.na(socio), 0, socio)) %>%
   group_by(sa2_code) %>%
   filter(socio == max(socio)) %>%  # omits all NAs, unless NA (now 0) is the only socio for that SA2
-  ungroup()
+  ungroup() %>%
+  # Join IRSD decile lookup so SA2_SES carries both the derived quintile (for
+  # backwards-compatibility) and the ABS-based IRSD decile and Melbourne-local decile
+  left_join(SA2_IRSD %>%
+              dplyr::select(sa2_code, irsd_decile_nat, irsd_decile_mel,
+                            irsd_quintile_mel),
+            by = "sa2_code")
 
 missing_SES <- SA2_SES %>%
   filter(socio == 0) %>%
@@ -2908,6 +3040,92 @@ SM <-  bind_rows(SM_mort, SM_inc_cancer, SM_inc_non_cancer, SM_inc_depression) %
 write_csv(SM, 
           file = here("melbourne/health/processed/health_transitions_melbourne.csv"))
 
+```
+
+## Prevalence: SA2-level output for baseline disease assignment
+
+Analogous to the `SM` incidence output above, but using **prevalence** probabilities.
+This is used by `assign_prevalence_Melbourne.R` to assign baseline disease status to the
+synthetic population. Using incidence rates for this purpose would massively undercount
+chronic diseases (annual incidence << period prevalence for COPD, diabetes, etc.).
+
+```{r}
+
+# --- Cancers: cancer_prevalence_area has 5-digit Atlas SA2 codes; convert to
+# 9-digit SA2_MAINCODE_2016 to match the synthetic population's SA2_MAIN16. ---
+SM_prev_cancer <- cancer_prevalence_area %>%
+  left_join(SA2_Melb %>% dplyr::select(SA2_5DIGITCODE_2016, SA2_MAINCODE_2016),
+            by = c("sa2_code" = "SA2_5DIGITCODE_2016")) %>%
+  mutate(sex = case_when(sex == "Male" ~ 1, sex == "Female" ~ 2)) %>%
+  dplyr::select(SA2_MAIN16 = SA2_MAINCODE_2016, age, sex, cause, prob) %>%
+  filter(!is.na(SA2_MAIN16))
+
+# --- CVD/diabetes/COPD/dementia/stroke: map socio quintile → SA2 via SA2_SES ---
+# Uses `irsd_quintile_mel` (Melbourne-local IRSD quintile derived from SA2_IRSD) so
+# that the quintile assignment is based on the actual ABS IRSD score rather than
+# the coarse `socio` column inherited from the disease-rate data.
+# The 4 industrial SA2s (no IRSD data) fall back to middle quintile 3.
+SM_prev_non_cancer <- cvd_dem_dia_copd_prev %>%
+  filter(!is.na(socio)) %>%
+  mutate(sex = case_when(sex == "Male" ~ 1, sex == "Female" ~ 2)) %>%
+  dplyr::select(socio, cause, age, sex, prob) %>%
+  full_join(
+    SA2_SES %>% mutate(socio = ifelse(is.na(irsd_quintile_mel), 3, irsd_quintile_mel)) %>%
+      dplyr::select(sa2_code, socio),
+    by = "socio", relationship = "many-to-many"
+  ) %>%
+  mutate(SA2_MAIN16 = sa2_code) %>%
+  dplyr::select(SA2_MAIN16, age, sex, cause, prob)
+
+# --- Depression: no SES disaggregation; same probability for all SA2s ---
+# depression_prevalence already has prob = 1 - exp(-rate) from its creation block
+SM_prev_depression <- depression_prevalence %>%
+  mutate(sex = case_when(sex == "Female" ~ 2, sex == "Male" ~ 1),
+         cause = "depression") %>%
+  dplyr::select(age = ageyr, sex, cause, prob) %>%
+  rowwise() %>%
+  mutate(SA2_MAIN16 = list(SA2_SES$sa2_code)) %>%
+  unnest(SA2_MAIN16) %>%
+  ungroup()
+
+# --- Parkinson's: no SES disaggregation; same probability for all SA2s ---
+SM_prev_parkinson <- parkinson_prevalence %>%
+  mutate(sex = case_when(sex == "Female" ~ 2, sex == "Male" ~ 1),
+         cause = "parkinson") %>%
+  dplyr::select(age = ageyr, sex, cause, prob) %>%
+  rowwise() %>%
+  mutate(SA2_MAIN16 = list(SA2_SES$sa2_code)) %>%
+  unnest(SA2_MAIN16) %>%
+  ungroup()
+
+# --- Combine and standardise cause names to lowercase snake_case ---
+# Each component block keeps its original cause names; standardisation is done
+# here so the output matches the disease_cols list in assign_prevalence_Melbourne.R.
+SM_prev <- bind_rows(SM_prev_cancer, SM_prev_non_cancer, SM_prev_depression,
+                     SM_prev_parkinson) %>%
+  dplyr::select(SA2_MAIN16, age, sex, cause, prob) %>%
+  mutate(
+    cause = tolower(cause),
+    cause = gsub(" ", "_", cause),
+    cause = case_when(
+      cause == "chronic_obstructive_pulmonary_disease"  ~ "copd",
+      cause == "diabetes_type_2"                        ~ "diabetes",
+      cause == "diabetes_mellitus_type_2"                ~ "diabetes",
+      cause == "alzheimer's_disease_and_other_dementias" ~ "all_cause_dementia",
+      cause == "head_and_neck_cancer"                   ~ "head_neck_cancer",
+      cause == "ischemic_heart_disease"                 ~ "coronary_heart_disease",
+      TRUE                                              ~ cause
+    )
+  ) %>%
+  filter(!is.na(SA2_MAIN16), !is.na(prob))
+
+cat("SM_prev: rows =", nrow(SM_prev), "| unique causes =", n_distinct(SM_prev$cause), "\n")
+cat("Causes present:\n")
+print(sort(unique(SM_prev$cause)))
+
+# write prevalence output for use in assign_prevalence_Melbourne.R
+write_csv(SM_prev,
+          file = here("melbourne/health/processed/health_transitions_melbourne_prevalence_SA2.csv"))
 
 ```
 
@@ -3177,15 +3395,15 @@ for (i in seq_along(chunks)) {
 
 ## Prevalence trends
 
-Prevalence rates for 2018 and subsequent years. We have not identified
-useful prevalence projections for the relevant diseases.
+Prevalence rates for 2018 and subsequent years. 
 
 This consists of prevalence rates from GBD for 2018 to 2021 for all
 relevant diseases, plus rates from AIHW for specific years for diabetes,
-dementia \[and COPD\]. **SP note: the COPD figures from AIHW are much
+dementia and COPD. 
+<!-- SP note: the COPD figures from AIHW are much
 lower than from GBD, and this may be because the AIHW figures only cover
 ICD J43-J44, whereas the GBD figures cover J41-J44. Possibly the COPD
-figures here are not useful and should be discarded.**
+figures here are not useful and should be discarded. -->
 
 ```{r}
 # GBD prevalence for all relevant diseases, 2018-21
