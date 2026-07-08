@@ -1,8 +1,5 @@
 # ======================================================================
 # Local Shiny: Population, Differences, Mean Ages (death/onset), ASR
-# + Disease picker for Δ diseases
-# + Robust gender fix (handles 1/2, M/F strings)
-# + NEW: Impact summary tab (deaths prevented, life years, healthy) by scenario
 # ======================================================================
 
 suppressPackageStartupMessages({
@@ -1217,11 +1214,15 @@ server <- function(input, output, session) {
     )
     
     long <- bind_rows(
-      tbls$deaths |> mutate(metric = lab_map["deaths"]),
-      tbls$lifey  |> mutate(metric = lab_map["lifey"]),
-      tbls$healthy|> mutate(metric = lab_map["healthy"])
+      tbls$deaths |> 
+      mutate(metric = lab_map["deaths"]),
+      tbls$lifey  |> 
+        mutate(metric = lab_map["lifey"]),
+      tbls$healthy |> 
+        mutate(metric = lab_map["healthy"])
     ) |>
       filter(cycle >= minc, scen %in% scen_keep)
+    
     
     # Grouping columns by view
     by <- switch(view,
