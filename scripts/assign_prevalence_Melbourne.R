@@ -121,6 +121,11 @@ synth_pop_wprob <- synth_pop |>
   filter(age > 18)
 cat("✓ Prevalence joined. Rows:", nrow(synth_pop_wprob), "\n")
 
+# Diseases modelled by SILO (match the `modelled_diseases` set in
+# health_data_Melbourne.Rmd and the Java `Diseases` enum): those with at least
+# one exposure dose-response relationship in disease_outcomes_lookup.csv.
+# kidney_cancer, malignant_melanoma, prostate_cancer and rectum_cancer are
+# excluded (no dose-response; SILO would ignore them anyway).
 disease_cols <- c(
   "all_cause_dementia",
   "bladder_cancer",
@@ -134,15 +139,11 @@ disease_cols <- c(
   "esophageal_cancer",
   "gastric_cardia_cancer",
   "head_neck_cancer",
-  "kidney_cancer",
   "liver_cancer",
   "lung_cancer",
-  "malignant_melanoma",
   "myeloid_leukemia",
   "myeloma",
   "parkinson",
-  "prostate_cancer",
-  "rectum_cancer",
   "stroke"
 )
 

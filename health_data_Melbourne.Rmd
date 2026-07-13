@@ -2278,9 +2278,11 @@ parkinson_gbd_raw <- parkinson_gbd_raw %>%
          metric   = metric_name,
          location = location_name)
 
-# Apply the same pre-processing as the main gbdp block
+# Apply the same pre-processing as the main gbdp block.
+# Keep BOTH Incidence and Prevalence: prevalence feeds baseline disease
+# assignment (SM_prev) and incidence feeds the SILO transitions file (SM).
 parkinson_gbdp <- parkinson_gbd_raw %>%
-  filter(metric %in% "Rate", measure %in% "Prevalence") %>%
+  filter(metric %in% "Rate", measure %in% c("Incidence", "Prevalence")) %>%
   select(-any_of(c("location", "upper", "lower",
                    "measure_id", "location_id", "sex_id",
                    "age_id", "cause_id", "metric_id"))) %>%
@@ -2322,6 +2324,17 @@ parkinson_prevalence <- parkinson_interp %>%
 cat("parkinson_prevalence: rows =", nrow(parkinson_prevalence),
     "| ages =", n_distinct(parkinson_prevalence$ageyr),
     "| sexes =", paste(sort(unique(parkinson_prevalence$sex)), collapse = ", "), "\n")
+
+# Extract 2018 incidence (used for the SILO transitions file, SM). `rate` is the
+# annual incidence rate; SILO applies 1 - exp(-rate) internally (see SM block).
+parkinson_incidence <- parkinson_interp %>%
+  filter(measure == "Incidence" & year == 2018) %>%
+  rename(rate = val_interpolated) %>%
+  mutate(prob = 1 - exp(-rate))
+
+cat("parkinson_incidence: rows =", nrow(parkinson_incidence),
+    "| ages =", n_distinct(parkinson_incidence$ageyr),
+    "| sexes =", paste(sort(unique(parkinson_incidence$sex)), collapse = ", "), "\n")
 
 ```
 
@@ -2917,7 +2930,16 @@ write_csv(prev_melbourne,
 
 SILO/MITO code requires all-cause mortality and disease incidence,
 disaggregated by age, sex and SA2 (and no other disaggregation),
-probability (and not rate), for age 0 to 100.
+for age 0 to 100.
+
+The value supplied is an annual **rate** (per person-year). The SILO
+Melbourne model (`DiseaseModelMEL`) reads this column (still named `prob`
+for backwards-compatibility with `HealthTransitionTableReaderMEL`),
+multiplies it by the relevant exposure/behaviour relative risks, and then
+converts it to an annual probability internally via `1 - exp(-rate)`
+before applying the survival function. Supplying a rate (rather than a
+pre-converted probability) avoids a double `1 - exp(-.)` conversion and
+is important for mortality at older ages, where `qx` is large.
 
 Combine to meet these requirements, and save
 
@@ -2925,10 +2947,14 @@ Combine to meet these requirements, and save
 
 # mortality - use 'deaths_age_sa2', which is deaths before disaggregation
 SM_mort <- deaths_age_sa2 %>%
-  
-  # the 'rates' are derived from qx ("the proportion of persons dying between 
-  # exact age x and exact age x+1"), so treat as a probability (same as above)
-  mutate(prob = rate1000 / 1000, # note 'rate' was per 1000 people
+
+  # rate1000 is per-1000 qx ("the proportion of persons dying between exact age
+  # x and exact age x+1"), i.e. an annual probability. SILO treats the value it
+  # reads as a *rate* and applies 1 - exp(-rate) itself, so convert qx -> rate
+  # here: rate = -log(1 - qx). Guard against qx = 1 at the open-ended oldest age
+  # (which would give an infinite rate).
+  mutate(qx = pmin(rate1000 / 1000, 1 - 1e-9),
+         prob = -log(1 - qx), # 'prob' column carries a rate; see note above
          sex = case_when(
            sex == "Male" ~ 1,
            sex == "Female" ~ 2
@@ -2938,6 +2964,9 @@ SM_mort <- deaths_age_sa2 %>%
   dplyr::select(SA2_MAIN16 = sa2_code, age, sex, cause, prob)
 
 # incidence - use data_melbourne
+# Carry the raw annual incidence `rate` in the `prob` column (SILO applies
+# 1 - exp(-rate) itself; see note above). At incidence magnitudes rate ~= prob,
+# but using the rate keeps the semantics consistent with mortality.
 SM_inc_base <- data_melbourne %>%
   filter(measure == "incidence") %>%
   filter(!is.na(rate)) %>%  # some non-modelled cancers lack incidence rates or probabilities
@@ -2945,7 +2974,7 @@ SM_inc_base <- data_melbourne %>%
            sex == "Male" ~ 1,
            sex == "Female" ~ 2
          )) %>%
-  dplyr::select(SA2_MAIN16 = sa2_code, age, sex, cause, prob, socio)
+  dplyr::select(SA2_MAIN16 = sa2_code, age, sex, cause, prob = rate, socio)
   
 # some incidence only goes to 95 or 99; where that happens, replicate to 100
 SM_inc_oldage <- SM_inc_base %>%
@@ -3018,8 +3047,32 @@ SM_inc_non_cancer <- SM_inc_age %>%
 # depression - no disaggregation available, so same value for all SA2s
 SM_inc_depression <- SM_inc_age %>%
   filter(is.na(SA2_MAIN16) & is.na(socio)) %>%
-  
+
   # stretch out for all SA2s
+  rowwise() %>%
+  mutate(SA2_MAIN16 = list(SA2_SES$sa2_code)) %>%
+  unnest(SA2_MAIN16) %>%
+  ungroup()
+
+# parkinson - like depression, no SES disaggregation, so same value for all SA2s.
+# (parkinson_incidence carries the annual rate; kept in the `prob` column.)
+parkinson_inc_base <- parkinson_incidence %>%
+  mutate(sex = case_when(sex == "Female" ~ 2, sex == "Male" ~ 1),
+         cause = "parkinson") %>%
+  dplyr::select(age = ageyr, sex, cause, prob = rate)
+
+# extend the oldest available age out to 100 (as done for the other causes)
+parkinson_inc_oldage <- parkinson_inc_base %>%
+  group_by(sex, cause) %>%
+  filter(age == max(age)) %>%
+  ungroup() %>%
+  filter(age < 100) %>%
+  rowwise() %>%
+  mutate(age = list((age + 1):100)) %>%
+  unnest(age) %>%
+  ungroup()
+
+SM_inc_parkinson <- bind_rows(parkinson_inc_base, parkinson_inc_oldage) %>%
   rowwise() %>%
   mutate(SA2_MAIN16 = list(SA2_SES$sa2_code)) %>%
   unnest(SA2_MAIN16) %>%
@@ -3028,16 +3081,38 @@ SM_inc_depression <- SM_inc_age %>%
 
 # combine and adjust causes to match SILO/MITO expected names (see
 # silo/extensions/health/src/main/java/de/tum/bgu/msm/health/disease/Diseases.java)
-SM <-  bind_rows(SM_mort, SM_inc_cancer, SM_inc_non_cancer, SM_inc_depression) %>%
+# Diseases modelled by SILO: those with at least one exposure dose-response
+# relationship in disease_outcomes_lookup.csv (any of air_pollution_pm25,
+# air_pollution_no2, physical_activity, noise or ndvi = 1). This is the single
+# source of truth for disease scope and matches the Java `Diseases` enum
+# (silo/extensions/health/.../disease/Diseases.java) and the `disease_cols`
+# list in assign_prevalence_Melbourne.R. Excluded: aggregates (all_cause_cancer)
+# and diseases with no dose-response (kidney_cancer, malignant_melanoma,
+# prostate_cancer, rectum_cancer - the latter is covered by colon_cancer, which
+# represents "colon and rectum cancer"). all_cause_mortality is added for SM only.
+modelled_diseases <- c(
+  "all_cause_dementia", "bladder_cancer", "breast_cancer", "colon_cancer",
+  "copd", "coronary_heart_disease", "depression", "diabetes",
+  "endometrial_cancer", "esophageal_cancer", "gastric_cardia_cancer",
+  "head_neck_cancer", "liver_cancer", "lung_cancer", "myeloid_leukemia",
+  "myeloma", "parkinson", "stroke"
+)
+
+SM <-  bind_rows(SM_mort, SM_inc_cancer, SM_inc_non_cancer, SM_inc_depression,
+                 SM_inc_parkinson) %>%
   dplyr::select(SA2_MAIN16, age, sex, cause, prob) %>%
   mutate(cause = case_when(
     cause == "all_cancers"          ~ "all_cause_cancer",
     cause == "head_and_neck_cancer" ~ "head_neck_cancer",
     TRUE                           ~ cause
-  ))
+  )) %>%
+  # keep only causes the model can use (modelled diseases + all-cause mortality)
+  filter(cause %in% c("all_cause_mortality", modelled_diseases))
+
+cat("SM: rows =", nrow(SM), "| causes =", paste(sort(unique(SM$cause)), collapse = ", "), "\n")
 
 # write output
-write_csv(SM, 
+write_csv(SM,
           file = here("melbourne/health/processed/health_transitions_melbourne.csv"))
 
 ```
@@ -3117,7 +3192,11 @@ SM_prev <- bind_rows(SM_prev_cancer, SM_prev_non_cancer, SM_prev_depression,
       TRUE                                              ~ cause
     )
   ) %>%
-  filter(!is.na(SA2_MAIN16), !is.na(prob))
+  filter(!is.na(SA2_MAIN16), !is.na(prob)) %>%
+  # keep only modelled diseases, so baseline prevalence matches the model scope
+  # (SILO silently drops any disease not in its `Diseases` enum). If non-modelled
+  # cancers are wanted purely for descriptive validation, relax this filter.
+  filter(cause %in% modelled_diseases)
 
 cat("SM_prev: rows =", nrow(SM_prev), "| unique causes =", n_distinct(SM_prev$cause), "\n")
 cat("Causes present:\n")
