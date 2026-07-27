@@ -1,6 +1,7 @@
 library(dtplyr)
 library(arrow)
 library(data.table)
+library(qs2)
 library(dplyr)  # still needed for verbs but they dispatch to data.table
 
 # ZONES_CSV  <- "/media/ali/Expansion/backup_tabea/manchester-main/input/zoneSystem.csv"
@@ -561,7 +562,7 @@ pc <- mget(c(
   "asr_lad_all_per_cycle","asr_lad_all_avg_1_30",
   "asr_healthy_years_overall","asr_healthy_years_overall_avg_1_30"
 ))
-precomp_path <- "app/processed_data/seed = 3/precomputed_100%V6.qs"
+precomp_path <- "app/processed_data/seed = 3/precomputed_100%V6.qs2"
 message("Saving precomputed cache: ", precomp_path)
 #saveRDS(pc, precomp_path, compress = "xz")
-qs::qsave(pc, precomp_path)
+qs2::qs_save(pc, precomp_path)
