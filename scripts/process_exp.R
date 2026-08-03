@@ -3,11 +3,12 @@ suppressPackageStartupMessages({
   library(tidyverse)
 })
 
-base_data_path <- "Z:/HealthImpact/Data/Country/UK/JIBE/manchester/"
-
 inp_dir <- "Z:/HealthImpact/Data/Country/UK/JIBE/manchester/scenOutput/normalization_fix_052226/microData"
 
+inp_exp_dir = "Z:/HealthImpact/Data/Country/UK/JIBE/manchester"
+
 zones <- read_csv("Z:/HealthImpact/Data/Country/UK/JIBE/manchester/input/zoneSystem.csv")
+#zones$imd10 <- ceiling(zones$imd10 / 2)
 
 add_zones_and_scen <- function(df, zones, scen = "reference"){
   return(
@@ -63,7 +64,7 @@ calc_quantiles_grouped <- function(data, group_var = NULL) {
   return(summarised)
 }
 
-get_exp_summary <- function(inp_dir, zones, scen = "base") {
+get_exp_summary <- function(inp_dir, inp_exp_dir = "Z:/HealthImpact/Data/Country/UK/JIBE/manchester", zones, scen = "base") {
   #scen <- 'reference'
   ref_dir <- file.path(inp_dir, scen, "microData")
   
@@ -81,7 +82,7 @@ get_exp_summary <- function(inp_dir, zones, scen = "base") {
   
   read_with_year <- function(f) {
     yr <- as.integer(sub("^pp_exposure_([0-9]+)\\.csv$", "\\1", basename(f)))
-    df <- readr::read_csv(f, show_col_types = FALSE)
+    df <- readr::read_csv(f)
     df$year <- yr
     df
   }
@@ -93,6 +94,7 @@ get_exp_summary <- function(inp_dir, zones, scen = "base") {
     scen == "reference" ~ "pp_exposure_2021_base_220526.csv",
     scen == "green"     ~ "pp_exposure_2021_green_260526.csv",
     scen == "safeStreet"~ "pp_exposure_2021_safeStreet_260526.csv",
+    scen == "goDutch_220726" ~ "pp_exposure_2021_goDutch_260526.csv",
     scen == "goDutch"   ~ "pp_exposure_2021_goDutch_260526.csv",
     TRUE ~ NA_character_
   )
@@ -100,8 +102,6 @@ get_exp_summary <- function(inp_dir, zones, scen = "base") {
   if (is.na(scen_file)) {
     stop("Unknown scen value: ", scen)
   }
-  inp_exp_dir <- "Z:/HealthImpact/Data/Country/UK/JIBE/manchester"
-  
   scen_path <- file.path(inp_exp_dir, "input", "health", scen_file)
   if (!file.exists(scen_path)) {
     stop("Scenario 2021 file not found: ", scen_path)
@@ -147,8 +147,12 @@ get_exp_summary <- function(inp_dir, zones, scen = "base") {
   return(all_quantiles)
 }
 
-base_exp <- get_exp_summary(inp_dir, zones, scen = "reference")
-green_exp <-  get_exp_summary(inp_dir, zones, scen = "green")
-ss_exp <- get_exp_summary(inp_dir, zones, scen = "safeStreet")
 
-exp <- bind_rows(base_exp, green_exp, ss_exp)
+
+base_exp <- get_exp_summary(inp_dir, inp_exp_dir, zones, scen = "reference")
+green_exp <-  get_exp_summary(inp_dir, inp_exp_dir, zones, scen = "green")
+ss_exp <- get_exp_summary(inp_dir, inp_exp_dir, zones, scen = "safeStreet")
+gd_exp <- get_exp_summary(inp_dir, inp_exp_dir, zones, scen = "goDutch")
+
+exp <- bind_rows(base_exp, green_exp, ss_exp, gd_exp)
+qs2::qs_save(exp, "../app/data/exp_030826.qs2")
