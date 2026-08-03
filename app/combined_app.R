@@ -17,7 +17,7 @@ suppressPackageStartupMessages({
   library(shinyWidgets)
 })
 
-pc <- qs2::qs_read("data/220726_sdata.qs2")
+pc <- qs2::qs_read("data/precomputed_100%V6.qs2")
 exp <- qs2::qs_read("data/230726_exp.qs2")
 
 SCALING <- 1L
@@ -93,7 +93,7 @@ ui <- page_sidebar(
                 selected = "Overall"),
     conditionalPanel(
       "input.view_level == 'LAD'",
-      selectizeInput("lad_sel", "LAD(s):",
+      selectizeInput("lad_sel", "Area(s):",
                      choices = all_lads_nm, multiple = TRUE,
                      options = list(placeholder = "Pick LADs (optional)"))
     ),
@@ -154,13 +154,18 @@ ui <- page_sidebar(
       conditionalPanel(
         condition = "input.main_tabs == 'Age Standardised Rates'",
         selectInput(
-          "asr_mode", 
+          "asr_mode",
           "ASR view:",
           choices = setNames(
-            c("avg", "trend"), 
-            c(paste0("Average 1-", MAX_CYCLE, " (bars)"), "Over time (smoothed)")
+            c("bars", "avg"),
+            c(paste0("Average 1-", MAX_CYCLE, " (bars)"),
+              paste0("Average 1-", MAX_CYCLE, " (table)"))
           ),
-          selected = "Over time (smoothed)"
+          selected = "bars"
+        ),
+        conditionalPanel(
+          condition = "input.asr_mode == 'bars'",
+          checkboxInput("asr_pct", "Show % difference vs reference", value = TRUE)
         )
       ),
       conditionalPanel(
@@ -388,6 +393,21 @@ server <- function(input, output, session) {
     dg <- pc$diseases_gender
     dimd <- pc$diseases_imd
     
+    # The diseases_* series are built with filter(!value %in% c("dead",
+    # "healthy","null")), so deaths are absent by construction and picking
+    # "Death (all causes)" produced an empty panel. The deaths_* series have
+    # the same shape but no `cause` column, so label them and append.
+    # Done here rather than in the prep so no cache rebuild is needed.
+    DEATH_LBL <- "Death (all causes)"
+    add_deaths <- function(dis, dth) {
+      if (is.null(dth)) return(dis)
+      plyr::rbind.fill(dis, dth |> mutate(cause = DEATH_LBL))
+    }
+    do   <- add_deaths(do,   pc$deaths_overall)
+    dg   <- add_deaths(dg,   pc$deaths_gender)
+    dimd <- add_deaths(dimd, pc$deaths_imd)
+    dil  <- add_deaths(dil,  dl)   # LAD: dl is already filtered by lad_sel
+    
     if (length(input$asr_causes)){
       do <- do |> filter(cause %in% input$asr_causes)
       dg <- dg |> filter(cause %in% input$asr_causes)
@@ -430,6 +450,48 @@ server <- function(input, output, session) {
       df <- df |> 
         mutate(gender = case_when(gender == 1 ~ "Male",
                                   gender == 2 ~ "Female")) 
+    }
+    
+    # Append baseline population to the grouping labels, so a difference can be
+    # read against the population it came from. Derived from the people_*
+    # objects ALREADY in the cache (no prep rerun needed): take the earliest
+    # cycle of the reference scenario and sum over age groups.
+    fmt_pop <- function(x) format(round(x), big.mark = ",", trim = TRUE)
+    baseline_of <- function(tbl, grp) {
+      if (is.null(tbl) || !all(c("scen", "cycle", "pop") %in% names(tbl))) return(NULL)
+      tbl |>
+        filter(scen == "reference", cycle == min(cycle, na.rm = TRUE)) |>
+        group_by(across(all_of(grp))) |>
+        summarise(pop = sum(pop, na.rm = TRUE), .groups = "drop")
+    }
+    bp_imd <- baseline_of(pc$people_imd, "imd10")
+    if ("imd10" %in% names(df) && !is.null(bp_imd)) {
+      df <- df |>
+        left_join(bp_imd, by = "imd10") |>
+        mutate(imd10 = as.character(imd10),
+               imd10 = dplyr::if_else(is.na(pop), imd10,
+                                      paste0("IMD ", imd10, " (n = ", fmt_pop(pop), ")"))) |>
+        select(-pop)
+    }
+    bp_lad <- baseline_of(pc$people_lad, "ladnm")
+    if ("ladnm" %in% names(df) && !is.null(bp_lad)) {
+      df <- df |>
+        left_join(bp_lad, by = "ladnm") |>
+        mutate(ladnm = as.character(ladnm),
+               ladnm = dplyr::if_else(is.na(pop), ladnm,
+                                      paste0(ladnm, " (n = ", fmt_pop(pop), ")"))) |>
+        select(-pop)
+    }
+    bp_gen <- baseline_of(pc$people_gender, "gender")
+    if ("gender" %in% names(df) && !is.null(bp_gen)) {
+      gp <- bp_gen |>
+        mutate(gender = case_when(gender == 1 ~ "Male", gender == 2 ~ "Female"))
+      df <- df |>
+        left_join(gp, by = "gender") |>
+        mutate(gender = as.character(gender),
+               gender = dplyr::if_else(is.na(pop), gender,
+                                       paste0(gender, " (n = ", fmt_pop(pop), ")"))) |>
+        select(-pop)
     }
     
     df |> group_by(across(all_of(c(grp)))) |>
@@ -920,7 +982,7 @@ server <- function(input, output, session) {
     causes <- input$asr_causes
     scens <- input$scen_sel
     df <- NULL
-    if (input$asr_mode == "avg") {
+    if (input$asr_mode %in% c("avg", "bars")) {
       if (input$view_level == "Overall") {
         df <- bind_rows(asr_overall_avg_1_30, asr_healthy_years_overall_avg_1_30) |>
           filter(cause %in% causes, scen %in% scens) |> 
@@ -1047,7 +1109,94 @@ server <- function(input, output, session) {
     req(df)
     
     if (input$asr_mode == "avg") {
-      df  # return processed table
+      df  # wide table -> rendered by gt
+      
+    } else if (input$asr_mode == "bars") {
+      # get_asr_data() returns one column per scenario; go back to long for ggplot
+      long <- df |>
+        tidyr::pivot_longer(
+          cols = tidyr::any_of(input$scen_sel),
+          names_to = "Scenario", values_to = "age_std_rate"
+        ) |>
+        filter(!is.na(age_std_rate))
+      req(nrow(long) > 0)
+      
+      # % change vs reference, computed WITHIN each bar group (cause, or
+      # cause x imd10 / gender / ladnm). Grouping columns are whatever is left
+      # once Scenario and the rate are removed, so this works for every view.
+      grp_cols <- setdiff(names(long), c("Scenario", "age_std_rate"))
+      long <- long |>
+        group_by(across(all_of(grp_cols))) |>
+        mutate(
+          ref_rate = {
+            r <- age_std_rate[Scenario == "reference"]
+            if (length(r)) r[1] else NA_real_
+          },
+          pct_change = 100 * (age_std_rate - ref_rate) / ref_rate,
+          # reference is the baseline, so it gets no label; blank rather than
+          # NA so geom_text doesn't warn about dropped rows
+          lbl = dplyr::case_when(
+            Scenario == "reference"  ~ "",
+            is.na(pct_change)        ~ "",
+            TRUE ~ sprintf("%+.1f%%", pct_change)
+          ),
+          # explicit y coordinate: ggplotly() drops vjust, which left the
+          # labels sitting on the top-left corner of each bar
+          lbl_y = age_std_rate * 1.02
+        ) |>
+        ungroup()
+      
+      ttl <- paste0("Average ", MAX_CYCLE,
+                    " years Age Standardised Rate per 100,000 people")
+      
+      show_pct <- isTRUE(input$asr_pct) && "reference" %in% long$Scenario
+      if (isTRUE(input$asr_pct) && !"reference" %in% long$Scenario)
+        ttl <- paste0(ttl, "  (select 'reference' to show % difference)")
+      
+      # Optional % labels. Always keep the headroom so the y-axis doesn't
+      # jump when the labels are toggled on and off.
+      pct_labels <- list(
+        if (show_pct)
+          geom_text(aes(y = lbl_y, label = lbl),
+                    position = position_dodge(width = 0.9),
+                    size = 3, show.legend = FALSE),
+        scale_y_continuous(expand = expansion(mult = c(0, 0.10)))
+      )
+      
+      if (input$view_level == "Overall") {
+        ggplot(long, aes(x = cause, y = age_std_rate, fill = Scenario)) +
+          geom_col(position = position_dodge(width = 0.9)) +
+          pct_labels +
+          labs(title = ttl, x = NULL, y = "ASR per 100,000") +
+          theme_clean()
+        
+      } else if (input$view_level == "Gender") {
+        ggplot(long, aes(x = cause, y = age_std_rate, fill = Scenario)) +
+          geom_col(position = position_dodge(width = 0.9)) +
+          pct_labels +
+          facet_wrap(vars(gender), scales = "free_y") +
+          labs(title = ttl, x = NULL, y = "ASR per 100,000") +
+          theme_clean()
+        
+      } else if (input$view_level == "IMD") {
+        ggplot(long, aes(x = factor(imd10), y = age_std_rate, fill = Scenario)) +
+          geom_col(position = position_dodge(width = 0.9)) +
+          pct_labels +
+          facet_wrap(vars(cause), scales = "free_y") +
+          labs(title = ttl, x = "IMD quintile (1 = most deprived)",
+               y = "ASR per 100,000") +
+          theme_clean()
+        
+      } else {
+        ggplot(long, aes(x = ladnm, y = age_std_rate, fill = Scenario)) +
+          geom_col(position = position_dodge(width = 0.9)) +
+          pct_labels +
+          facet_wrap(vars(cause), scales = "free_y") +
+          labs(title = ttl, x = NULL, y = "ASR per 100,000") +
+          theme_clean() +
+          theme(axis.text.x = element_text(angle = 45, hjust = 1))
+      }
+      
     } else {
       if (input$view_level == "Overall") {
         ggplot(df, aes(x = cycle, y = age_std_rate, colour = Scenario, group = Scenario)) +
@@ -1134,8 +1283,11 @@ server <- function(input, output, session) {
       
       if (isTRUE(input$diff_cumulative)) {
         
-        by <- intersect(c("gender", "ladnm"), names(d))
-        # safely handle 0, 1 or 2 grouping vars
+        # Grouping columns, derived rather than hardcoded: the old list was
+        # c("gender","ladnm") only, so IMD quintile, cause and factor were
+        # silently dropped from the export by the transmute() below.
+        by <- intersect(c("gender", "ladnm", "imd10", "cause", "factor",
+                          "agegroup_cycle"), names(d))
         
         if ("cycle" %in% names(d)) {
           d <- d |>
