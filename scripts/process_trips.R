@@ -7,29 +7,27 @@ require(arrow)
 require(plotly)
 
 # Change the path as needed, currently set to Manchester folder
-dir_path <- "/media/ali/Expansion/backup_tabea/manchester-main/"
 
-zone <- read_csv(paste0(dir_path, "input/zoneSystem.csv"))
+dir <- "/run/user/1001/gvfs/smb-share:server=ifs-prod-1152-cifs.ifs.uis.private.cam.ac.uk,share=cedar-grp-drive/HealthImpact/Data/Country/UK/JIBE/manchester"
 
-trips_ref <- read_csv("temp/trips/base/trips.csv") |> mutate(scen = "reference")
+zone <- read_csv(paste0(dir,"/input/zoneSystem.csv"))
 
-trips_both <- read_csv("temp/trips/both/trips.csv") |> mutate(scen = "both")
+trips_ref <- read_csv(paste0(dir,"/scenOutput/base/2021/microData/trips.csv")) |> mutate(scen = "reference")
 
-trips_ss <- read_csv("temp/trips/ss/trips.csv") |> mutate(scen = "safeStreet")
+trips_ss <- read_csv(paste0(dir,"/scenOutput/safeStreet/2021/microData/trips.csv")) |> mutate(scen = "safeStreet")
 
-trips_green <- read_csv("temp/trips/green/trips.csv") |> mutate(scen = "green")
+trips_green <-read_csv(paste0(dir,"/scenOutput/green/2021/microData/trips.csv")) |> mutate(scen = "green")
 
-trips_goDutch <- read_csv("temp/trips/goDutch/trips.csv") |> mutate(scen = "goDutch")
+trips_goDutch <- read_csv(paste0(dir,"/scenOutput/goDutch/2021/microData/trips.csv")) |> mutate(scen = "goDutch")
 
-pp <- read_csv("/media/ali/Expansion/backup_tabea/manchester/input/health/pp_exposure_2021_base_140725.csv") |> 
+pp <- read_csv("/scenOutput/normalization_fix_052226/exposures/reference/pp_exposure_2021_base_220526.csv") |> 
   left_join(zone  |> 
               rename(zone = oaID) |> 
               dplyr::select(zone, ladnm, ladcd, lsoa21cd, imd10))
 
-trips <- bind_rows(trips_ref, trips_green, trips_ss, trips_both, trips_goDutch)
+trips <- bind_rows(trips_ref, trips_green, trips_ss, trips_goDutch)
 
-rm (trips_ref, trips_both, trips_ss, trips_green, trips_goDutch)
-
+rm (trips_ref, trips_ss, trips_green, trips_goDutch)
 
 #trips <- trips |> to_duckdb()
 
@@ -43,6 +41,7 @@ trips <- trips |>
   left_join(pp  |> 
               dplyr::select(id, age, gender, ladnm, ladcd, lsoa21cd, imd10, occupation), by = c("p.ID" = "id"), copy = T)
 
+unique(trips$ladnm)
 rm(pp, zone)
 
 trips$time_pt <- as.numeric(trips$time_pt)
@@ -107,21 +106,54 @@ add_agegroups <- function(df) {
 
 trips <- add_agegroups(trips)
 
-arrow::write_dataset(dataset = trips, path = "temp/081225_trips.parquet", partitioning = c("scen", "ladnm"))
+unique(trips$ladnm)
+
+trips <- trips %>%
+  mutate(LAD_group = case_when(
+    ladnm %in% c("Manchester", "Salford") ~ "City core",
+    ladnm %in% c("Oldham", "Rochdale", "Tameside") ~ "East",
+    ladnm %in% c("Stockport", "Trafford") ~ "South",
+    ladnm %in% c("Bolton", "Wigan", "Bury") ~ "West/North-west",
+    TRUE ~ NA_character_  # Catch-all for unlisted values
+  ),
+  LAD_origin = case_when(
+    LAD_origin %in% c("Manchester", "Salford") ~ "City core",
+    LAD_origin %in% c("Oldham", "Rochdale", "Tameside") ~ "East",
+    LAD_origin %in% c("Stockport", "Trafford") ~ "South",
+    LAD_origin %in% c("Bolton", "Wigan", "Bury") ~ "West/North-west",
+    TRUE ~ NA_character_  # Catch-all for unlisted values
+  ),
+  LAD_destination = case_when(
+    LAD_destination %in% c("Manchester", "Salford") ~ "City core",
+    LAD_destination %in% c("Oldham", "Rochdale", "Tameside") ~ "East",
+    LAD_destination %in% c("Stockport", "Trafford") ~ "South",
+    LAD_destination %in% c("Bolton", "Wigan", "Bury") ~ "West/North-west",
+    TRUE ~ NA_character_  # Catch-all for unlisted values
+  ))
+
+table(trips$LAD_group[trips$scen == "Reference"])
+
+trips <- trips %>%
+  mutate(imd5 = ceiling(as.numeric(imd10) / 2),
+         imd_origin = ceiling(as.numeric(imd_origin) / 2),
+         imd_destination = ceiling(as.numeric(imd_destination) / 2))
+
+arrow::write_dataset(dataset = trips, path = paste0(dir, "/scenOutput/trips/trips.parquet"), partitioning = c("scen", "LAD_group"))
 
 ## Creating Visualizations
 
 ### Table of the number of trips in each local authority in Greater Manchester
 
-trips <- arrow::open_dataset("temp/081225_trips.parquet/") |> 
-  to_duckdb()
+trips <- arrow::open_dataset(paste0(dir, "/scenOutput/trips/trips.parquet/")) %>% 
+  to_duckdb() 
 
-# Distribution of trips by mode and location 
+# Trip share
+
 trips_percentage <- trips |>
-  group_by(LAD_origin, scen) |>
+  group_by(scen) |>
   mutate(total_trips = sum(t.factor, na.rm = TRUE)) |>
   ungroup() |>
-  group_by(LAD_origin, mode, scen, gender, agegroup, t.purpose) |>
+  group_by(LAD_origin, imd_origin, mode, scen, gender, agegroup, t.purpose) |>
   # Use weighted count instead of raw count
   summarise(trip_count = sum(t.factor, na.rm = TRUE),
             total_trips = first(total_trips),
@@ -130,56 +162,50 @@ trips_percentage <- trips |>
   mutate(percentage_of_trips = (trip_count / total_trips) * 100) |>
   collect()
 
-# 
-# 
-# trips |>
-#   group_by(distance_bracket, mode, scen, gender, agegroup) |>
-#   summarise(weighted_count = sum(t.factor), .groups = 'drop') |>
-#   group_by(distance_bracket, scen) 
-
-
-trips_percentage_all <- trips_percentage |>
-  group_by(mode, scen) |>
-  summarise(trip_count = mean(trip_count),
-            total_trips = mean(total_trips),
-            percentage_of_trips = (trip_count / total_trips) * 100, .groups = 'drop') |>
-  mutate(LAD_origin = "All Locations") |> 
+trip_counts <- trips |>
+  group_by(LAD_origin, imd_origin, mode, scen, gender, agegroup, t.purpose) |>
+  summarise(trip_count = sum(t.factor, na.rm = TRUE), .groups = "drop") |>
   collect()
 
-trips_percentage_combined <- bind_rows(trips_percentage |> collect(), trips_percentage_all |> collect())
+# Mode share BY GENDER 
+mode_share_gender <- trip_counts |>
+  group_by(scen, gender, mode) |>
+  summarise(trip_count = sum(trip_count), .groups = "drop") |>
+  group_by(scen, gender) |>
+  mutate(total_trips = sum(trip_count),
+         percentage_of_trips = 100 * trip_count / total_trips) |>
+  ungroup()
 
-# By IMD
+# Mode share BY AGE GROUP
+mode_share_age <- trip_counts |>
+  group_by(scen, agegroup, mode) |>
+  summarise(trip_count = sum(trip_count), .groups = "drop") |>
+  group_by(scen, agegroup) |>
+  mutate(total_trips = sum(trip_count),
+         percentage_of_trips = 100 * trip_count / total_trips) |>
+  ungroup()
 
-trips_percentage_imd <- trips |> #to_duckdb() |> 
-  group_by(imd_origin, scen) |>
-  mutate(total_trips = sum(t.factor, na.rm = TRUE)) |>
-  ungroup() |> 
-  group_by(imd_origin, mode, scen, gender, agegroup, t.purpose) |> 
-  summarise(trip_count = sum(t.factor, na.rm = TRUE), 
-            total_trips = first(total_trips), 
-            .groups = 'drop') |>
-  mutate(percentage_of_trips = (trip_count / total_trips) * 100) |> collect()
+# Mode share BY LAD
+mode_share_lad <- trip_counts |>
+  group_by(scen, LAD_origin, mode) |>
+  summarise(trip_count = sum(trip_count), .groups = "drop") |>
+  group_by(scen, LAD_origin) |>
+  mutate(total_trips = sum(trip_count),
+         percentage_of_trips = 100 * trip_count / total_trips) |>
+  ungroup()
 
-trips_percentage_imd$imd_origin <- as.factor(trips_percentage_imd$imd_origin) 
+# Mode share BY IMD
+mode_share_imd <- trip_counts |>
+  group_by(scen, imd_origin, mode) |>
+  summarise(trip_count = sum(trip_count), .groups = "drop") |>
+  group_by(scen, imd_origin) |>
+  mutate(total_trips = sum(trip_count),
+         percentage_of_trips = 100 * trip_count / total_trips) |>
+  ungroup()
 
-trips_percentage_all_imd <- trips_percentage_imd |>
-  group_by(mode, scen) |>
-  summarise(trip_count = mean(trip_count),
-            total_trips = mean(total_trips),
-            percentage_of_trips = (trip_count / total_trips) * 100, .groups = 'drop') |>
-  mutate(imd_origin = "All IMDs") |> collect()
-
-trips_percentage_combined_imd <- bind_rows(trips_percentage_all_imd,trips_percentage_imd)
-
-trips_percentage_combined_imd$imd <- factor(trips_percentage_combined_imd$imd_origin,
-                                            levels = c("All IMDs", "1", "2", "3", "4", "5", "6", "7", "8", "9", "10"),
-                                            labels = c("All IMDs", "Most Deprived", "2", "3", "4", "5", "6", "7", "8", "9", "Least Deprived"))
-
-
-
-# Average weekly distance by mode of transportation
+# Average weekly distance by mode of transportation per person
 pp <- trips |> #to_duckdb() |> 
-  group_by(p.ID, imd10, ladnm, scen, gender, agegroup) |> 
+  group_by(p.ID, imd5, LAD_group, scen, gender, agegroup) |> 
   summarise(Cycling = sum(t.distance_bike[mode == "Cycling"] * t.factor[mode=="Cycling"], na.rm = TRUE) ,
             Walking = sum(t.distance_walk[mode=="Walking"]  * t.factor[mode=="Walking"], na.rm = TRUE) ,
             `Public Transport` = sum(t.distance_auto[mode=="Public Transport"]  * t.factor[mode=="Public Transport"], na.rm = TRUE) ,
@@ -189,20 +215,12 @@ pp <- trips |> #to_duckdb() |>
   tidyr::pivot_longer(cols = Cycling:`Car Passenger`, names_to = "mode", values_to = "dist")
 
 summary_distance <- pp |> 
-  group_by(scen, gender, agegroup, imd10, ladnm, mode) |> 
+  group_by(scen, gender, agegroup, imd5, LAD_group, mode) |> 
   reframe(sumDistance = sum(dist, na.rm = T), np = dplyr::n(), avgDistance = sumDistance/np)
 
-summary_distance_all <- pp |> 
-  filter(!is.na(dist)) |> 
-  group_by(scen, gender, imd10, agegroup, mode) |>  
-  reframe(sumDistance = sum(dist, na.rm = T), np = dplyr::n(), avgDistance = sumDistance/np) |>  
-  mutate(ladnm = "All Locations")
-
-combined_distance <- bind_rows(summary_distance,summary_distance_all) 
-
-# Average weekly distance by mode of transportation
+# Average weekly duration by mode of transportation per person
 pp_dur <- trips |> #to_duckdb() |> 
-  group_by(p.ID, imd10, ladnm, scen, gender, agegroup) |> 
+  group_by(p.ID, imd5, LAD_group, scen, gender, agegroup) |> 
   summarise(Cycling = sum(time_bike[mode == "Cycling"] * t.factor[mode=="Cycling"], na.rm = TRUE) ,
             Walking = sum(time_walk[mode=="Walking"]  * t.factor[mode=="Walking"], na.rm = TRUE) ,
             `Public Transport` = sum(time_pt[mode=="Public Transport"]  * t.factor[mode=="Public Transport"], na.rm = TRUE) ,
@@ -212,16 +230,8 @@ pp_dur <- trips |> #to_duckdb() |>
   tidyr::pivot_longer(cols = Cycling:`Car Passenger`, names_to = "mode", values_to = "dur")
 
 summary_duration <- pp_dur |> 
-  group_by(scen, gender, agegroup, imd10, ladnm, mode) |> 
+  group_by(scen, gender, agegroup, imd5, LAD_group, mode) |> 
   reframe(sumDuration = sum(dur, na.rm = T), np = dplyr::n(), avgDuration = sumDuration/np)
-
-summary_duration_all <- pp_dur |> 
-  filter(!is.na(dur)) |> 
-  group_by(scen, gender, imd10, agegroup, mode) |>  
-  reframe(sumDuration = sum(dur, na.rm = T), np = dplyr::n(), avgDuration = sumDuration/np) |> 
-  mutate(ladnm = "All Locations")
-
-combined_duration <- bind_rows(summary_duration, summary_duration_all) 
 
 # Average time spent per person by mode and location
 tt <- trips |> #to_duckdb() |>
@@ -239,16 +249,8 @@ summary_time <- tt |>
   group_by(scen, gender, agegroup, imd_origin, LAD_origin, mode) |> 
   reframe(avgTime = mean(time, na.rm = T))
 
-summary_time_all <- tt |>
-  filter(!is.na(time)) |> 
-  group_by(scen, gender, imd_origin, agegroup, mode) |>  
-  summarise(avgTime = mean(time, na.rm = T)) |>
-  mutate(LAD_origin = "All Locations")
-
-avg_time_combined <- bind_rows(summary_time, summary_time_all)
-
-trip_dur <- trips |> #to_duckdb() |>
-  group_by(t.id, LAD_origin, scen) |> 
+trip_dur <- trips |>
+  group_by(t.id, LAD_origin, imd_origin, gender, agegroup, scen) |> 
   summarise(Cycling=sum(time_bike[mode=="Cycling"] * t.factor[mode=="Cycling"], na.rm = TRUE) ,
             Walking=sum(time_walk[mode=="Walking"]  * t.factor[mode=="Walking"], na.rm = T),
             `Public Transport`=sum(time_pt[mode=="Public Transport"] * t.factor[mode=="Public Transport"], na.rm = T),
@@ -256,25 +258,14 @@ trip_dur <- trips |> #to_duckdb() |>
             `Car Passenger`=sum(time_auto[mode=="Car Passenger"] * t.factor[mode=="Car Passenger"], na.rm = T)) |> 
   collect() |> 
   tidyr::pivot_longer(cols = Cycling:`Car Passenger`, names_to = "mode", values_to = "time")
-  
 
-avg_trip_time_combined <- trip_dur |> 
+avg_trip_time <- trip_dur |> 
   filter(!is.na(time)) |> 
-  group_by(scen, LAD_origin, mode) |> 
-  reframe(avgTime = mean(time, na.rm = T)) |> 
-  bind_rows(
-    trip_dur |> 
-      filter(!is.na(time)) |> 
-      group_by(scen, mode) |> 
-      reframe(avgTime = mean(time, na.rm = T)) |> 
-      mutate(LAD_origin = "All Locations")
-  )
+  group_by(scen, LAD_origin, imd_origin, gender, agegroup, mode) |> 
+  reframe(avgTime = mean(time, na.rm = T)) 
 
-rm(trip_dur)
-
-
-trip_dist <- trips |> #to_duckdb() |>
-  group_by(t.id, LAD_origin, scen) |>
+trip_dist <- trips |>
+  group_by(t.id, LAD_origin, imd_origin, gender, agegroup, scen) |>
   summarise(Cycling = sum(t.distance_bike[mode == "Cycling"] * t.factor[mode=="Cycling"], na.rm = TRUE) ,
             Walking = sum(t.distance_walk[mode=="Walking"]  * t.factor[mode=="Walking"], na.rm = TRUE) ,
             `Public Transport` = sum(t.distance_auto[mode=="Public Transport"]  * t.factor[mode=="Public Transport"], na.rm = TRUE) ,
@@ -283,55 +274,70 @@ trip_dist <- trips |> #to_duckdb() |>
   collect() |> 
   tidyr::pivot_longer(cols = Cycling:`Car Passenger`, names_to = "mode", values_to = "dist")
 
-avg_trip_dist_combined <- trip_dist |> 
+avg_trip_dist <- trip_dist |> 
   filter(!is.na(dist)) |> 
-  group_by(scen, LAD_origin, mode) |> 
-  reframe(avgDistance = mean(dist, na.rm = T)) |> 
-  bind_rows(
-    trip_dist |> 
-      filter(!is.na(dist)) |> 
-      group_by(scen, mode) |> 
-      reframe(avgDistance = mean(dist, na.rm = T)) |> 
-      mutate(LAD_origin = "All Locations")
-  )
+  group_by(scen, LAD_origin, imd_origin, gender, agegroup, mode) |> 
+  reframe(avgDistance = mean(dist, na.rm = T))
 
-rm(trip_dist)
-
+rm(trip_dist, trip_dur)
 
 # Stacked Bar Plots for Average Distance via Transport Mode
 
-distance <- trips |>
-  group_by(distance_bracket, mode, scen, imd10, gender, agegroup) |>
-  summarise(weighted_count = sum(t.factor), .groups = 'drop') |>
-  group_by(distance_bracket, imd10, scen) |>
-  mutate(percent = weighted_count / sum(weighted_count) * 100) |>
+distance_counts <- trips |>
+  group_by(distance_bracket, mode, scen, imd5, gender, agegroup) |>
+  summarise(weighted_count = sum(t.factor, na.rm = TRUE), .groups = "drop") |>
   collect()
 
-distance$distance_bracket <- factor(distance$distance_bracket,
-                                         levels = c("0-1", "1-3", "3-5", "5-10",
-                                                    "10-20", "20-40", "40+"))
+distance_counts$distance_bracket <- factor(distance_counts$distance_bracket,
+                                           levels = c("0-1", "1-3", "3-5", "5-10", "10-20", "20-40", "40+"))
 
+distance_mode_share <- distance_counts |>
+  group_by(scen, distance_bracket, mode) |>
+  summarise(weighted_count = sum(weighted_count), .groups = "drop") |>
+  group_by(scen, distance_bracket) |>
+  mutate(percent = 100 * weighted_count / sum(weighted_count)) |>
+  ungroup()
 
-# # People with Zero trips via mode 
-# zero_mode <- trips |> #to_duckdb() |> 
-#   group_by(scen) |>
-#   summarise(total = n_distinct(p.ID),
-#             .groups = 'drop') |>
-#   right_join(
-#     trips |>
-#       group_by(mode, scen) |>
-#       summarise(count = n_distinct(p.ID), .groups = 'drop'),
-#     by = "scen") |>
-#   mutate(zero = total - count,
-#          zero_percent = round(zero/total*100,1)) |> 
-#   collect()
+# Mode share within distance bracket, BY GENDER
+distance_mode_share_gender <- distance_counts |>
+  group_by(scen, distance_bracket, gender, mode) |>
+  summarise(weighted_count = sum(weighted_count), .groups = "drop") |>
+  group_by(scen, distance_bracket, gender) |>
+  mutate(percent = 100 * weighted_count / sum(weighted_count)) |>
+  ungroup()
 
-t <- mget(c("trips_percentage_combined",
-            "distance",
-            "avg_trip_dist_combined",
-            "avg_trip_time_combined",
-            "combined_distance"
-            ))
+# Mode share within distance bracket, BY AGE GROUP
+distance_mode_share_age <- distance_counts |>
+  group_by(scen, distance_bracket, agegroup, mode) |>
+  summarise(weighted_count = sum(weighted_count), .groups = "drop") |>
+  group_by(scen, distance_bracket, agegroup) |>
+  mutate(percent = 100 * weighted_count / sum(weighted_count)) |>
+  ungroup()
 
+# Mode share within distance bracket, BY IMD
+distance_mode_share_imd <- distance_counts |>
+  group_by(scen, distance_bracket, imd5, mode) |>
+  summarise(weighted_count = sum(weighted_count), .groups = "drop") |>
+  group_by(scen, distance_bracket, imd5) |>
+  mutate(percent = 100 * weighted_count / sum(weighted_count)) |>
+  ungroup()
 
-qs::qsave(t, "temp/061125_trips.qs")
+t <- mget(c(
+  "trips_percentage",
+  "mode_share_gender",
+  "mode_share_age",
+  "mode_share_lad",
+  "mode_share_imd",
+  "summary_distance",
+  "summary_duration",
+  "summary_time",
+  "avg_trip_time",
+  "avg_trip_dist",
+  "distance_counts",
+  "distance_mode_share",
+  "distance_mode_share_gender",
+  "distance_mode_share_age",
+  "distance_mode_share_imd"
+))
+
+qs2::qs_save(t, paste0(dir, "/scenOutput/trips/trips.qs2")
