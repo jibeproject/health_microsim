@@ -50,14 +50,12 @@ trips$time_pt <- as.numeric(trips$time_pt)
 
 trips <- trips |>
   mutate(mode = case_when(
-    mode == "autoDriver" ~ "Driving Car",
-    mode == "autoPassenger" ~ "Car Passenger",
+    mode %in% c("autoDriver", "autoPassenger") ~ "Car",
     mode == "pt" ~ "Public Transport",
     mode == "walk" ~ "Walking",
     mode == "bicycle" ~ "Cycling",
     TRUE ~ "Other"),
-    mode = factor(mode, levels = c("Driving Car",
-                                   "Car Passenger",
+    mode = factor(mode, levels = c("Car",
                                    "Public Transport",
                                    "Walking",
                                    "Cycling",
@@ -76,10 +74,9 @@ trips <- trips |>
     time = case_when(mode=="Cycling"~time_bike,
                      mode=="Walking"~time_walk,
                      mode=="Public Transport"~time_pt,
-                     mode=="Driving Car"~time_auto,
-                     mode=="Car Passenger"~time_auto),
+                     mode=="Car"~time_auto),
     distance = case_when(
-      mode %in% c("Driving Car", "Car Passenger", "Public Transport") ~ t.distance_auto,
+      mode %in% c("Car", "Public Transport") ~ t.distance_auto,
       mode == "Cycling"~t.distance_bike,
       mode == "Walking"~t.distance_walk),
     time_factored = time * t.factor,
@@ -133,19 +130,19 @@ trips <- trips %>%
     TRUE ~ NA_character_  # Catch-all for unlisted values
   ))
 
-table(trips$LAD_group[trips$scen == "Reference"])
 
 trips <- trips %>%
   mutate(imd5 = ceiling(as.numeric(imd10) / 2),
          imd_origin = ceiling(as.numeric(imd_origin) / 2),
          imd_destination = ceiling(as.numeric(imd_destination) / 2))
 
-arrow::write_dataset(dataset = trips, path = paste0(dir, "/scenOutput/trips/trips.parquet"), partitioning = c("scen", "LAD_group"))
+arrow::write_dataset(dataset = trips, path = paste0(dir, "/scenOutput/trips/trips_200826.parquet"), partitioning = c("scen", "LAD_group"))
 
 ## Creating Visualizations
 
 # Base path to trips parquet dataset
-trips_path <- "Z:/HealthImpact/Data/Country/UK/JIBE/manchester/scenOutput/trips/trips.parquet/"
+trips_path <- "Z:/HealthImpact/Data/Country/UK/JIBE/manchester/scenOutput/trips/trips_200826.parquet/"
+
 
 # Open once as an Arrow dataset (lazy)
 trips_ds <- arrow::open_dataset(trips_path)
@@ -245,13 +242,12 @@ compute_scenario <- function(scen_val, trips_ds) {
       Cycling = sum(t.distance_bike[mode == "Cycling"] * t.factor[mode == "Cycling"], na.rm = TRUE),
       Walking = sum(t.distance_walk[mode == "Walking"] * t.factor[mode == "Walking"], na.rm = TRUE),
       `Public Transport` = sum(t.distance_auto[mode == "Public Transport"] * t.factor[mode == "Public Transport"], na.rm = TRUE),
-      `Driving Car` = sum(t.distance_auto[mode == "Driving Car"] * t.factor[mode == "Driving Car"], na.rm = TRUE),
-      `Car Passenger` = sum(t.distance_auto[mode == "Car Passenger"] * t.factor[mode == "Car Passenger"], na.rm = TRUE),
+      `Car` = sum(t.distance_auto[mode == "Car"] * t.factor[mode == "Car"], na.rm = TRUE),
       .groups = "drop"
     ) |>
     collect() |>
     pivot_longer(
-      cols = Cycling:`Car Passenger`,
+      cols = Cycling:`Car`,
       names_to = "mode",
       values_to = "dist"
     )
@@ -271,13 +267,12 @@ compute_scenario <- function(scen_val, trips_ds) {
       Cycling = sum(time_bike[mode == "Cycling"] * t.factor[mode == "Cycling"], na.rm = TRUE),
       Walking = sum(time_walk[mode == "Walking"] * t.factor[mode == "Walking"], na.rm = TRUE),
       `Public Transport` = sum(time_pt[mode == "Public Transport"] * t.factor[mode == "Public Transport"], na.rm = TRUE),
-      `Driving Car` = sum(time_auto[mode == "Driving Car"] * t.factor[mode == "Driving Car"], na.rm = TRUE),
-      `Car Passenger` = sum(time_auto[mode == "Car Passenger"] * t.factor[mode == "Car Passenger"], na.rm = TRUE),
-      .groups = "drop"
+      `Car` = sum(time_auto[mode == "Car"] * t.factor[mode == "Car"], na.rm = TRUE),
+     .groups = "drop"
     ) |>
     collect() |>
     pivot_longer(
-      cols = Cycling:`Car Passenger`,
+      cols = Cycling:`Car`,
       names_to = "mode",
       values_to = "dur"
     )
@@ -297,13 +292,12 @@ compute_scenario <- function(scen_val, trips_ds) {
       Cycling = sum(time_bike[mode == "Cycling"] * t.factor[mode == "Cycling"], na.rm = TRUE),
       Walking = sum(time_walk[mode == "Walking"] * t.factor[mode == "Walking"], na.rm = TRUE),
       `Public Transport` = sum(time_pt[mode == "Public Transport"] * t.factor[mode == "Public Transport"], na.rm = TRUE),
-      `Driving Car` = sum(time_auto[mode == "Driving Car"] * t.factor[mode == "Driving Car"], na.rm = TRUE),
-      `Car Passenger` = sum(time_auto[mode == "Car Passenger"] * t.factor[mode == "Car Passenger"], na.rm = TRUE),
-      .groups = "drop"
+      `Car` = sum(time_auto[mode == "Car"] * t.factor[mode == "Car"], na.rm = TRUE),
+     .groups = "drop"
     ) |>
     collect() |>
     pivot_longer(
-      cols = Cycling:`Car Passenger`,
+      cols = Cycling:`Car`,
       names_to = "mode",
       values_to = "time"
     )
@@ -322,13 +316,12 @@ compute_scenario <- function(scen_val, trips_ds) {
       Cycling = sum(time_bike[mode == "Cycling"] * t.factor[mode == "Cycling"], na.rm = TRUE),
       Walking = sum(time_walk[mode == "Walking"] * t.factor[mode == "Walking"], na.rm = TRUE),
       `Public Transport` = sum(time_pt[mode == "Public Transport"] * t.factor[mode == "Public Transport"], na.rm = TRUE),
-      `Driving Car` = sum(time_auto[mode == "Driving Car"] * t.factor[mode == "Driving Car"], na.rm = TRUE),
-      `Car Passenger` = sum(time_auto[mode == "Car Passenger"] * t.factor[mode == "Car Passenger"], na.rm = TRUE),
+      `Car` = sum(time_auto[mode == "Car"] * t.factor[mode == "Car"], na.rm = TRUE),
       .groups = "drop"
     ) |>
     collect() |>
     pivot_longer(
-      cols = Cycling:`Car Passenger`,
+      cols = Cycling:`Car`,
       names_to = "mode",
       values_to = "time"
     )
@@ -347,13 +340,12 @@ compute_scenario <- function(scen_val, trips_ds) {
       Cycling = sum(t.distance_bike[mode == "Cycling"] * t.factor[mode == "Cycling"], na.rm = TRUE),
       Walking = sum(t.distance_walk[mode == "Walking"] * t.factor[mode == "Walking"], na.rm = TRUE),
       `Public Transport` = sum(t.distance_auto[mode == "Public Transport"] * t.factor[mode == "Public Transport"], na.rm = TRUE),
-      `Driving Car` = sum(t.distance_auto[mode == "Driving Car"] * t.factor[mode == "Driving Car"], na.rm = TRUE),
-      `Car Passenger` = sum(t.distance_auto[mode == "Car Passenger"] * t.factor[mode == "Car Passenger"], na.rm = TRUE),
+      `Car` = sum(t.distance_auto[mode == "Car"] * t.factor[mode == "Car"], na.rm = TRUE),
       .groups = "drop"
     ) |>
     collect() |>
     pivot_longer(
-      cols = Cycling:`Car Passenger`,
+      cols = Cycling:`Car`,
       names_to = "mode",
       values_to = "dist"
     )
@@ -470,5 +462,4 @@ combined_list <- set_names(
   object_names
 )
 
-# Save the full object
-qs2::qs_save(combined_list, "Z:/HealthImpact/Data/Country/UK/JIBE/manchester/scenOutput/trips/110826_trips.qs2")
+qs2::qs_save(combined_list, "Z:/HealthImpact/Data/Country/UK/JIBE/manchester/scenOutput/trips/trips_200826.qs2")
