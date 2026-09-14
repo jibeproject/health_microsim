@@ -222,25 +222,74 @@ people_imd <- people_raw |>
 
 # ---- Healthy & Life years ----
 
-life_years_cycle <- all_data |>
-  filter(!grepl("dead", value)) |>
+# ---- Life years -----------------------------------------------------------
+# Derived from people_raw rather than re-scanning all_data. people_raw applies
+# the identical filter (!grepl("dead|null", value)) and counts n_distinct(id),
+# so the two were computing the same quantity five times over.
+#
+# Summing pop across strata is valid because at a given (scen, cycle) each
+# person has exactly one age, gender, LSOA and district, and therefore falls
+# in exactly one people_raw cell -- so sum(pop) == n_distinct(id) over the
+# union. (The dedup that n_distinct provides happens WITHIN the cell, where a
+# person may hold several `value` rows.)
+#
+# `null` marks people not yet born during the run; including those rows as
+# alive inflated life-years and made the numerator inconsistent with the
+# person-time denominator built from people_raw.
+life_years_cycle <- people_raw |>
   group_by(scen, cycle) |>
-  summarise(value = n_distinct(id), .groups = "drop") |> 
-  collect()
+  summarise(value = sum(pop, na.rm = TRUE), .groups = "drop")
 
 # ---- Death counts ----
 inc_death <- incidence |> filter(grepl("dead", value))
-deaths_overall_raw <- inc_death |> group_by(scen, cycle) |>
+
+# All-cause deaths use the "dead" value ALONE. grepl("dead", ...) also matches
+# dead_car / dead_bike / dead_walk, so if a mode-specific death also carries a
+# "dead" row, the previous filter counted that death twice. The mode-specific
+# values are reported separately under diseases/injuries instead.
+inc_death_all <- incidence |> filter(value == "dead")
+deaths_overall_raw <- inc_death_all |> group_by(scen, cycle) |>
   summarise(value = dplyr::n(), .groups = "drop")
-deaths_gender_raw  <- inc_death |> group_by(scen, cycle, gender) |>
+deaths_gender_raw  <- inc_death_all |> group_by(scen, cycle, gender) |>
   summarise(value = dplyr::n(), .groups = "drop")
-deaths_lad_raw     <- inc_death |> group_by(scen, cycle, ladnm) |>
+deaths_lad_raw     <- inc_death_all |> group_by(scen, cycle, ladnm) |>
   summarise(value = dplyr::n(), .groups = "drop")
-deaths_imd_raw     <- inc_death |> group_by(scen, cycle, imd10) |>
+deaths_imd_raw     <- inc_death_all |> group_by(scen, cycle, imd10) |>
   summarise(value = dplyr::n(), .groups = "drop")
-deaths_agegroup_cycle_raw     <- inc_death |> group_by(scen, cycle, agegroup_cycle) |>
+deaths_agegroup_cycle_raw     <- inc_death_all |> group_by(scen, cycle, agegroup_cycle) |>
   summarise(value = dplyr::n(), .groups = "drop")
 
+
+# ---- Death counts BY CAUSE ------------------------------------------------
+# The deaths_* objects above collapse every death value into a single count.
+# These keep the cause so the app can show all-cause / car / cyclist /
+# pedestrian separately.
+#
+# CAUTION: "dead" is the all-cause value and "dead_car"/"dead_bike"/
+# "dead_walk" are mode-specific. If a person killed in a car crash carries
+# BOTH a "dead" row and a "dead_car" row, these categories overlap and must
+# never be summed together. They are only ever displayed side by side.
+# Mode-specific road deaths, shaped like diseases_* (a `cause` column) so the
+# app can append them to the diseases/injuries metric. All-cause "dead" is
+# deliberately excluded here -- it has its own metric, and mixing the two would
+# double-count.
+INJURY_DEATH_LABELS <- c("dead_car"  = "Death (car)",
+                         "dead_bike" = "Death (cyclist)",
+                         "dead_walk" = "Death (pedestrian)")
+
+deaths_injury_of <- function(grp) {
+  inc_death |>
+    filter(value %in% names(INJURY_DEATH_LABELS)) |>
+    mutate(cause = unname(INJURY_DEATH_LABELS[value])) |>
+    group_by(across(all_of(c("scen", "cycle", "cause", grp)))) |>
+    summarise(value = dplyr::n(), .groups = "drop") |>
+    diff_vs_reference(by = c("cause", grp))
+}
+
+deaths_injury_overall <- deaths_injury_of(character(0))
+deaths_injury_gender  <- deaths_injury_of("gender")
+deaths_injury_lad     <- deaths_injury_of("ladnm")
+deaths_injury_imd     <- deaths_injury_of("imd10")
 
 # ---- Disease counts (all causes combined) ----
 diseases_all_cycle <- incidence |>
@@ -319,35 +368,24 @@ healthy_imd             <- roll(healthy_cube, "imd10")          |> diff_vs_refer
 lifey_overall <- life_years_cycle |> 
   diff_vs_reference()
 
-lifey_gender  <- all_data |> 
-  filter(!grepl("dead", value)) |>
-  group_by(scen, cycle, gender) |> 
-  summarise(value = n_distinct(id), .groups = "drop") |>
-  diff_vs_reference(by = "gender") |> 
-  collect()
+# All four derive from people_raw by rollup -- see the note on
+# life_years_cycle above. This removes four full scans of all_data and
+# guarantees the life-year numerator can never drift from the person-time
+# denominator again, since both now come from the same table.
+lifey_of <- function(by) {
+  people_raw |>
+    group_by(across(all_of(c("scen", "cycle", by)))) |>
+    summarise(value = sum(pop, na.rm = TRUE), .groups = "drop") |>
+    diff_vs_reference(by = by)
+}
 
-lifey_agegroup_cycle  <- all_data |> 
-  filter(!grepl("dead", value)) |>
-  group_by(scen, cycle, agegroup_cycle) |> 
-  summarise(value = n_distinct(id), .groups = "drop") |>
-  diff_vs_reference(by = "agegroup_cycle") |> 
-  collect()
-
-lifey_imd  <- all_data |> 
-  filter(!grepl("dead", value)) |>
-  left_join(zones_db, by = "lsoa21cd") |> 
-  group_by(scen, cycle, imd10) |> 
-  summarise(value = n_distinct(id), .groups = "drop") |>
-  diff_vs_reference(by = "imd10") |> 
-  collect()
-
-lifey_lad <- all_data |>
-  filter(!grepl("dead", value)) |>
-  left_join(lads_db, by = "ladcd") |>
-  group_by(scen, cycle, ladnm) |>
-  summarise(value = n_distinct(id), .groups = "drop") |>
-  diff_vs_reference(by = "ladnm") |>
-  collect()
+lifey_gender          <- lifey_of("gender")
+# NB: agegroup_cycle here now uses the RECOMPUTED bands from add_agegroups()
+# (…, 85-89, 90+), not the native column in the parquet (which stops at 85+).
+# The old version grouped on the native column, so this output changes bands.
+lifey_agegroup_cycle  <- lifey_of("agegroup_cycle")
+lifey_imd             <- lifey_of("imd10")
+lifey_lad             <- lifey_of("ladnm")
 # ---- Mean age (death & onset) ----
 inc_death_src <- incidence |>
   filter(grepl("dead", value)) |> 
@@ -357,9 +395,21 @@ incidence_src <- incidence |>
   filter(!value %in% c("healthy","null") & !grepl("dead", value)) |>
   select(scen, value, age_cycle, gender, ladnm, imd10, agegroup_cycle)
 
+# NOTE: this returns exactly the same numbers as the corresponding
+# mean_age_*_raw_* objects. Counting rows per (group, age_cycle) and then
+# taking weighted.mean(age_cycle, w) is sum(age*count)/sum(count), which is
+# just the plain mean of age_cycle over the group. The "weighted" and "raw"
+# pairs are therefore duplicates -- kept only because the app joins on the
+# weighted names. See the note in the chat before removing either.
+#
+# count(across(...)) errored on dplyr >= 1.1 ("Argument 'x' is not a vector:
+# list") because across() returns a tibble where count() expects vectors;
+# rewritten with group_by/summarise, which is stable across versions.
 weighted_mean_by <- function(df, group_keys) {
-  w <- df |> count(across(all_of(c(group_keys, "age_cycle"))), name = "w")
-  w |> group_by(across(all_of(group_keys))) |>
+  df |>
+    group_by(across(all_of(c(group_keys, "age_cycle")))) |>
+    summarise(w = dplyr::n(), .groups = "drop") |>
+    group_by(across(all_of(group_keys))) |>
     summarise(mean_age_weighted = weighted.mean(age_cycle, w), .groups = "drop")
 }
 
@@ -612,6 +662,8 @@ pc <- mget(c(
   "people_overall","people_gender","people_lad", "people_imd",
   # diffs
   "deaths_overall","deaths_gender","deaths_lad", "deaths_imd", "deaths_agegroup_cycle",
+  # mode-specific road deaths, appended to the diseases/injuries metric
+  "deaths_injury_overall","deaths_injury_gender","deaths_injury_lad","deaths_injury_imd",
   "diseases_overall","diseases_gender","diseases_lad", "diseases_imd", "diseases_agegroup_cycle",
   "healthy_overall","healthy_gender","healthy_lad", "healthy_imd", "healthy_agegroup_cycle",
   "lifey_overall","lifey_gender","lifey_lad", "lifey_imd", "lifey_agegroup_cycle",

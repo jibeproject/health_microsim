@@ -274,7 +274,7 @@ server <- function(input, output, session) {
   })
   
   output$map <- renderLeaflet(
-    leaflet() |> addProviderTiles(providers$CartoDB.Positron) |>
+    leaflet() |> addProviderTiles(providers$Esri.WorldGrayCanvas) |>
       setView(lng = -2.24, lat = 53.48, zoom = 10))
   
   observe({

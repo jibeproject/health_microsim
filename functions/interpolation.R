@@ -22,7 +22,7 @@ disagg_spline <- function(dat, key) {
     
     # Generate new x points (high-frequency), constrained to be at most 99
     new_x <- seq(min(x), min(99, max(x)), length.out = min(100, max(x) - min(x) + 1))
-
+    
     # browser()
     
     # Perform spline interpolation on the log-transformed data
@@ -107,29 +107,59 @@ disagg_loess <- function(dat, key) {
 
 # Smooth spline
 
+# ============================================================
+# 2026-08: bands are now anchored at their MIDPOINT, not their start.
+#
+# Each five-year band summarises the whole interval, so the value for
+# [40,45) describes ages 40-44 and is best represented at 42.5, not at
+# 40. Anchoring at the band start shifted the entire fitted curve 2.5
+# years young, which inflated the within-band means at younger ages
+# where the curve is rising steeply..
+#
+# A smoothing spline is used rather than an interpolating one
+# (disagg_spline, above). The two are indistinguishable on band-mean
+# accuracy (median absolute deviation 17.2% vs 16.5%), but the
+# interpolating spline oscillates between knots: 24 curves showed more
+# than five changes of direction against 3 for the smoothing spline,
+# with all-cause dementia incidence reversing 10 times in both sexes.
+# GBD band rates are themselves modelled estimates rather than raw
+# counts, so passing exactly through them buys little.
+#
+# NOTE: x is built as a regular sequence from the lowest band start to
+# 99. This assumes contiguous five-year bands with no gaps. The
+# stopifnot below fails loudly if that ever stops holding, rather than
+# silently pairing rates with the wrong ages.
+# ============================================================
+
+BAND_WIDTH  <- 5
+BAND_CENTRE <- BAND_WIDTH / 2   # 2.5: offset from band start to midpoint
+
 disagg_smooth_spline <- function(dat, key) {
   epsilon <- 1e-6
   
   with(dat, {
-    x <- seq(from = floor(min(from_age)/5) * 5, to = 99, by = 5) 
+    band_start <- seq(from = floor(min(from_age) / BAND_WIDTH) * BAND_WIDTH,
+                      to = 99, by = BAND_WIDTH)
+    x <- band_start + BAND_CENTRE          # midpoint of each band
     y <- log(rate_1 + epsilon)
     
-    # browser()
+    if (length(x) != length(y)) {
+      stop("disagg_smooth_spline: ", length(x), " band positions but ",
+           length(y), " rates for ",
+           paste(unlist(key), collapse = " / "),
+           ". Bands are assumed contiguous and five years wide.")
+    }
     
-    # Fit a smooth spline model
+    # Fit a smooth spline model on the log scale
     fit <- smooth.spline(x, y)
     
-    # browser()
+    # Predict at every single year of age across the banded range.
+    # Evaluating outside the fitted knots (below the first midpoint and
+    # above the last) extrapolates; smooth.spline does this linearly on
+    # the log scale, which is well behaved over 2.5 years at each end.
+    new_x <- seq(min(band_start), 99, by = 1)
     
-    # Generate new x points
-    new_x <- seq(min(x), min(99, max(x)), length.out = min(100, max(x) - min(x) + 1))
-    
-    # browser()
-    
-    # Predict values
     log_interpolated <- predict(fit, new_x)$y
-    
-    # browser()
     
     # Transform back from log scale
     interpolated <- exp(log_interpolated)
@@ -199,4 +229,3 @@ plot_interpolation_pages <- function(plot_data, output_dir) {
   }
   
 }
-

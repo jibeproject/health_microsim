@@ -1,158 +1,207 @@
 # === Load libraries ===
 suppressPackageStartupMessages({
-  library(tidyverse)
+  library(tidyverse)
 })
 
-inp_dir <- "Z:/HealthImpact/Data/Country/UK/JIBE/manchester/scenOutput/normalization_fix_052226/microData"
+inp_dir <- "X:/HealthImpact/Data/Country/UK/JIBE/manchester/scenOutput/normalization_fix_052226/microData"
 
-inp_exp_dir = "Z:/HealthImpact/Data/Country/UK/JIBE/manchester"
+inp_exp_dir = "X:/HealthImpact/Data/Country/UK/JIBE/manchester"
 
-zones <- read_csv("Z:/HealthImpact/Data/Country/UK/JIBE/manchester/input/zoneSystem.csv")
+zones <- read_csv("X:/HealthImpact/Data/Country/UK/JIBE/manchester/input/zoneSystem.csv")
+# NB: IMD is collapsed to quintiles further down via (imd10 + 1) %/% 2, which
+# is the same mapping as ceiling(imd10 / 2) used in process_all_data.R.
+# Do NOT re-enable the line below or the values are quintiled twice.
 #zones$imd10 <- ceiling(zones$imd10 / 2)
 
+# ---- LAD -> area grouping (must match process_all_data.R) -----------------
+# The other tabs report four areas rather than ten districts; the Exposures
+# tab was still reporting individual districts.
+AREA_MAP <- c(
+  "Manchester" = "City core",
+  "Salford"    = "City core",
+  "Oldham"     = "East",
+  "Rochdale"   = "East",
+  "Tameside"   = "East",
+  "Stockport"  = "South",
+  "Trafford"   = "South",
+  "Bolton"     = "West/North-west",
+  "Wigan"      = "West/North-west",
+  "Bury"       = "West/North-west"
+)
+
+# Fail loudly rather than silently turning an unmapped district into NA.
+unmapped <- setdiff(unique(zones$ladnm), names(AREA_MAP))
+if (length(unmapped))
+  stop("District(s) not in AREA_MAP: ", paste(unmapped, collapse = ", "))
+
+# Keep the district name too, so the app can list which LADs sit in each area.
+zones <- zones |>
+  dplyr::mutate(lad_district = ladnm,
+                ladnm        = unname(AREA_MAP[ladnm]))
+
+# Lookup exported alongside the quantiles for display in the app.
+area_lookup <- zones |>
+  dplyr::distinct(ladnm, lad_district) |>
+  dplyr::arrange(ladnm, lad_district)
+
 add_zones_and_scen <- function(df, zones, scen = "reference"){
-  return(
-    df |> left_join(zones |> 
-                      dplyr::select(oaID, imd10, ladnm) |> 
-                      rename(zone = oaID)) |> 
-      mutate(scen = scen)
-  )
+  return(
+    df |> left_join(zones |>
+                      dplyr::select(oaID, imd10, ladnm) |>
+                      rename(zone = oaID)) |>
+      mutate(scen = scen)
+  )
 }
 
 calc_quantiles_grouped <- function(data, group_var = NULL) {
-  # data <- all_exposure
-  # group_var <- c("scen", "gender")
-  quantile_probs <- c(5, 25, 50, 75, 95)
-  quantile_names <- c("5%", "25%", "50%", "75%", "95%")
-  
-  if (!is.null(group_var)) {
-    group_vars_sym <- if (length(group_var) > 1) {
-      rlang::syms(group_var)
-    } else {
-      rlang::sym(group_var)
-    }
-    grouped_df <- data |> group_by(!!!group_vars_sym)
-  } else {
-    grouped_df <- data
-  }
-  
-  
-  summarised <- grouped_df |>
-    summarise(
-      across(
-        matches("^(exposure|total_PA)"),
-        list(
-          mean = ~ mean(.x, na.rm = TRUE),
-          `5%` = ~ quantile(.x, 0.05, na.rm = TRUE),
-          `25%` = ~ quantile(.x, 0.25, na.rm = TRUE),
-          `50%` = ~ quantile(.x, 0.5, na.rm = TRUE),
-          `75%` = ~ quantile(.x, 0.75, na.rm = TRUE),
-          `95%` = ~ quantile(.x, 0.95, na.rm = TRUE)
-        ),
-        .names = "{.col}_{.fn}"
-      ),
-      .groups = "drop"
-    ) |>
-    pivot_longer(
-      cols = -all_of(group_var),
-      names_to = c("variable", "stat"),
-      names_pattern = "^(.*)_(.*)$"
-    ) |>
-    mutate(stat = factor(stat, levels = c("mean", quantile_names))) |>
-    arrange(across(all_of(group_var)), variable, stat)
-  
-  return(summarised)
+  # data <- all_exposure
+  # group_var <- c("scen", "gender")
+  quantile_probs <- c(5, 25, 50, 75, 95)
+  quantile_names <- c("5%", "25%", "50%", "75%", "95%")
+  
+  if (!is.null(group_var)) {
+    group_vars_sym <- if (length(group_var) > 1) {
+      rlang::syms(group_var)
+    } else {
+      rlang::sym(group_var)
+    }
+    grouped_df <- data |> group_by(!!!group_vars_sym)
+  } else {
+    grouped_df <- data
+  }
+  
+  
+  summarised <- grouped_df |>
+    summarise(
+      across(
+        matches("^(exposure|total_PA)"),
+        list(
+          mean = ~ mean(.x, na.rm = TRUE),
+          `5%` = ~ quantile(.x, 0.05, na.rm = TRUE),
+          `25%` = ~ quantile(.x, 0.25, na.rm = TRUE),
+          `50%` = ~ quantile(.x, 0.5, na.rm = TRUE),
+          `75%` = ~ quantile(.x, 0.75, na.rm = TRUE),
+          `95%` = ~ quantile(.x, 0.95, na.rm = TRUE)
+        ),
+        .names = "{.col}_{.fn}"
+      ),
+      .groups = "drop"
+    ) |>
+    pivot_longer(
+      cols = -all_of(group_var),
+      names_to = c("variable", "stat"),
+      names_pattern = "^(.*)_(.*)$"
+    ) |>
+    mutate(stat = factor(stat, levels = c("mean", quantile_names))) |>
+    arrange(across(all_of(group_var)), variable, stat)
+  
+  return(summarised)
 }
 
-get_exp_summary <- function(inp_dir, inp_exp_dir = "Z:/HealthImpact/Data/Country/UK/JIBE/manchester", zones, scen = "base") {
-  #scen <- 'reference'
-  ref_dir <- file.path(inp_dir, scen, "microData")
-  
-  # Years we want to read
-  years <- c(2021, 2031, 2041, 2051)
-  
-  # Read only the target year files that exist
-  file_map <- file.path(ref_dir, paste0("pp_exposure_", years, ".csv"))
-  print(file_map)
-  files <- file_map[file.exists(file_map)]
-  
-  if (length(files) == 0) {
-    stop("No pp_exposure_YYYY.csv files found in: ", ref_dir)
-  }
-  
-  read_with_year <- function(f) {
-    yr <- as.integer(sub("^pp_exposure_([0-9]+)\\.csv$", "\\1", basename(f)))
-    df <- readr::read_csv(f)
-    df$year <- yr
-    df
-  }
-  
-  all_exposure <- dplyr::bind_rows(lapply(files, read_with_year))
-  
-  # Replace default 2021 with scenario-specific pp_exp file
-  scen_file <- dplyr::case_when(
-    scen == "reference" ~ "pp_exposure_2021_base_220526.csv",
-    scen == "green"     ~ "pp_exposure_2021_green_260526.csv",
-    scen == "safeStreet"~ "pp_exposure_2021_safeStreet_260526.csv",
-    scen == "goDutch_220726" ~ "pp_exposure_2021_goDutch_260526.csv",
-    scen == "goDutch"   ~ "pp_exposure_2021_goDutch_260526.csv",
-    TRUE ~ NA_character_
-  )
-  
-  if (is.na(scen_file)) {
-    stop("Unknown scen value: ", scen)
-  }
-  scen_path <- file.path(inp_exp_dir, "input", "health", scen_file)
-  if (!file.exists(scen_path)) {
-    stop("Scenario 2021 file not found: ", scen_path)
-  }
-  
-  pp_2021 <- readr::read_csv(scen_path, show_col_types = FALSE)
-  pp_2021$year <- 2021
-  
-  # Remove any existing 2021 row data and replace with scenario-specific 2021
-  all_exposure <- all_exposure |>
-    dplyr::filter(year != 2021) |>
-    dplyr::bind_rows(pp_2021) |>
-    dplyr::arrange(year)
-  
-  all_exposure <- add_zones_and_scen(df = all_exposure, zones, scen = scen)
-  
-  all_exposure <- all_exposure |>
-    dplyr::mutate(
-      agegroup = cut(
-        age,
-        breaks = c(0, 25, 45, 65, 85, Inf),
-        labels = c("0-24", "25-44", "45-64", "65-84", "85+"),
-        right = FALSE,
-        include.lowest = TRUE
-      ),
-      total_PA = mmetHr_walk + mmetHr_cycle + mmetHr_otherSport,
-      imd = (imd10 + 1) %/% 2
-    )
-  
-  overall <- calc_quantiles_grouped(all_exposure, c("scen", "year"))
-  by_gender <- calc_quantiles_grouped(all_exposure, c("scen", "gender", "year"))
-  by_ladnm <- calc_quantiles_grouped(all_exposure, c("scen", "ladnm", "year"))
-  by_imd <- calc_quantiles_grouped(all_exposure, c("scen", "imd", "year"))
-  by_agegroup <- calc_quantiles_grouped(all_exposure, c("scen", "agegroup", "year"))
-  
-  overall <- overall |> dplyr::mutate(grouping = "Overall")
-  by_gender <- by_gender |> dplyr::mutate(grouping = paste("Gender:", gender)) |> dplyr::select(-gender)
-  by_ladnm <- by_ladnm |> dplyr::mutate(grouping = paste("LADNM:", ladnm)) |> dplyr::select(-ladnm)
-  by_imd <- by_imd |> dplyr::mutate(grouping = paste("IMD:", imd)) |> dplyr::select(-imd)
-  by_agegroup <- by_agegroup |> dplyr::mutate(grouping = paste("Agegroup:", agegroup)) |> dplyr::select(-agegroup)
-  
-  all_quantiles <- dplyr::bind_rows(overall, by_gender, by_ladnm, by_imd, by_agegroup)
-  return(all_quantiles)
+# `scen`     = scenario LABEL written into the output (what the app filters on)
+# `scen_dir` = FOLDER to read from, when it differs from the label. The 22/07
+#              goDutch rerun lives in goDutch_220726/ but must still be
+#              labelled "goDutch" downstream.
+get_exp_summary <- function(inp_dir, inp_exp_dir = "Z:/HealthImpact/Data/Country/UK/JIBE/manchester",
+                            zones, scen = "base", scen_dir = scen) {
+  #scen <- 'reference'
+  ref_dir <- file.path(inp_dir, scen_dir, "microData")
+  if (!dir.exists(ref_dir)) stop("Scenario directory not found: ", ref_dir)
+  message("[", scen, "] reading from: ", ref_dir)
+  
+  # Years we want to read
+  years <- c(2021, 2031, 2041, 2051)
+  
+  # Read only the target year files that exist
+  file_map <- file.path(ref_dir, paste0("pp_exposure_", years, ".csv"))
+  print(file_map)
+  files <- file_map[file.exists(file_map)]
+  
+  if (length(files) == 0) {
+    stop("No pp_exposure_YYYY.csv files found in: ", ref_dir)
+  }
+  
+  read_with_year <- function(f) {
+    yr <- as.integer(sub("^pp_exposure_([0-9]+)\\.csv$", "\\1", basename(f)))
+    df <- readr::read_csv(f)
+    df$year <- yr
+    df
+  }
+  
+  all_exposure <- dplyr::bind_rows(lapply(files, read_with_year))
+  
+  # Replace default 2021 with scenario-specific pp_exp file
+  scen_file <- dplyr::case_when(
+    scen_dir == "reference" ~ "pp_exposure_2021_base_220526.csv",
+    scen_dir == "green"  ~ "pp_exposure_2021_green_260526.csv",
+    scen_dir == "safeStreet"~ "pp_exposure_2021_safeStreet_260526.csv",
+    scen_dir == "goDutch_220726" ~ "pp_exposure_2021_goDutch_260526.csv",
+    scen_dir == "goDutch"  ~ "pp_exposure_2021_goDutch_260526.csv",
+    TRUE ~ NA_character_
+  )
+  
+  if (is.na(scen_file)) {
+    stop("Unknown scen value: ", scen)
+  }
+  scen_path <- file.path(inp_exp_dir, "input", "health", scen_file)
+  if (!file.exists(scen_path)) {
+    stop("Scenario 2021 file not found: ", scen_path)
+  }
+  
+  pp_2021 <- readr::read_csv(scen_path, show_col_types = FALSE)
+  pp_2021$year <- 2021
+  
+  # Remove any existing 2021 row data and replace with scenario-specific 2021
+  all_exposure <- all_exposure |>
+    dplyr::filter(year != 2021) |>
+    dplyr::bind_rows(pp_2021) |>
+    dplyr::arrange(year)
+  
+  all_exposure <- add_zones_and_scen(df = all_exposure, zones, scen = scen)
+  
+  all_exposure <- all_exposure |>
+    dplyr::mutate(
+      agegroup = cut(
+        age,
+        breaks = c(0, 25, 45, 65, 85, Inf),
+        labels = c("0-24", "25-44", "45-64", "65-84", "85+"),
+        right = FALSE,
+        include.lowest = TRUE
+      ),
+      total_PA = mmetHr_walk + mmetHr_cycle + mmetHr_otherSport,
+      imd = (imd10 + 1) %/% 2
+    )
+  
+  overall <- calc_quantiles_grouped(all_exposure, c("scen", "year"))
+  by_gender <- calc_quantiles_grouped(all_exposure, c("scen", "gender", "year"))
+  by_ladnm <- calc_quantiles_grouped(all_exposure, c("scen", "ladnm", "year"))
+  by_imd <- calc_quantiles_grouped(all_exposure, c("scen", "imd", "year"))
+  by_agegroup <- calc_quantiles_grouped(all_exposure, c("scen", "agegroup", "year"))
+  
+  overall <- overall |> dplyr::mutate(grouping = "Overall")
+  by_gender <- by_gender |> dplyr::mutate(grouping = paste("Gender:", gender)) |> dplyr::select(-gender)
+  by_ladnm <- by_ladnm |> dplyr::mutate(grouping = paste("LADNM:", ladnm)) |> dplyr::select(-ladnm)
+  by_imd <- by_imd |> dplyr::mutate(grouping = paste("IMD:", imd)) |> dplyr::select(-imd)
+  by_agegroup <- by_agegroup |> dplyr::mutate(grouping = paste("Agegroup:", agegroup)) |> dplyr::select(-agegroup)
+  
+  all_quantiles <- dplyr::bind_rows(overall, by_gender, by_ladnm, by_imd, by_agegroup)
+  return(all_quantiles)
 }
 
 
 
 base_exp <- get_exp_summary(inp_dir, inp_exp_dir, zones, scen = "reference")
-green_exp <-  get_exp_summary(inp_dir, inp_exp_dir, zones, scen = "green")
+green_exp <- get_exp_summary(inp_dir, inp_exp_dir, zones, scen = "green")
 ss_exp <- get_exp_summary(inp_dir, inp_exp_dir, zones, scen = "safeStreet")
-gd_exp <- get_exp_summary(inp_dir, inp_exp_dir, zones, scen = "goDutch")
+# Reads the 22/07 rerun in goDutch_220726/, labelled "goDutch" so the app and
+# the health data stay consistent. The older goDutch/ folder (24-25/06) is unused.
+gd_exp <- get_exp_summary(inp_dir, inp_exp_dir, zones,
+                          scen = "goDutch", scen_dir = "goDutch_220726")
 
 exp <- bind_rows(base_exp, green_exp, ss_exp, gd_exp)
-qs2::qs_save(exp, "../app/data/exp_030826.qs2")
+
+# Save the area->district lookup alongside the quantiles so the app can show
+# which LADs each area contains, without hardcoding the mapping in two places.
+attr(exp, "area_lookup") <- area_lookup
+
+qs2::qs_save(exp, "app/data/exp_050826.qs2")
