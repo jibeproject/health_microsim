@@ -3,11 +3,11 @@ suppressPackageStartupMessages({
   library(tidyverse)
 })
 
-inp_dir <- "X:/HealthImpact/Data/Country/UK/JIBE/manchester/scenOutput/normalization_fix_052226/microData"
+inp_dir <- "Z:/HealthImpact/Data/Country/UK/JIBE/manchester/scenOutput/health_and_accidents_140926/microData"
 
-inp_exp_dir = "X:/HealthImpact/Data/Country/UK/JIBE/manchester"
+inp_exp_dir = "Z:/HealthImpact/Data/Country/UK/JIBE/manchester"
 
-zones <- read_csv("X:/HealthImpact/Data/Country/UK/JIBE/manchester/input/zoneSystem.csv")
+zones <- read_csv("Z:/HealthImpact/Data/Country/UK/JIBE/manchester/input/zoneSystem.csv")
 # NB: IMD is collapsed to quintiles further down via (imd10 + 1) %/% 2, which
 # is the same mapping as ceiling(imd10 / 2) used in process_all_data.R.
 # Do NOT re-enable the line below or the values are quintiled twice.
@@ -132,11 +132,11 @@ get_exp_summary <- function(inp_dir, inp_exp_dir = "Z:/HealthImpact/Data/Country
   
   # Replace default 2021 with scenario-specific pp_exp file
   scen_file <- dplyr::case_when(
-    scen_dir == "reference" ~ "pp_exposure_2021_base_220526.csv",
-    scen_dir == "green"  ~ "pp_exposure_2021_green_260526.csv",
-    scen_dir == "safeStreet"~ "pp_exposure_2021_safeStreet_260526.csv",
+    scen_dir == "reference" ~ "pp_exposure_2021_base_160926.csv",
+    scen_dir == "green"  ~ "pp_exposure_2021_green_140926.csv",
+    scen_dir == "safeStreet"~ "pp_exposure_2021_safeStreet_140926.csv",
     scen_dir == "goDutch_220726" ~ "pp_exposure_2021_goDutch_260526.csv",
-    scen_dir == "goDutch"  ~ "pp_exposure_2021_goDutch_260526.csv",
+    scen_dir == "goDutch"  ~ "pp_exposure_2021_goDutch_170926.csv",
     TRUE ~ NA_character_
   )
   
@@ -195,13 +195,13 @@ green_exp <- get_exp_summary(inp_dir, inp_exp_dir, zones, scen = "green")
 ss_exp <- get_exp_summary(inp_dir, inp_exp_dir, zones, scen = "safeStreet")
 # Reads the 22/07 rerun in goDutch_220726/, labelled "goDutch" so the app and
 # the health data stay consistent. The older goDutch/ folder (24-25/06) is unused.
-gd_exp <- get_exp_summary(inp_dir, inp_exp_dir, zones,
-                          scen = "goDutch", scen_dir = "goDutch_220726")
+gd_exp <- get_exp_summary(inp_dir, inp_exp_dir, zones, scen = "goDutch")
 
 exp <- bind_rows(base_exp, green_exp, ss_exp, gd_exp)
 
 # Save the area->district lookup alongside the quantiles so the app can show
 # which LADs each area contains, without hardcoding the mapping in two places.
-attr(exp, "area_lookup") <- area_lookup
+#attr(exp, "area_lookup") <- area_lookup
 
-qs2::qs_save(exp, "app/data/exp_050826.qs2")
+#qs2::qs_save(exp, "app/data/exp_050826.qs2")
+qs2::qs_save(exp, "Z:/HealthImpact/Data/Country/UK/JIBE/manchester/scenOutput/health_and_accidents_140926/processed/exp_092426.qs2")
