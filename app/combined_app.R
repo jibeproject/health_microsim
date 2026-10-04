@@ -38,7 +38,7 @@ data_path <- function(f) {
   hit[1]
 }
 
-pc <- qs2::qs_read(data_path("precomputed_100%V6.qs2"))
+pc <- qs2::qs_read(data_path("all_data_processed_092326.qs2"))
 
 SCALING <- 1L
 
@@ -126,7 +126,7 @@ label_exposure <- function(x) {
   )
 }
 
-exp <- qs2::qs_read(data_path("exp_050826.qs2"))
+exp <- qs2::qs_read(data_path("exp_092426.qs2"))
 
 trips <- qs2::qs_read(data_path("trips_200826.qs2"))
 

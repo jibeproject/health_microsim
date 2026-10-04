@@ -25,10 +25,10 @@ data_dir  <- "prep_data_spatial/data"
 zone_path <- "prep_data_spatial/data/zoneSystem.csv"
 
 scenarios <- c(
-  base       = "prep_data_spatial/data/pp_exposure_2021_base_220526.csv",
-  goDutch    = "prep_data_spatial/data/pp_exposure_2021_goDutch_260526.csv",
-  green      = "prep_data_spatial/data/pp_exposure_2021_green_260526.csv",
-  safeStreet = "prep_data_spatial/data/pp_exposure_2021_safeStreet_260526.csv"
+  base       = "prep_data_spatial/data/pp_exposure_2021_base_041026.csv",
+  goDutch    = "prep_data_spatial/data/pp_exposure_2021_goDutch_041026.csv",
+  green      = "prep_data_spatial/data/pp_exposure_2021_green_041026.csv",
+  safeStreet = "prep_data_spatial/data/pp_exposure_2021_safeStreet_041026.csv"
 )
 
 pctile_metrics <- c(
