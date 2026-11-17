@@ -35,3 +35,5 @@ rsconnect/
 data
 # Microsimulation outputs (scripts/run_microsim.R)
 output/
+# Per-user paths (config/paths.R)
+config/paths_local.R

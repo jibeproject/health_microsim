@@ -1,0 +1,1641 @@
+---
+title: "Health Data Manchester"
+author: "Belen Zapata-Diomedi,Marina Berdikhaniva"
+email: "mbzd2@cam.ac.uk, mb2592@cam.ac.uk"
+date: today
+format: 
+  html:
+    code-fold: true
+    embed-resources: true
+    df-print: paged
+execute: 
+    message: false
+    warning: false
+toc: true
+number-sections: true
+editor_options:
+  mode: visual
+  markdown:
+    wrap: 72
+---s
+---
+
+# Introduction
+
+This document explains and produces estimates for the inputs for the
+health model for JIBE Manchester. The model initially has four stages
+where individuals are in a healthy state, might become diseased of one
+or more diseases, and die from any causes (all cause mortality). All
+cause mortality is also dependent on diseases status, meaning that if a
+person has a given disease (i.e. diabetes, dementia, parkinson, cancers,
+copd) their probability of dying is higher. Diabetes is a risk factor
+for cardiovascular diseases (ischemic heart disease and stroke) and
+included in the model. The model does not include trend of diseases but
+assumes that current rates by age, sex and area will be observed in the
+future.
+
+The purpose of this document is to produce health inputs for all-cause
+mortality and diseases' incidence and prevalence. Prevalence is used to
+assign initial state as diseased.
+
+```{r setup, include=FALSE}
+
+rm(list = ls())
+
+library(tidyverse)  # Includes dplyr, tidyr, readr, ggplot2, purrr, etc.
+library(readxl)   # Read/write Excel files
+library(knitr)      # Report generation
+library(gt)         # Pretty tables
+library(here)       # File path management
+library(base)       # Read RDS files
+library(plotly)     # Interactive plots
+library(htmlwidgets)# Save interactive plots
+library(esquisse)
+# Run every chunk from the project root (here() resolves from there too)
+knitr::opts_knit$set(root.dir = here::here())
+
+# Functions
+source(here::here("data_prep/manchester/functions/interpolation.R"))
+source(here::here("data_prep/manchester/functions/gbd_process.R"))
+
+
+# Avoid scientific notation
+options("scipen"=100, "digits"=4)
+
+knitr::opts_chunk$set(
+  echo = FALSE,          # Hide code by default
+  message = FALSE,       # Suppress messages
+  warning = FALSE)        # Suppress warnings
+```
+
+# All-Cause Mortality
+
+## Data Sources
+
+1.  Mortality by LSOA by age and sex for year 2018 from ONS.
+    [https://www.ons.gov.uk/peoplepopulationandcommunity/birthsdeathsandmarriages/deaths/adhocs/](https://www.ons.gov.uk/peoplepopulationandcommunity/birthsdeathsandmarriages/deaths/adhocs/1028deathregistrationsbysexfiveyearagegroupandlowerlayersuperoutputareaslsoa2011censusboundariesenglandandwales2001to2021)
+
+    [1028deathregistrationsbysexfiveyearagegroupandlowerlayersuperoutputareaslsoa2011censusboundariesenglandandwales2001to2021](https://www.ons.gov.uk/peoplepopulationandcommunity/birthsdeathsandmarriages/deaths/adhocs/1028deathregistrationsbysexfiveyearagegroupandlowerlayersuperoutputareaslsoa2011censusboundariesenglandandwales2001to2021)
+
+2.  Population Data by LSOA by age and sex for 2018 mid year from ONS.
+
+    [https://www.ons.gov.uk/peoplepopulationandcommunity/populationandmigration/populationestimates/datasets/](https://www.ons.gov.uk/peoplepopulationandcommunity/populationandmigration/populationestimates/datasets/lowersuperoutputareamidyearpopulationestimates)
+
+    [lowersuperoutputareamidyearpopulationestimates](https://www.ons.gov.uk/peoplepopulationandcommunity/populationandmigration/populationestimates/datasets/lowersuperoutputareamidyearpopulationestimates)
+
+3.  Geographical Hierarchy (as of 2011)
+
+    <https://geoportal.statistics.gov.uk/datasets/ons::lsoa-2011-to-travel-to-work-area-december-2011-exact-fit-lookup-in-the-uk/about>
+
+4.  Life tables England (2017-2019)
+
+    [https://www.ons.gov.uk/peoplepopulationandcommunity/birthsdeathsandmarriages/lifeexpectancies/](https://www.ons.gov.uk/peoplepopulationandcommunity/birthsdeathsandmarriages/lifeexpectancies/datasets/nationallifetablesenglandreferencetables/current)
+
+    [datasets/nationallifetablesenglandreferencetables/current](https://www.ons.gov.uk/peoplepopulationandcommunity/birthsdeathsandmarriages/lifeexpectancies/datasets/nationallifetablesenglandreferencetables/current)
+
+5.  Level of multiple deprivation
+
+    <https://opendatacommunities.org/resource?uri=http%3A%2F%2Fopendatacommunities.org%2Fdata%2Fsocietal-wellbeing%2Fimd2019%2Findices>
+
+6.  Adding Age-Standartised Mortality Rates from ONS as of February,
+    2025
+
+    <https://opendatacommunities.org/resource?uri=http%3A%2F%2Fopendatacommunities.org%2Fdata%2Fsocietal-wellbeing%2Fimd2019%2Findices>
+
+```{r data-prep}
+
+# Mortality by LSOA by age and sex (Year: 2018)
+# Source: ONS Death registrations by sex, five-year age group and LSOA (2001–2021)
+# https://www.ons.gov.uk/peoplepopulationandcommunity/birthsdeathsandmarriages/deaths/adhocs/1028deathregistrationsbysexfiveyearagegroupandlowerlayersuperoutputareaslsoa2011censusboundariesenglandandwales2001to2021
+
+# Functions
+clean_pop <- function(df) {
+  df %>%
+    filter(LSOA != "", !str_starts(`Area Codes`, "W")) %>%   # keep England only
+    rename(lsoa_name = LSOA, lsoa_code = `Area Codes`) %>%
+    select(-c(2, 4))  # drop duplicate/area cols
+}
+
+agg5 <- function(df) {
+  df %>%
+    mutate(
+      `00 to 04` = rowSums(select(., `0`:`4`), na.rm = TRUE),
+      `05 to 09` = rowSums(select(., `5`:`9`), na.rm = TRUE),
+      `10 to 14` = rowSums(select(., `10`:`14`), na.rm = TRUE),
+      `15 to 19` = rowSums(select(., `15`:`19`), na.rm = TRUE),
+      `20 to 24` = rowSums(select(., `20`:`24`), na.rm = TRUE),
+      `25 to 29` = rowSums(select(., `25`:`29`), na.rm = TRUE),
+      `30 to 34` = rowSums(select(., `30`:`34`), na.rm = TRUE),
+      `35 to 39` = rowSums(select(., `35`:`39`), na.rm = TRUE),
+      `40 to 44` = rowSums(select(., `40`:`44`), na.rm = TRUE),
+      `45 to 49` = rowSums(select(., `45`:`49`), na.rm = TRUE),
+      `50 to 54` = rowSums(select(., `50`:`54`), na.rm = TRUE),
+      `55 to 59` = rowSums(select(., `55`:`59`), na.rm = TRUE),
+      `60 to 64` = rowSums(select(., `60`:`64`), na.rm = TRUE),
+      `65 to 69` = rowSums(select(., `65`:`69`), na.rm = TRUE),
+      `70 to 74` = rowSums(select(., `70`:`74`), na.rm = TRUE),
+      `75 to 79` = rowSums(select(., `75`:`79`), na.rm = TRUE),
+      `80 to 84` = rowSums(select(., `80`:`84`), na.rm = TRUE),
+      `over 85`  = rowSums(select(., `85`:`89`, `90+`), na.rm = TRUE)
+    ) %>%
+    select(lsoa_code, lsoa_name,
+           `00 to 04`,`05 to 09`,`10 to 14`,`15 to 19`,`20 to 24`,`25 to 29`,
+           `30 to 34`,`35 to 39`,`40 to 44`,`45 to 49`,`50 to 54`,`55 to 59`,
+           `60 to 64`,`65 to 69`,`70 to 74`,`75 to 79`,`80 to 84`,`over 85`) %>%
+    pivot_longer(-c(lsoa_name, lsoa_code), names_to = "age", values_to = "population")
+}
+
+syoa_from_clean <- function(df, gender_label) {
+  age_cols <- names(df)[names(df) %in% as.character(0:89)]
+  keep <- c("lsoa_code", "lsoa_name", age_cols, intersect("90+", names(df)))
+  df %>%
+    select(all_of(keep)) %>%
+    pivot_longer(cols = -c(lsoa_name, lsoa_code),
+                 names_to = "age_chr", values_to = "population") %>%
+    mutate(age = as.integer(gsub("\\+", "", age_chr)),
+           age = pmin(age, 90L),
+           gender = gender_label) %>%
+    select(lsoa_code, lsoa_name, gender, age, population)
+}
+
+# Deaths (2018)
+
+deaths_males <- read_xlsx(here("manchester/health/original/ons", "DeathsbyLSOAmidyear11to21.xlsx"),
+                          sheet = "2", skip = 2) %>%
+  filter(`Mid-year` == 2018)
+
+deaths_females <- read_xlsx(here("manchester/health/original/ons", "DeathsbyLSOAmidyear11to21.xlsx"),
+                            sheet = "3", skip = 2) %>%
+  filter(`Mid-year` == 2018)
+
+deaths <- merge(deaths_males, deaths_females, by = c("LSOA code")) %>%
+  pivot_longer(cols = c(starts_with("Males"), starts_with("Females")),
+               names_to = c("gender", "age"),
+               names_pattern = "(Males|Females) (.+)",
+               values_to = "deaths")
+
+deaths_england <- deaths %>%
+  filter(!str_starts(`LSOA code`, "W")) %>%               # drop Wales
+  select(lsoa_code = `LSOA code`,
+         lsoa_name = `LSOA name.x`,
+         gender, age, deaths) %>%
+  mutate(age = case_when(age %in% c("under 1", "01 to 04") ~ "00 to 04",
+                         TRUE ~ age)) %>%
+  group_by(lsoa_code, lsoa_name, age, gender) %>%
+  summarise(deaths = sum(deaths), .groups = "drop")
+
+rm(deaths, deaths_males, deaths_females)
+
+# Population (2018): 5-YR BANDS + SINGLE-YEAR
+# Source: ONS LSOA mid-year population estimates
+# https://www.ons.gov.uk/peoplepopulationandcommunity/populationandmigration/populationestimates/datasets/lowersuperoutputareamidyearpopulationestimates
+
+pop_males_raw <- read_xlsx(
+  here("manchester/health/original/ons",
+       "Copy of SAPE21DT1a-mid-2018-on-2019-LA-lsoa-syoa-estimates-formatted.xlsx"),
+  sheet = "Mid-2018 Males", skip = 3
+)
+pop_females_raw <- read_xlsx(
+  here("manchester/health/original/ons",
+       "Copy of SAPE21DT1a-mid-2018-on-2019-LA-lsoa-syoa-estimates-formatted.xlsx"),
+  sheet = "Mid-2018 Females", skip = 3
+)
+
+pop_males_clean   <- clean_pop(pop_males_raw)
+pop_females_clean <- clean_pop(pop_females_raw)
+
+# 5-year age groups
+pop_males_5   <- agg5(pop_males_clean)   %>% mutate(gender = "Males")
+pop_females_5 <- agg5(pop_females_clean) %>% mutate(gender = "Females")
+population_england <- bind_rows(pop_males_5, pop_females_5)
+
+# Single-year-of-age (0..90, with 90+ collapsed to 90)
+pop_males_syoa   <- syoa_from_clean(pop_males_clean,   "Males")
+pop_females_syoa <- syoa_from_clean(pop_females_clean, "Females")
+population_england_syoa <- bind_rows(pop_males_syoa, pop_females_syoa)
+
+# Geography lookups
+# 2011 LSOA ↔ MSOA ↔ LAD (exact fit)
+# Source: https://geoportal.statistics.gov.uk/datasets/ons::lsoa-2011-to-travel-to-work-area-december-2011-exact-fit-lookup-in-the-uk/about
+msoa <- read.csv(here("manchester/health/original/ons/lsoa_2011.csv")) %>%
+  select(2:7) %>%
+  distinct()
+# Columns (by position): LSOA11CD, MSOA11CD, LAD11CD, LSOA11NM, MSOA11NM, LAD11NM
+
+# OA21 → LSOA21 → MSOA21 → LAD22 (England & Wales; filter to England)
+oa21_lookup <- read_csv(
+  here("manchester/health/original/ons",
+       "Output_Area_to_Lower_layer_Super_Output_Area_to_Middle_layer_Super_Output_Area_to_Local_Authority_District_(December_2021)_Lookup_in_England_and_Wales_v3.csv"),
+  show_col_types = FALSE
+) %>%
+  filter(str_starts(LAD22CD, "E"))  # keep England LADs only
+
+
+# Greater Manchester LAD names
+gm_lads <- c("Bolton","Bury","Manchester","Oldham","Rochdale",
+             "Salford","Stockport","Tameside","Trafford","Wigan")
+
+
+# Life Tables for England (2017–2019)
+# Source: https://www.ons.gov.uk/peoplepopulationandcommunity/birthsdeathsandmarriages/lifeexpectancies/datasets/nationallifetablesenglandreferencetables/current
+lifetable_england <- read.csv(here("manchester/health/original/ons/life_tables_20172019.csv"), skip = 5)
+
+# Indices of Deprivation by LSOA (2019)
+# Source: https://opendatacommunities.org/resource?uri=http%3A%2F%2Fopendatacommunities.org%2Fdata%2Fsocietal-wellbeing%2Fimd2019%2Findices
+deprivation <- read_csv(here("manchester/health/original/ons/imd2019lsoa.csv"))
+
+# European Standard Population 2013
+# Source: https://publichealthscotland.scot/services/national-data-catalogue/national-datasets/search-the-datasets/european-standard-population/
+european_pop <- read.csv(here("manchester/health/original/ons/european_standard_population_by_sex.csv"))
+
+# Age-standardised mortality rates (ONS/NOMIS, as of Feb 2025)
+nomis_lad <- read_xlsx(
+  here("manchester/health/original/ons/nomis_2025_02_21_lads_regions.xlsx"),
+  skip = 40, n_max = 70
+) %>%
+  slice(c(1, 69)) %>%                 # rows for males/females (as per your original)
+  select(-c(1, 12)) %>%
+  rename_with(~ str_remove(., "^lacu:")) %>%
+  mutate(gender = c("Males", "Females")) %>%
+  pivot_longer(-gender, names_to = "lad_name", values_to = "stdrate_ons") %>%
+  mutate(stdrate_ons = as.numeric(stdrate_ons) / 100)
+
+
+```
+
+## Mortality rates by year of age and sex for England
+
+The mortality rate `mx` is defined as "the number of deaths at age x
+last birthday in the three year period (2017-2019) divided by the
+average population at that age over the same period. This is the
+starting data to further expand by LSOAs based on the ratio of the
+age-standardised mortality rates by sex for each LSOA relative to
+England as a whole. ASDR are not publicly available at LSOA, therefore,
+we calculated them.
+
+```{r}
+
+lifetable_england  <- read.csv(
+  here("manchester/health/original/ons/life_tables_20172019.csv"),
+  skip = 5
+)
+
+lifetable_england <- lifetable_england[, -c(3,7,8,10)]
+mf <- rep(c("male","female"), each = 4)
+names1 <- rep(c("rate","denom","deaths","le"), 2)
+names(lifetable_england) <- c("age", paste(mf, names1, sep = "_"))
+
+lifetable_england <- lifetable_england %>%
+  mutate(male_personyears   = round(male_denom   - male_deaths),
+         female_personyears = round(female_denom - female_deaths)) %>%
+  select(age, male_denom, male_rate, male_personyears, male_le,
+         female_denom, female_rate, female_personyears, female_le)
+
+england_lifetable <- lifetable_england %>%
+  pivot_longer(-age, names_to = c("sex","measure"), names_sep = "_") %>%
+  pivot_wider(names_from = "measure", values_from = value) %>%
+  mutate(
+    rate1000 = rate * 1000,
+    sex = factor(sex, labels = stringr::str_to_title(sort(unique(.data$sex)))),
+    sex = relevel(sex, "Male")
+  ) %>%
+  mutate(sex = if_else(as.character(sex) == "Male", "Males", "Females")) %>%
+  select(age, sex, rate1000)
+
+```
+
+## Population weights for age groups and sex for England
+
+To derive age-standardized rates for each LSOA by sex and then derive
+ratios of mortality rate for LSOAs by sex, we need population weights
+for our reference population of England. We constructed these weights
+using population data for England. We also, further down the document,
+construct ratios using European standard population for validation
+purposes of data by LAD (for which there are publicly available ASDR by
+LAD and sex).
+
+```{r}
+# Population weight for each age group within all lsoas in England. England is our reference population, since the RRs will then be multiplied by death rates by age and sex for the whole of England. 
+
+population_england_total <- population_england %>%
+  group_by(age, gender) %>%
+  summarise(age_population = sum(population), .groups = "drop")
+
+population_gender_England <- population_england %>%
+  group_by(gender) %>%
+  summarise(gender_population = sum(population), .groups = "drop")
+
+population_weights_England <- population_england_total %>%
+  left_join(population_gender_England, by = "gender") %>%
+  mutate(weight = age_population / gender_population) %>%
+  select(gender, age, weight)
+
+# European Standard Population (2013) -> weights table 
+
+european_pop_2 <- european_pop %>%
+  mutate(Sex = ifelse(Sex == "Male", "Males", "Females")) %>%
+  rename(
+    age       = AgeGroup,
+    gender    = Sex,
+    population = EuropeanStandardPopulation
+  ) %>%
+  mutate(
+    age = case_when(
+      age %in% c("90plus years","85-89 years") ~ "over 85",
+      TRUE ~ str_replace(age, "(\\d+)-(\\d+)", "\\1 to \\2")
+    ),
+    age = str_replace_all(age, "\\b(\\d)\\b", "0\\1"),
+    age = str_replace(age, " years", "")
+  ) %>%
+  group_by(age, gender) %>%
+  summarise(population = sum(population), .groups = "drop")
+
+population_weights_europe <- european_pop_2 %>%
+  group_by(gender, age) %>%
+  summarise(age_population = sum(population), .groups = "drop") %>%
+  mutate(weight = age_population / 100000) %>%
+  select(age, gender, weight)
+
+```
+
+## Relative Rate
+
+A relative mortality rate is produced for each area (lsoa), defined as
+the age-standardised mortality rate by sex for each lsoa relative to the
+average mortality in England by sex.
+
+The age-standardised mortality rate (ASMR) (direct standardization) by
+sex and lsoa is calculated by first finding the age-specific (mortality)
+rates for each age group (5 years) by dividing the number of deaths by
+the respective population by sex, then multiplying the result by 1000,
+then the sum of the product of each of the age-specific rates by the
+proportion of the population belonging to the particular age group
+(standard population weight) by area and sex. For England as a whole,
+the average mortality is defined as a weighted average of the
+area-specific rates, weighted by the population of each area.
+
+For future reference (
+[https://pmc.ncbi.nlm.nih.gov/articles/PMC9575652](https://pmc.ncbi.nlm.nih.gov/articles/PMC9575652/))
+we might want to improve the calculation of ASDR.
+
+We calculated ASDRs for lsoas, msoas and lads. While we want the
+relative risks for each lsoa compared to England as a whole, some lsoa
+have small deaths numbers, in those cases we replaced by msoas or lads
+if msoas still had small numbers. We applied a rule that if less than 10
+deaths in an age group in an lsoa, then a msoa ASDRs should be used, and
+if more than 10 deaths but less than 20 in an MSOA, then use the LAD
+ASDRs.
+
+### LSOAs. MSOAs and LADs ASDRs by sex
+
+```{r}
+
+compute_asdr <- function(df_deaths, df_pop, by_keys,
+                         weights = population_weights_europe) { #alternative, testing diff with eur and england weights
+  deaths_clean <- df_deaths %>%
+    select(all_of(by_keys), deaths) %>%
+    group_by(across(all_of(by_keys))) %>%
+    summarise(deaths = sum(deaths, na.rm = TRUE), .groups = "drop")
+  
+  pop_clean <- df_pop %>%
+    select(all_of(by_keys), population) %>%
+    group_by(across(all_of(by_keys))) %>%
+    summarise(population = sum(population, na.rm = TRUE), .groups = "drop")
+  
+  deaths_clean %>%
+    left_join(pop_clean, by = by_keys) %>%
+    mutate(age_specific_rate = case_when(
+      population > 0 ~ deaths / population * 1000,
+      population == 0 & deaths == 0 ~ 0,
+      population == 0 & deaths > 0 ~ NA_real_
+    )) %>%
+    left_join(weights, by = c("age","gender")) %>%
+    group_by(across(all_of(setdiff(by_keys, "age")))) %>%
+    summarise(
+      stdrate    = sum(replace_na(age_specific_rate, 0) * weight, na.rm = TRUE),
+      pop_geo    = sum(population, na.rm = TRUE),
+      deaths_geo = sum(deaths, na.rm = TRUE),
+      .groups    = "drop"
+    )
+}
+
+# LSOA
+deaths_lsoa_eng <- deaths_england %>%
+  left_join(population_england, by = c("lsoa_code","lsoa_name","gender","age")) %>%
+  select(lsoa_code, lsoa_name, gender, age, deaths, population)
+
+deaths_lsoa_eng_asdr <- compute_asdr(
+  df_deaths = deaths_lsoa_eng,
+  df_pop    = deaths_lsoa_eng %>% select(lsoa_code, lsoa_name, gender, age, population),
+  by_keys   = c("lsoa_code","lsoa_name","gender","age")
+) %>%
+  rename(population_lsoa = pop_geo, deaths_lsoa = deaths_geo)
+
+
+# MSOA (aggregate LSOA up)
+deaths_msoa <- deaths_england %>%
+  left_join(msoa, by = c("lsoa_code" = "LSOA11CD")) %>%
+  transmute(msoa_code = MSOA11CD, msoa_name = MSOA11NM, gender, age, deaths)
+
+population_msoa <- population_england %>%
+  left_join(msoa, by = c("lsoa_code" = "LSOA11CD")) %>%
+  transmute(msoa_code = MSOA11CD, msoa_name = MSOA11NM, gender, age, population)
+
+deaths_msoa_eng_asdr <- compute_asdr(
+  df_deaths = deaths_msoa %>% group_by(msoa_code, msoa_name, gender, age) %>%
+    summarise(deaths = sum(deaths, na.rm = TRUE), .groups = "drop"),
+  df_pop    = population_msoa %>% group_by(msoa_code, msoa_name, gender, age) %>%
+    summarise(population = sum(population, na.rm = TRUE), .groups = "drop"),
+  by_keys   = c("msoa_code","msoa_name","gender","age")
+) %>%
+  rename(deaths_msoa = deaths_geo)
+
+# LAD (aggregate LSOA up)
+deaths_lad <- deaths_england %>%
+  left_join(msoa, by = c("lsoa_code" = "LSOA11CD")) %>%
+  transmute(lad_code = LAD11CD, lad_name = LAD11NM, gender, age, deaths)
+
+population_lad <- population_england %>%
+  left_join(msoa, by = c("lsoa_code" = "LSOA11CD")) %>%
+  transmute(lad_code = LAD11CD, lad_name = LAD11NM, gender, age, population)
+
+deaths_lad_eng_asdr <- compute_asdr(
+  df_deaths = deaths_lad %>% group_by(lad_code, lad_name, gender, age) %>%
+    summarise(deaths = sum(deaths, na.rm = TRUE), .groups = "drop"),
+  df_pop    = population_lad %>% group_by(lad_code, lad_name, gender, age) %>%
+    summarise(population = sum(population, na.rm = TRUE), .groups = "drop"),
+  by_keys   = c("lad_code","lad_name","gender","age")
+) %>% rename(deaths_lad = deaths_geo)
+```
+
+## Deprivation data
+
+```{r}
+# Tidy IMD at LSOA11 level
+deprivation_lsoa11 <- deprivation %>%
+  filter(`Indices of Deprivation` == "a. Index of Multiple Deprivation (IMD)",
+         Measurement == "Decile") %>%
+  mutate(deprivation = "IMD") %>%
+  rename(lsoa11_code = FeatureCode) %>%
+  transmute(
+    lsoa11_code,
+    imd_decile = as.integer(Value),
+    deprivation
+  )
+
+# LSOA11 → LSOA21 → LAD22 lookup
+lsoa11_to_lsoa21 <- read_csv(here("manchester/health/original/ons/lsoa_2011_to_lsoa_2021.csv"))
+
+# Map IMD (LSOA11) → LSOA21
+deprivation_lsoa21 <- lsoa11_to_lsoa21 %>%
+  left_join(deprivation_lsoa11, by = c("LSOA11CD" = "lsoa11_code")) %>%
+  group_by(LSOA21CD, LAD22CD, LAD22NM) %>%
+  summarise(
+    imd_decile  = if (all(is.na(imd_decile))) NA_integer_ else min(imd_decile, na.rm = TRUE),
+    deprivation = "IMD",
+    .groups = "drop"
+  ) %>%
+  rename(
+    lsoa21_code = LSOA21CD,
+    lad22_code  = LAD22CD,
+    lad22_name  = LAD22NM
+  )
+
+# ---- North West LSOA11 list, for the disease-side reference population ----
+# Built by build_lsoa11_region.R from the ONS LSOA21 -> Region lookup,
+# carried back to 2011 codes via lsoa_2011_to_lsoa_2021.csv.
+nw_lsoa11 <- readr::read_csv(
+  here::here("manchester/health/original/ons/lsoa11_region.csv"),
+  show_col_types = FALSE
+) %>%
+  dplyr::filter(RGN11NM == "North West") %>%
+  dplyr::pull(LSOA11CD) %>%
+  unique()
+
+stopifnot(length(nw_lsoa11) > 4000, length(nw_lsoa11) < 5200)
+message("North West LSOA11s: ", length(nw_lsoa11))
+
+# ---- Relative Risks (5-death threshold, 2.5x deviation cap) ----
+england_lsoa_deaths <- deaths_lsoa_eng_asdr %>%
+  left_join(msoa, by = c("lsoa_code" = "LSOA11CD")) %>%
+  select(lsoa_code, lsoa_name, msoa_code = MSOA11CD, lad_code = LAD11CD,
+         gender, population_lsoa, deaths_lsoa, stdrate) %>%
+  distinct() %>%
+  left_join(deaths_msoa_eng_asdr %>%
+              select(msoa_code, stdrate_msoa = stdrate, deaths_msoa, gender),
+            by = c("msoa_code", "gender")) %>%
+  left_join(deaths_lad_eng_asdr %>%
+              select(lad_code, stdrate_lad = stdrate, gender, deaths_lad),
+            by = c("lad_code", "gender")) %>%
+  group_by(gender) %>%
+  mutate(
+    lsoa_msoa_ratio = stdrate / stdrate_msoa,
+    stdrate_selected = case_when(
+      # Small-numbers fallback: LSOA too small AND MSOA also too small → LAD
+      deaths_lsoa <= 5 & deaths_msoa <= 20  ~ stdrate_lad,
+      # Small-numbers fallback: LSOA too small but MSOA OK → MSOA
+      deaths_lsoa <= 5                      ~ stdrate_msoa,
+      # Deviation cap: LSOA rate implausibly far from MSOA → MSOA
+      lsoa_msoa_ratio > 2.5 |
+        lsoa_msoa_ratio < 1/2.5             ~ stdrate_msoa,
+      # Otherwise use LSOA
+      TRUE                                  ~ stdrate
+    ),
+    product = stdrate_selected * population_lsoa,
+    # ============================================================
+    # 2026-08 FIX (M1): TWO reference populations, because the relative
+    # rate is applied to two different base rates.
+    #
+    #   RR    = LSOA / England.  Applied to the England life table just
+    #           below. Correctly paired -- unchanged from before.
+    #
+    #   RR_nw = LSOA / North West.  Applied to GBD *North West* disease
+    #           rates in disease-lsoa-expansion, for the eight causes
+    #           with no registry gradient (stroke, CHD, dementia,
+    #           diabetes, COPD, Parkinson's, depression, endometrial
+    #           cancer).
+    #
+    # Previously RR was used for BOTH. Against the North West base rate
+    # that counted the region's excess mortality twice -- once in the
+    # base rate, once inside RR. The North West sits 11.5% (males) to
+    # 13.0% (females) above England, so those eight causes came out
+    # ~11% too high. The ten NDRS cancers were never affected; their
+    # multipliers are already North West-referenced. The error was
+    # therefore an inconsistency between the two disaggregation routes,
+    # not only an absolute bias.
+    #
+    # Each multiplier is self-normalising against its own reference
+    # population: the England population-weighted mean of RR is 1, and
+    # the North West population-weighted mean of RR_nw is 1. Both are
+    # asserted below.
+    #
+    # .ok also drops rows with a missing product, so numerator and
+    # denominator cover the same LSOAs. The previous expression applied
+    # na.rm = TRUE independently to each, silently mismatching them
+    # wherever stdrate_selected was NA.
+    # ============================================================
+    .ok             = !is.na(product),
+    .use_nw         = lsoa_code %in% nw_lsoa11 & .ok,
+    stdrate_ave     = sum(product[.ok])     / sum(population_lsoa[.ok]),
+    stdrate_ave_nw  = sum(product[.use_nw]) / sum(population_lsoa[.use_nw]),
+    RR              = stdrate_selected / stdrate_ave,      # England-referenced
+    RR_nw           = stdrate_selected / stdrate_ave_nw    # NW-referenced
+  ) %>%
+  ungroup() %>%
+  dplyr::select(-.ok, -.use_nw)
+
+# ---- Check: each multiplier is normalised against its own reference ----
+rr_norm_check <- england_lsoa_deaths %>%
+  dplyr::mutate(.is_nw = lsoa_code %in% nw_lsoa11) %>%
+  dplyr::group_by(gender) %>%
+  dplyr::summarise(
+    # must be 1.000 -- RR against England
+    RR_over_england = sum(RR * population_lsoa, na.rm = TRUE) /
+                      sum(population_lsoa, na.rm = TRUE),
+    # must be 1.000 -- RR_nw against the North West
+    RR_nw_over_nw   = sum(RR_nw[.is_nw] * population_lsoa[.is_nw], na.rm = TRUE) /
+                      sum(population_lsoa[.is_nw], na.rm = TRUE),
+    # the compositional result: the NW is more deprived than England
+    RR_over_nw      = sum(RR[.is_nw] * population_lsoa[.is_nw], na.rm = TRUE) /
+                      sum(population_lsoa[.is_nw], na.rm = TRUE),
+    # the size of the correction applied to the eight fallback causes
+    nw_vs_england   = dplyr::first(stdrate_ave / stdrate_ave_nw),
+    .groups = "drop"
+  )
+print(rr_norm_check)
+stopifnot(all(abs(rr_norm_check$RR_over_england - 1) < 1e-8))
+stopifnot(all(abs(rr_norm_check$RR_nw_over_nw   - 1) < 1e-8))
+
+# GM's mean of the disease-side multiplier -- report this in the methods.
+rr_gm_check <- england_lsoa_deaths %>%
+  dplyr::left_join(msoa %>% dplyr::select(LSOA11CD, LAD11NM) %>% dplyr::distinct(),
+                   by = c("lsoa_code" = "LSOA11CD")) %>%
+  dplyr::filter(LAD11NM %in% gm_lads) %>%
+  dplyr::group_by(gender) %>%
+  dplyr::summarise(
+    RR_nw_over_gm = sum(RR_nw * population_lsoa, na.rm = TRUE) /
+                    sum(population_lsoa, na.rm = TRUE),
+    .groups = "drop"
+  )
+print(rr_gm_check)
+
+# ---- Apply RR to England life table (UNCHANGED -- England-referenced) ----
+england_lifetable_lsoa <- england_lsoa_deaths %>%
+  rename(sex = gender) %>%
+  cross_join(england_lifetable) %>%
+  filter(sex.x == sex.y) %>%
+  mutate(rate1000 = rate1000 * RR) %>%
+  select(lsoa_code, lsoa_name, gender = sex.x, age, rate1000, population_lsoa, RR)
+
+lifetables_england_lsoa_std <- england_lifetable_lsoa %>%
+  dplyr::mutate(age = as.integer(age),
+                rate = rate1000 / 1000) %>%
+  # population_lsoa carried through for the population-weighted LSOA11 ->
+  # LSOA21 collapse below. Nothing else reads it.
+  dplyr::select(lsoa_code, gender, age, rate, population_lsoa)
+
+# ---- Calibration: observed vs assigned by LAD22 × gender × age_band ----
+obs_by_lad_age <- deaths_england %>%
+  dplyr::rename(age_band = age) %>%
+  dplyr::inner_join(
+    lsoa11_to_lsoa21 %>% dplyr::select(LSOA11CD, LAD22CD),
+    by = c("lsoa_code" = "LSOA11CD")
+  ) %>%
+  dplyr::group_by(LAD22CD, gender, age_band) %>%
+  dplyr::summarise(observed = sum(deaths, na.rm = TRUE), .groups = "drop")
+
+age_to_band <- function(age) {
+  dplyr::case_when(
+    age >= 0  & age <= 4   ~ "00 to 04",
+    age >= 5  & age <= 9   ~ "05 to 09",
+    age >= 10 & age <= 14  ~ "10 to 14",
+    age >= 15 & age <= 19  ~ "15 to 19",
+    age >= 20 & age <= 24  ~ "20 to 24",
+    age >= 25 & age <= 29  ~ "25 to 29",
+    age >= 30 & age <= 34  ~ "30 to 34",
+    age >= 35 & age <= 39  ~ "35 to 39",
+    age >= 40 & age <= 44  ~ "40 to 44",
+    age >= 45 & age <= 49  ~ "45 to 49",
+    age >= 50 & age <= 54  ~ "50 to 54",
+    age >= 55 & age <= 59  ~ "55 to 59",
+    age >= 60 & age <= 64  ~ "60 to 64",
+    age >= 65 & age <= 69  ~ "65 to 69",
+    age >= 70 & age <= 74  ~ "70 to 74",
+    age >= 75 & age <= 79  ~ "75 to 79",
+    age >= 80 & age <= 84  ~ "80 to 84",
+    age >= 85              ~ "over 85",
+    TRUE ~ NA_character_
+  )
+}
+
+assigned_by_lad_age <- population_england_syoa %>%
+  dplyr::mutate(age = as.integer(age)) %>%
+  dplyr::left_join(lifetables_england_lsoa_std,
+                   by = c("lsoa_code", "gender", "age")) %>%
+  dplyr::mutate(
+    rate      = dplyr::coalesce(rate, 0),
+    exp_death = population * rate,
+    age_band  = as.character(age_to_band(age))
+  ) %>%
+  dplyr::inner_join(
+    lsoa11_to_lsoa21 %>% dplyr::select(LSOA11CD, LAD22CD),
+    by = c("lsoa_code" = "LSOA11CD")
+  ) %>%
+  dplyr::group_by(LAD22CD, gender, age_band) %>%
+  dplyr::summarise(assigned = sum(exp_death, na.rm = TRUE), .groups = "drop")
+
+cal_factors_age <- obs_by_lad_age %>%
+  dplyr::full_join(assigned_by_lad_age, by = c("LAD22CD", "gender", "age_band")) %>%
+  dplyr::mutate(
+    factor = dplyr::case_when(
+      observed == 0 | assigned == 0 ~ 1,
+      assigned > 0                  ~ observed / assigned,
+      TRUE                          ~ 1
+    )
+  ) %>%
+  dplyr::select(LAD22CD, gender, age_band, factor, observed, assigned)
+
+# ---- Apply calibration factors at single-year level ----
+rates_lsoa21_syoa <- lifetables_england_lsoa_std %>%
+  dplyr::inner_join(
+    lsoa11_to_lsoa21 %>% dplyr::select(LSOA11CD, LSOA21CD, LAD22CD, LAD22NM),
+    by = c("lsoa_code" = "LSOA11CD")
+  ) %>%
+  dplyr::group_by(LSOA21CD, LAD22CD, LAD22NM, gender, age) %>%
+  # 2026-08 FIX (M5): weight by population where several 2011 areas merge
+  # into one 2021 area. In Greater Manchester the 2021 revision left 1,636
+  # areas unchanged, split 31 into 63, and merged 6 into 3 (CHGIND U/S/M in
+  # lsoa_2011_to_lsoa_2021.csv). Splits are unaffected -- one parent each --
+  # so this changes only those 3 merged areas, but an unweighted mean of two
+  # rates is wrong whenever the constituent populations differ.
+  dplyr::summarise(
+    rate = if (sum(population_lsoa, na.rm = TRUE) > 0)
+             stats::weighted.mean(rate, population_lsoa, na.rm = TRUE)
+           else mean(rate, na.rm = TRUE),
+    .groups = "drop"
+  ) %>%
+  dplyr::mutate(age_band = as.character(age_to_band(age))) %>%
+  dplyr::rename(lsoa21cd = LSOA21CD)
+
+england_lsoa21_syoa_cal <- rates_lsoa21_syoa %>%
+  dplyr::left_join(cal_factors_age, by = c("LAD22CD", "gender", "age_band")) %>%
+  dplyr::mutate(rate_cal = rate * factor) %>%
+  dplyr::select(lsoa21cd, LAD22CD, LAD22NM, age, age_band, gender, rate, factor, rate_cal)
+
+# ---- LSOA21 population at single year of age (also aggregated for smoother) ----
+lad_names <- oa21_lookup %>% dplyr::select(LAD22CD, LAD22NM) %>% dplyr::distinct()
+
+pop21_syoa <- population_england_syoa %>%
+  dplyr::mutate(age = as.integer(age)) %>%
+  dplyr::inner_join(
+    lsoa11_to_lsoa21 %>% dplyr::select(LSOA11CD, LSOA21CD, LAD22CD),
+    by = c("lsoa_code" = "LSOA11CD")
+  ) %>%
+  dplyr::transmute(
+    lsoa21cd = LSOA21CD,
+    LAD22CD,
+    gender,
+    age,
+    population
+  )
+
+pop21_syoa_agg <- pop21_syoa %>%
+  dplyr::group_by(lsoa21cd, gender, age) %>%
+  dplyr::summarise(population = sum(population), .groups = "drop")
+
+# ---- Pre-smoothing calibration check ----
+exp_by_lad_gender_ageband <- pop21_syoa %>%
+  dplyr::mutate(age_band = as.character(age_to_band(age))) %>%
+  dplyr::left_join(
+    england_lsoa21_syoa_cal %>% dplyr::select(lsoa21cd, gender, age, age_band, rate_cal),
+    by = c("lsoa21cd", "gender", "age", "age_band")
+  ) %>%
+  dplyr::mutate(exp_deaths_cal = population * dplyr::coalesce(rate_cal, 0)) %>%
+  dplyr::group_by(LAD22CD, gender, age_band) %>%
+  dplyr::summarise(assigned_cal = sum(exp_deaths_cal, na.rm = TRUE), .groups = "drop")
+
+check_by_lad_gender_age <- obs_by_lad_age %>%
+  dplyr::left_join(exp_by_lad_gender_ageband, by = c("LAD22CD", "gender", "age_band")) %>%
+  dplyr::mutate(
+    assigned_cal = dplyr::coalesce(assigned_cal, 0),
+    diff         = assigned_cal - observed,
+    pct_diff     = dplyr::if_else(observed > 0, 100 * diff / observed, NA_real_)
+  )
+
+check_england_total <- check_by_lad_gender_age %>%
+  dplyr::summarise(observed     = sum(observed, na.rm = TRUE),
+                   assigned_cal = sum(assigned_cal, na.rm = TRUE),
+                   .groups = "drop") %>%
+  dplyr::mutate(area = "England (all LAD22)",
+                diff = assigned_cal - observed,
+                pct_diff = ifelse(observed > 0, 100 * diff / observed, NA_real_)) %>%
+  dplyr::select(area, observed, assigned_cal, diff, pct_diff)
+
+check_gm_total <- check_by_lad_gender_age %>%
+  dplyr::left_join(lad_names, by = "LAD22CD") %>%
+  dplyr::filter(LAD22NM %in% gm_lads) %>%
+  dplyr::summarise(observed     = sum(observed, na.rm = TRUE),
+                   assigned_cal = sum(assigned_cal, na.rm = TRUE),
+                   .groups = "drop") %>%
+  dplyr::mutate(area = "Greater Manchester",
+                diff = assigned_cal - observed,
+                pct_diff = ifelse(observed > 0, 100 * diff / observed, NA_real_)) %>%
+  dplyr::select(area, observed, assigned_cal, diff, pct_diff)
+
+print(check_england_total)
+print(check_gm_total)
+
+# #---- Smoothing: GAM on log(rate_cal), preserves expected deaths over ages 20+ ---- ## Plots # below wont work as these is commented out, but expensive to run so only run if anything changes with input data.
+# #Takes ~3 hours
+# library(mgcv)
+# 
+# england_lsoa21_syoa_cal_pop <- england_lsoa21_syoa_cal %>%
+#   dplyr::left_join(pop21_syoa_agg, by = c("lsoa21cd", "gender", "age"))
+# 
+# england_lsoa21_syoa_smoothed <- england_lsoa21_syoa_cal_pop %>%
+#   dplyr::rename(sex = gender) %>%
+#   dplyr::arrange(lsoa21cd, sex, age) %>%
+#   dplyr::group_by(lsoa21cd, sex) %>%
+#   dplyr::group_modify(~{
+#     df <- .x
+# 
+#     # Default: pass calibrated rate through unchanged
+#     df$rate_smooth <- df$rate_cal
+# 
+#     # Fit only on non-zero finite ages 20+; predict for all finite ages 20+
+#     idx_fit  <- df$age >= 20 & is.finite(df$rate_cal) & df$rate_cal > 0
+#     idx_pred <- df$age >= 20 & is.finite(df$rate_cal)
+# 
+#     if (sum(idx_fit) >= 7) {
+#       fit <- mgcv::gam(
+#         log(rate_cal) ~ s(age, k = 10, bs = "ad"), # or try k=15
+#         data   = df[idx_fit, , drop = FALSE],
+#         method = "REML",
+#         select = TRUE
+#       )
+# 
+#       df$rate_smooth[idx_pred] <- exp(predict(fit,
+#                                               newdata = df[idx_pred, , drop = FALSE]))
+# 
+#       # Population-weighted rescale: preserve expected deaths over ages 20+
+#       sum_orig   <- sum(df$population[idx_pred] * df$rate_cal[idx_pred],   na.rm = TRUE)
+#       sum_smooth <- sum(df$population[idx_pred] * df$rate_smooth[idx_pred], na.rm = TRUE)
+#       sf <- if (is.finite(sum_smooth) && sum_smooth > 0) sum_orig / sum_smooth else 1
+# 
+#       df$rate_smooth[idx_pred] <- df$rate_smooth[idx_pred] * sf
+#     }
+# 
+#     df$rate1000 <- df$rate_smooth * 1000
+#     df
+#   }) %>%
+#   dplyr::ungroup()
+# 
+# # ---- GM-only calibrated, smoothed output ----
+# manchester_lsoa21_syoa_cal <- england_lsoa21_syoa_smoothed %>%
+#   dplyr::filter(LAD22NM %in% gm_lads)
+# 
+# # ---- Post-smoothing calibration check ----
+# rates_sm <- england_lsoa21_syoa_smoothed %>%
+#   dplyr::mutate(gender = sex, age = as.integer(age)) %>%
+#   dplyr::select(lsoa21cd, gender, age, rate_use = rate_smooth)
+# 
+# exp_by_lad_gender_ageband_sm <- pop21_syoa %>%
+#   dplyr::mutate(age_band = as.character(age_to_band(age))) %>%
+#   dplyr::left_join(
+#     rates_sm %>% dplyr::mutate(age_band = as.character(age_to_band(age))),
+#     by = c("lsoa21cd", "gender", "age", "age_band")
+#   ) %>%
+#   dplyr::mutate(exp_deaths_sm = population * dplyr::coalesce(rate_use, 0)) %>%
+#   dplyr::group_by(LAD22CD, gender, age_band) %>%
+#   dplyr::summarise(assigned_sm = sum(exp_deaths_sm, na.rm = TRUE), .groups = "drop")
+# 
+# check_by_lad_gender_age_sm <- obs_by_lad_age %>%
+#   dplyr::left_join(exp_by_lad_gender_ageband_sm, by = c("LAD22CD", "gender", "age_band")) %>%
+#   dplyr::mutate(
+#     assigned_sm = dplyr::coalesce(assigned_sm, 0),
+#     diff        = assigned_sm - observed,
+#     pct_diff    = dplyr::if_else(observed > 0, 100 * diff / observed, NA_real_)
+#   )
+# 
+# check_england_total_sm <- check_by_lad_gender_age_sm %>%
+#   dplyr::summarise(observed = sum(observed,   na.rm = TRUE),
+#                    assigned = sum(assigned_sm, na.rm = TRUE),
+#                    .groups = "drop") %>%
+#   dplyr::mutate(area     = "England (all LAD22)",
+#                 diff     = assigned - observed,
+#                 pct_diff = ifelse(observed > 0, 100 * diff / observed, NA_real_)) %>%
+#   dplyr::select(area, observed, assigned, diff, pct_diff)
+# 
+# check_gm_total_sm <- check_by_lad_gender_age_sm %>%
+#   dplyr::left_join(lad_names, by = "LAD22CD") %>%
+#   dplyr::filter(LAD22NM %in% gm_lads) %>%
+#   dplyr::summarise(observed = sum(observed,   na.rm = TRUE),
+#                    assigned = sum(assigned_sm, na.rm = TRUE),
+#                    .groups = "drop") %>%
+#   dplyr::mutate(area     = "Greater Manchester",
+#                 diff     = assigned - observed,
+#                 pct_diff = ifelse(observed > 0, 100 * diff / observed, NA_real_)) %>%
+#   dplyr::select(area, observed, assigned, diff, pct_diff)
+# 
+# print(check_england_total_sm)
+# print(check_gm_total_sm)
+# 
+# check_england_by_ageband_sm <- check_by_lad_gender_age_sm %>%
+#   dplyr::group_by(age_band) %>%
+#   dplyr::summarise(observed = sum(observed,   na.rm = TRUE),
+#                    assigned = sum(assigned_sm, na.rm = TRUE),
+#                    diff     = assigned - observed,
+#                    pct_diff = ifelse(observed > 0, 100 * diff / observed, NA_real_),
+#                    .groups  = "drop")
+# View(check_england_by_ageband_sm)
+# 
+# readr::write_csv(
+#   manchester_lsoa21_syoa_cal,
+#   here::here("manchester/health/processed/manchester_lsoa21_mxrates_calibrated.csv")
+# )
+# check_england_by_ageband_sm %>%
+#      arrange(desc(abs(pct_diff))) %>%
+#      print(n = Inf)
+```
+
+## Graphs for checking results
+
+### Deaths rates for England by IMD
+
+```{r}
+# Graph death rates england
+
+### Graph for England
+# imd_decile is a factor
+
+# data_plot <- england_lsoa21_syoa_smoothed %>%
+#   left_join(deprivation_lsoa21, join_by(lsoa21cd == lsoa21_code)) %>% 
+#   mutate(
+#     imd_decile = as.factor(imd_decile),  # Ensure imd_decile is a factor
+#     rate1000 = log(ifelse(rate1000 == 0, 0.00000000001, rate1000)))  # Replace zeros in rate1000
+#  
+# 
+# p_england <- ggplot(data_plot, 
+#                     aes(x = age, y = rate1000,
+#                         col = imd_decile,  # Color by IMD decile
+#                         group = lsoa21cd)) +  # Each LSOA has its own line
+#   geom_line(lwd = 0.7, alpha = 0.5) +  # Reduce opacity to manage overplotting
+#   facet_wrap(~ sex) +  # Compare IMD deciles within each sex
+#   ylab("Mortality rate (per 1000)") + 
+#   xlab("Age (years)") +  
+#   scale_y_continuous(breaks=c(0.0002, 0.0005, 0.001, 0.005, 0.01, 0.05, 0.1, 0.2)*1000) +
+#   scale_color_viridis_d(option = "C", name = "IMD Decile") +  # Use discrete color scale
+#   theme_minimal(base_size = 14) +  
+#   theme(
+#     strip.text = element_text(face = "bold"),
+#     legend.position = "bottom"  # Move legend for readability
+#   ) +
+#   ggtitle("Death rates England")  # Add title
+# 
+# # Print the plot
+# print(p_england)#
+
+# interactive_p_england <- ggplotly(p_england)
+```
+
+### Deaths rates for Greater Manchester by IMD
+
+```{r}
+# Graph death rates Manchester
+
+manchester_lsoa21_syoa_cal <- read_csv( here::here("manchester/health/processed/manchester_lsoa21_mxrates_calibrated.csv"))
+
+data_plot <- manchester_lsoa21_syoa_cal %>%
+  left_join(deprivation_lsoa21, join_by(lsoa21cd == lsoa21_code)) %>%
+  # filter(sex == "Males") %>%
+  mutate(
+    imd_decile = as.factor(imd_decile),  # Ensure imd_decile is a factor
+    rate1000 = log(ifelse(rate1000 == 0, 0.00000000001, rate1000))  # Replace zeros in rate1000
+  )
+
+p_manchester <- ggplot(data_plot,
+                    aes(x = age, y = rate1000,
+                        col = imd_decile,  # Color by IMD decile
+                        group = lsoa21cd)) +  # Each LSOA has its own line
+  geom_line(lwd = 0.7, alpha = 0.5) +  # Reduce opacity to manage overplotting
+  facet_wrap(~ sex , ncol = 4) +  # Compare IMD deciles within each sex
+  ylab("Mortality rate (per 1000)") +
+  xlab("Age (years)") +
+    scale_y_continuous(breaks=c(0.0002, 0.0005, 0.001, 0.005, 0.01, 0.05, 0.1, 0.2)*1000) +
+  scale_color_viridis_d(option = "C", name = "IMD Decile") +  # Use discrete color scale
+  theme_minimal(base_size = 8) +
+  theme(
+    strip.text = element_text(face = "bold"),
+    legend.position = "right"        #
+  ) +
+  ggtitle("Death rates Greater Manchester")
+
+# Print the plot (uncomment to view graphs)
+print(p_manchester)
+
+
+
+```
+
+### Comparison with publicly available estimates by LADs and sex
+
+Comparison of age standardised rates with ONS data by LAD and our
+calculations but using weight from the European standard population. We
+use European standard population to compare because ASDR per LAD from
+ONS use this weights in their calculations.
+
+stdr_rate ons is publised, stdr_rate_eng is calculated by us using
+England population weights and stdr_rate_eu is our estimates using
+European standard population weights. Our estimates using European
+standard rates compare with published ONS rates.
+
+```{r}
+
+# ---- End-to-end ASDR validation (Greater Manchester) ----
+# Aggregate the pipeline's LSOA21 single-year smoothed rates back to LAD22,
+# compute an ESP-weighted ASDR per LAD × sex, and compare to NOMIS.
+# This validates the WHOLE pipeline (ASDR → RR → calibration → smoothing),
+# not just compute_asdr() at the LAD aggregate.
+#
+# Source is the saved GM output (manchester_lsoa21_syoa_cal, read in above)
+# rather than england_lsoa21_syoa_smoothed, which only exists inside the
+# commented-out GAM block. Results for GM LADs are identical either way:
+# all aggregation below is within LAD22CD × gender × age_band.
+
+# 1. Join smoothed rates with single-year population at LSOA21 level
+gm_lsoas <- unique(manchester_lsoa21_syoa_cal$lsoa21cd)
+
+rates_and_pop <- manchester_lsoa21_syoa_cal %>%
+  dplyr::mutate(gender = sex, age = as.integer(age)) %>%
+  dplyr::select(lsoa21cd, LAD22CD, LAD22NM, gender, age, rate_smooth) %>%
+  dplyr::inner_join(
+    pop21_syoa_agg %>% dplyr::filter(lsoa21cd %in% gm_lsoas),
+    by = c("lsoa21cd", "gender", "age")
+  ) %>%
+  dplyr::mutate(age_band = as.character(age_to_band(age)))
+
+# 2. Aggregate to LAD22 × sex × age_band: total expected deaths and total pop
+#    so that rate_band = sum(deaths) / sum(pop) — the correct LAD-level rate
+lad_band_rates <- rates_and_pop %>%
+  dplyr::group_by(LAD22CD, LAD22NM, gender, age_band) %>%
+  dplyr::summarise(
+    exp_deaths = sum(population * rate_smooth, na.rm = TRUE),
+    pop_band   = sum(population, na.rm = TRUE),
+    rate_band  = exp_deaths / pop_band,
+    .groups = "drop"
+  )
+
+# 3. Apply ESP weights and sum across age bands → ASDR per LAD × sex (per 1000)
+pipeline_lad_asdr <- lad_band_rates %>%
+  dplyr::left_join(population_weights_europe,
+                   by = c("age_band" = "age", "gender")) %>%
+  dplyr::group_by(LAD22CD, LAD22NM, gender) %>%
+  dplyr::summarise(
+    stdrate_pipeline = sum(rate_band * weight * 1000, na.rm = TRUE),
+    .groups = "drop"
+  )
+
+# 4. Join with NOMIS (and with the LAD-aggregate compute_asdr() result for
+#    reference, so you can see all three side by side)
+comparison_table_e2e <- nomis_lad %>%
+  dplyr::inner_join(
+    pipeline_lad_asdr %>% dplyr::select(LAD22NM, gender, stdrate_pipeline),
+    by = c("lad_name" = "LAD22NM", "gender")
+  ) %>%
+  dplyr::left_join(
+    deaths_lad_eng_asdr %>% dplyr::select(lad_name, gender,
+                                          stdrate_lad_direct = stdrate),
+    by = c("lad_name", "gender")
+  ) %>%
+  dplyr::mutate(
+    pct_diff_pipeline_vs_nomis = 100 * (stdrate_pipeline - stdrate_ons) / stdrate_ons,
+    pct_diff_direct_vs_nomis   = 100 * (stdrate_lad_direct - stdrate_ons) / stdrate_ons
+  ) %>%
+  dplyr::filter(lad_name %in% gm_lads) %>%   # redundant now, kept as a guard
+  dplyr::arrange(gender, lad_name)
+
+print(comparison_table_e2e)
+View(comparison_table_e2e)
+
+# Table reported in supplemenary material 
+
+```
+
+# Disease Incidence and Prevalence
+
+For diseases related to the modelled health risk factors (physical
+activity, air pollution, noise, greenspace), we need incidence rates by
+age and sex (for transitions) and prevalence (for initial health
+states). We take England NorthWest-wide rates from GBD 2018 and adjust them to
+LSOA level using one of two approaches per disease:
+
+-   **For cancers in the NDRS regional-incidence data**: we derive
+    cancer-specific relative risks (RRs) from the North West NDRS
+    incidence-by-deprivation-quintile data, dividing each quintile's
+    rate by the NW overall ("All quintiles") rate. Each LSOA inherits
+    the RR of its IMD quintile (deciles 1–2 → quintile 1, etc.). This
+    captures the cancer-specific deprivation gradient correctly,
+    including the *reversed* gradient seen for screening- and
+    affluence-associated cancers (breast, prostate, melanoma).
+-   **For non-cancer diseases** (Alzheimer's, COPD, depressive
+    disorders, diabetes type 2, ischemic stroke, Parkinson's) and **for
+    cancers without an NDRS equivalent** (multiple myeloma, chronic
+    myeloid leukemia): we fall back to the all-cause mortality LSOA RR
+    computed earlier. This is a working assumption that the deprivation
+    gradient in incidence is similar to mortality, which holds
+    reasonably well for these conditions but is acknowledged as a
+    limitation.
+
+The main transformations are:
+
+1.  Pool the four GBD head-and-neck sub-sites (nasopharynx, lip and oral
+    cavity, other pharynx, larynx) into a single "Head and neck cancer"
+    cause.
+2.  Adjust colon-and-rectum cancer to colon-only (×2/3, American Cancer
+    Society).
+3.  Use tracheal-bronchus-lung cancer (C33-C34) as lung cancer, unscaled
+    (as in the UBD model). An earlier factor of 0.54 was removed: it divided
+    male-only NHS England lung registrations by GBD both-sexes incidence.
+4.  Interpolate from 5-year age groups to single year of age.
+5.  Compute NDRS NW quintile RRs and map to LSOAs via IMD quintile.
+6.  Apply NDRS RR (cancers) or mortality RR (other diseases) to
+    England-level rates.
+
+## Load and combine GBD England data
+
+```{r disease-load}
+gbd <- read.csv(here("manchester/health/original/GBD/england_northwest.csv")) %>%
+  rename(measure  = measure_name,  location = location_name,
+         sex      = sex_name,      age      = age_name,
+         cause    = cause_name,    metric   = metric_name) %>%
+  select(measure, location, sex, age, cause, metric, year, val, upper, lower)
+
+
+# Pool the 4 head-and-neck GBD sub-sites into a single cause
+hn_components <- c("Nasopharynx cancer",
+                   "Lip and oral cavity cancer",
+                   "Other pharynx cancer",
+                   "Larynx cancer")
+
+gbd_raw <- gbd %>%
+  mutate(cause = if_else(cause %in% hn_components,
+                         "Head and neck cancer", cause)) %>%
+  group_by(measure, location, sex, age, cause, metric, year) %>%
+  summarise(val   = sum(val,   na.rm = TRUE),
+            upper = sum(upper, na.rm = TRUE),
+            lower = sum(lower, na.rm = TRUE),
+            .groups = "drop")
+
+gbdp <- gbd_raw %>%
+  gbd_process(.) %>%
+  filter(measure %in% c("Prevalence", "Incidence"))
+
+# gbd_process() selects causes with an exact-match whitelist against GBD
+# labels, which change between releases. In 2026-08 the whitelist read
+# "Ischemic stroke" while this extract labels the cause "Stroke", so
+# every stroke row was dropped in silence and stroke was absent from
+# gbdp.csv, diseases_syoa.csv, manchester_diseases_lsoa.RDS and the
+# transitions file. Fail loudly instead.
+
+
+norm_apos <- function(x) gsub("\u2019", "'", x)
+
+expected_causes <- c("stroke", "coronary_heart_disease", "breast_cancer",
+                     "endometrial_cancer", "lung_cancer", "colon_cancer",
+                     "esophageal_cancer", "liver_cancer",
+                     "gastric_cardia_cancer", "myeloid_leukemia", "myeloma",
+                     "head_neck_cancer", "bladder_cancer", "depression",
+                     "all_cause_dementia", "diabetes", "COPD",
+                     "parkinson's_disease")
+missing_causes <- setdiff(expected_causes, unique(gbdp$cause))
+if (length(missing_causes)) {
+  stop("Cause(s) missing from gbd_process() output: ",
+       paste(missing_causes, collapse = ", "),
+       "\nCheck the whitelist in data_prep/manchester/functions/gbd_process.R against the ",
+       "labels actually present in england_northwest.csv.")
+}
+
+write_csv(gbdp, here("manchester/health/processed/gbdp.csv"))
+
+gbdp_adj <- gbdp
+```
+
+## Interpolation to single year of age
+
+```{r disease-interpolation}
+# Stretch each 5-year band into 5 single-year rows (step-function rate_1)
+index <- rep(1:nrow(gbdp_adj), gbdp_adj$agediff)
+gbdpyrd5 <- gbdp_adj[index, ] %>%
+  mutate(ageyr = from_age + sequence(gbdp_adj$agediff) - 1) %>%
+  select(measure, ageyr, sex, agegroup, from_age, to_age, cause, year,
+         val1yr, rate_1, location)
+
+# Smooth interpolation
+gbdp_grp <- gbdp_adj %>%
+  group_by(measure, year, sex, cause, location) %>%
+  arrange(measure, year, sex, cause, from_age)
+
+gbdpyr_interp <- group_modify(gbdp_grp, disagg_smooth_spline) %>% ungroup()
+
+# ============================================================
+# 2026-08 FIX: ages 96-100.
+#
+# disagg_smooth_spline() predicts over seq(min(band_start), 99), so it
+# ALREADY returns ages 96-99. Binding copies of age 95 on top of that
+# duplicated those four ages: diseases_syoa.csv held 105 rows per series
+# across 101 distinct ages, the 95+ band carried 700 rows where every
+# other band carried 350, and transitions_calibration.R section 4
+# aggregates incidence with sum(), so the rate at ages 96-99 came out
+# exactly doubled. Nothing caught it -- the duplicates are collapsed by
+# the group_by before that script's duplicate-key assertion runs.
+#
+# GBD's oldest band is open-ended (95+), so holding the rate flat is more
+# defensible than extrapolating a rising spline past its last knot (97.5)
+# anyway. Dropping the spline's 96-99 also makes the band rescale below
+# exact: all six ages then carry a single value, and the rescale sets it
+# to the published 95+ rate.
+# ============================================================
+gbdpyr_interp <- gbdpyr_interp %>% dplyr::filter(ageyr <= 95)
+
+# Extend to ages 96-100 by repeating age 95
+age_95_data <- gbdpyr_interp %>% filter(ageyr == 95)
+new_rows <- age_95_data %>% mutate(ageyr = list(96:100)) %>% unnest(ageyr)
+gbdpyr_interp <- bind_rows(gbdpyr_interp, new_rows)
+rm(new_rows, age_95_data)
+
+stopifnot(!anyDuplicated(
+  gbdpyr_interp[c("measure", "year", "sex", "cause", "location", "ageyr")]
+))
+
+# Bring stepwise rate_1 alongside smoothed val_interpolated
+gbdpyr_interp <- gbdpyr_interp %>%
+  left_join(gbdpyrd5 %>% select(measure, year, ageyr, sex, cause, location, rate_1),
+            by = c("measure", "year", "ageyr", "sex", "cause", "location"))
+
+# ============================================================
+# 2026-08 FIX: mean-preserving rescale of val_interpolated
+#
+# disagg_smooth_spline() produces a smooth single-year curve but does
+# NOT conserve the 5-year band means it was fitted to. Measured against
+# the source band values in gbdp.csv, the within-band mean of
+# val_interpolated came out at:
+#
+#     band     prevalence   incidence
+#     5-9         1.50        2.10
+#     20-24       1.68        1.86
+#     50-54       1.17        1.19
+#     70-74       1.09        1.13
+#     85-89       0.89        0.97
+#
+# i.e. rates inflated at younger ages and deflated at the top, with
+# incidence worse than prevalence. Because val_interpolated is what
+# combine-mortality-diseases writes out as `rate`, this bias flowed
+# into health_transitions_manchester_raw.csv and everything built on
+# it -- the calibrated transitions and the assigned baseline disease
+# states. For scale: the PIF calibration moves rates by 7-9%, so the
+# spline bias was larger than the effect being calibrated, and
+# one-directional.
+#
+# rate_1 is the step function, constant within each band, so its
+# within-band mean IS the band value by construction (verified: ratio
+# = 1.000 in all 20 bands, both measures). Rescaling each band by
+# mean(rate_1)/mean(val_interpolated) therefore restores the band mean
+# while keeping the smooth single-year shape.
+#
+# NOTE: agegroup is not carried through group_modify(), so the band is
+# derived from ageyr here. Ages 96-100 are copies of age 95 and fall in
+# the 95+ band with it, matching how gbd_process() sets to_age = 99.
+gbdpyr_interp <- gbdpyr_interp %>%
+  mutate(.band = pmin(5L * (as.integer(ageyr) %/% 5L), 95L)) %>%
+  group_by(measure, year, sex, cause, location, .band) %>%
+  mutate(
+    .mu_interp = mean(val_interpolated, na.rm = TRUE),
+    .mu_step   = mean(rate_1,           na.rm = TRUE),
+    val_interpolated_raw = val_interpolated,        # keep the original
+    val_interpolated = if_else(
+      is.finite(.mu_interp) & .mu_interp > 0 & is.finite(.mu_step),
+      val_interpolated * (.mu_step / .mu_interp),
+      val_interpolated
+    )
+  ) %>%
+  ungroup() %>%
+  select(-.mu_interp, -.mu_step)
+
+# Verify the rescale worked before anything downstream consumes it.
+band_check <- gbdpyr_interp %>%
+  group_by(measure, sex, cause, .band) %>%
+  summarise(mu_interp = mean(val_interpolated, na.rm = TRUE),
+            mu_step   = mean(rate_1,           na.rm = TRUE),
+            .groups = "drop") %>%
+  filter(mu_step > 0) %>%
+  mutate(ratio = mu_interp / mu_step)
+
+if (any(abs(band_check$ratio - 1) > 1e-6, na.rm = TRUE)) {
+  bad <- band_check %>% filter(abs(ratio - 1) > 1e-6)
+  stop(nrow(bad), " band(s) still differ from the step-function mean ",
+       "after rescaling, e.g. ",
+       paste(utils::capture.output(print(head(bad, 3))), collapse = "\n"))
+}
+message("mean-preserving rescale OK: all ", nrow(band_check),
+        " measure x sex x cause x band cells match rate_1 band means.")
+
+gbdpyr_interp <- gbdpyr_interp %>% select(-.band)
+
+write_csv(gbdpyr_interp,
+          here("manchester/health/processed/diseases_syoa.csv"))
+```
+
+## NDRS North West quintile RRs
+
+```{r ndrs-rr}
+ndrs <- read_csv(here("manchester/health/original/Incidence_data_Region_Cancer_Group_2026-05-15.csv"))
+names(ndrs) <- trimws(names(ndrs))   # strip stray spaces in column names
+
+ndrs_rrs <- ndrs %>%
+  filter(`Type of rate`   == "Age-gender-standardised",
+         Stage            == "All stages",
+         str_starts(`NDRS detailed`, "All ")) %>%
+  select(cancer      = `NDRS main`,
+         deprivation = Deprivation,
+         rate        = Rate) %>%
+  mutate(rate = as.numeric(rate)) %>%
+  group_by(cancer) %>%
+  mutate(rate_overall = rate[deprivation == "All quintiles"][1]) %>%
+  ungroup() %>%
+  filter(deprivation != "All quintiles") %>%
+  mutate(
+    RR_ndrs = rate / rate_overall,
+    imd_quintile = case_when(
+      deprivation == "1 - most deprived"  ~ 1L,
+      deprivation == "2"                  ~ 2L,
+      deprivation == "3"                  ~ 3L,
+      deprivation == "4"                  ~ 4L,
+      deprivation == "5 - least deprived" ~ 5L
+    )
+  ) %>%
+  select(cancer, imd_quintile, RR_ndrs)
+
+# NDRS "NDRS main" cancer group -> GBD cause name used in gbdpyr_interp.
+# Blood cancer maps to two GBD causes, so the join duplicates its RR onto both.
+# NDRS groups with no GBD counterpart (anus, brain, kidney, pancreas, ...) and
+# GBD causes with no NDRS group (endometrial_cancer) are dropped by the
+# inner_join and fall back to the mortality RR downstream.
+ndrs_to_gbd <- tibble::tribble(
+  ~cancer,                    ~gbd_cause,
+  "Bladder",                  "bladder_cancer",
+  "Breast",                   "breast_cancer",
+  "Bowel",                    "colon_cancer",
+  "Oesophagus",               "esophageal_cancer",
+  "Stomach",                  "gastric_cardia_cancer",
+  "Head and neck",            "head_neck_cancer",
+  "Liver and biliary tract",  "liver_cancer",
+  "Lung",                     "lung_cancer",
+  "Blood cancer",             "myeloid_leukemia",
+  "Blood cancer",             "myeloma"
+)
+
+# Fail loudly if the NDRS labels change rather than silently losing cancers
+unmatched <- setdiff(ndrs_to_gbd$cancer, ndrs_rrs$cancer)
+if (length(unmatched)) {
+  warning("ndrs_to_gbd cancers not found in the NDRS data: ",
+          paste(unmatched, collapse = ", "))
+}
+
+ndrs_rrs_mapped <- ndrs_rrs %>%
+  inner_join(ndrs_to_gbd, by = "cancer", relationship = "many-to-many") %>%
+  select(cause = gbd_cause, imd_quintile, RR_ndrs)
+
+## Plot for paper
+
+
+# =============================================================================
+#  NDRS incidence rate ratios by deprivation quintile
+# =============================================================================
+library(ggplot2); library(scales)
+
+d <- ndrs_rrs_mapped %>%
+  filter(cause != "myeloma") %>%
+  mutate(
+    cause = gsub("_", " ", cause),
+    cause = sub("^(.)", "\\U\\1", cause, perl = TRUE),
+    imd_quintile = as.integer(imd_quintile)
+  )
+
+# Order causes by the strength of the gradient (Q1 ÷ Q5) rather than
+# alphabetically, so the panel reads from steepest to flattest and the
+# reversed gradients fall at the end.
+grad <- d %>%
+  group_by(cause) %>%
+  summarise(ratio = RR_ndrs[imd_quintile == 1] / RR_ndrs[imd_quintile == 5],
+            .groups = "drop") %>%
+  arrange(desc(ratio))
+
+d <- d %>% mutate(cause = factor(cause, levels = grad$cause))
+
+lab <- d %>%
+  group_by(cause) %>%
+  summarise(x = 5, y = RR_ndrs[imd_quintile == 5],
+            r = RR_ndrs[imd_quintile == 1] / RR_ndrs[imd_quintile == 5],
+            .groups = "drop")
+
+p <- ggplot(d, aes(imd_quintile, RR_ndrs, group = cause)) +
+  # RR = 1 is the England average; deviations above and below are the signal
+  geom_hline(yintercept = 1, colour = "grey60", linewidth = .4) +
+  geom_line(aes(colour = cause), linewidth = .9, show.legend = FALSE) +
+  geom_point(aes(colour = cause), size = 2, show.legend = FALSE) +
+  geom_text(data = lab, aes(x, y, label = sprintf("%.2f\u00d7", r)),
+            hjust = -0.25, size = 2.9, colour = "grey30") +
+  facet_wrap(~ cause, ncol = 3) +
+  scale_x_continuous(breaks = 1:5, expand = expansion(add = c(.25, .75))) +
+  scale_y_continuous(labels = label_number(accuracy = .1)) +
+  scale_colour_viridis_d(option = "C", end = .85) +
+  labs(
+   
+    subtitle = "NDRS North West, 2017–2019. Each quintile relative to the North West average (RR = 1). Labels give the quintile 1 : quintile 5 ratio.",
+    x = "IMD quintile   (1 = most deprived)",
+    y = "Incidence rate ratio",
+ ) +
+  theme_minimal(base_size = 11) +
+  theme(
+    panel.grid.minor = element_blank(),
+    panel.grid.major.x = element_blank(),
+    strip.text = element_text(face = "bold", hjust = 0, size = 9),
+    plot.title = element_text(face = "bold"),
+    plot.subtitle = element_text(colour = "grey35", size = 9),
+    plot.caption = element_text(colour = "grey45", size = 8, hjust = 0)
+  )
+p
+
+```
+
+## Expand to GM LSOAs
+
+```{r disease-lsoa-expansion}
+# LSOA → IMD quintile (deciles collapsed by twos)
+lsoa_quintile <- deprivation_lsoa11 %>%
+  mutate(imd_quintile = case_when(
+    imd_decile %in% c(1, 2)  ~ 1L,
+    imd_decile %in% c(3, 4)  ~ 2L,
+    imd_decile %in% c(5, 6)  ~ 3L,
+    imd_decile %in% c(7, 8)  ~ 4L,
+    imd_decile %in% c(9, 10) ~ 5L
+  )) %>%
+  select(lsoa_code = lsoa11_code, imd_quintile)
+
+# GM LSOAs with both the mortality RR and the quintile, sex harmonised
+#
+# 2026-08 FIX (M1): use RR_nw, not RR. The disease rates these multiply
+# are GBD North West, so the multiplier must be North West-referenced.
+# RR (England-referenced) remains correct for the England life table and
+# is used there unchanged.
+gm_lsoas <- england_lsoa_deaths %>%
+  left_join(msoa %>% select(LSOA11CD, LAD11CD, LAD11NM) %>% distinct(),
+            by = c("lsoa_code" = "LSOA11CD")) %>%
+  filter(LAD11NM %in% gm_lads) %>%
+  transmute(
+    lsoa_code, LAD11CD, LAD11NM,
+    sex          = if_else(gender == "Males", "Male", "Female"),
+    RR_mortality = RR_nw
+  ) %>%
+  left_join(lsoa_quintile, by = "lsoa_code")
+
+# Cross-join LSOAs × disease rates, attach NDRS RR if available, fall back
+# to mortality RR otherwise. Both rate_1 and val_interpolated get scaled.
+#
+# ============================================================
+# 2026-08 FIX: prevalence is scaled on the ODDS scale.
+#
+# Prevalence is a PROPORTION and cannot exceed 1, but p_lsoa = p_NW * RR
+# has no upper bound. GBD's 95+ COPD prevalence for the North West is
+# 0.528, so any RR above 1.894 pushes it past 1; the largest GM RR_nw is
+# 3.85, giving 2.03. Before this fix 1,736 COPD rows and 25 dementia rows
+# exceeded 1 and were capped at 0.99 in assign_prevalence.R. (That is NOT
+# spline overshoot, which an earlier comment there suggested: the top band
+# now holds the published 95+ rate exactly, and 0.528 * 3.85 = 2.03
+# reproduces the observed maximum to three decimals.)
+#
+# Treating RR as an odds ratio bounds the result by construction:
+#     odds_lsoa = (p_NW / (1 - p_NW)) * RR
+#     p_lsoa    = odds_lsoa / (1 + odds_lsoa)
+#
+# For small p this reduces to the multiplicative form, so all ten cancers
+# (max prevalence 0.061) are unchanged to three decimals. It only bites
+# where the multiplicative model was failing -- COPD, dementia, diabetes
+# and coronary heart disease at the oldest ages.
+#
+# INCIDENCE IS LEFT MULTIPLICATIVE. It is a hazard, not a proportion, and
+# is genuinely unbounded above.
+#
+# TRADE-OFF: the odds transform is non-linear, so the population-weighted
+# mean of the disaggregated prevalence no longer reproduces the regional
+# rate exactly (it did under the multiplicative form, since RR_nw is
+# self-normalising). PART B of assign_prevalence.R measures that drift
+# against GBD by age group and sex; the drift check below reports it here.
+# ============================================================
+
+#' Apply a relative rate to a proportion, on the odds scale.
+#' Bounded above by 1 for any positive rr; reduces to p * rr for small p.
+odds_scale <- function(p, rr) {
+  p <- pmin(pmax(p, 0), 1 - 1e-12)
+  o <- (p / (1 - p)) * rr
+  o / (1 + o)
+}
+
+manchester_diseases_lsoa <- gbdpyr_interp %>%
+  select(measure, year, ageyr, sex, cause, rate_1, val_interpolated) %>%
+  inner_join(gm_lsoas, by = "sex", relationship = "many-to-many") %>%
+   left_join(ndrs_rrs_mapped, by = c("cause", "imd_quintile")) %>%
+  mutate(
+    RR_used   = coalesce(RR_ndrs, RR_mortality),
+    RR_source = if_else(!is.na(RR_ndrs), "NDRS_quintile", "mortality"),
+    .is_prev  = measure == "Prevalence",
+    rate_1           = if_else(.is_prev,
+                               odds_scale(rate_1, RR_used),
+                               rate_1 * RR_used),
+    val_interpolated = if_else(.is_prev,
+                               odds_scale(val_interpolated, RR_used),
+                               val_interpolated * RR_used)
+  ) %>%
+  select(measure, year, ageyr, sex, cause,
+         lsoa_code, LAD11CD, LAD11NM, imd_quintile,
+         rate_1, val_interpolated, RR_used, RR_source)
+
+# ---- Check: prevalence is now bounded, incidence is unchanged in form ----
+n_over_1 <- sum(manchester_diseases_lsoa$measure == "Prevalence" &
+                  manchester_diseases_lsoa$val_interpolated > 1, na.rm = TRUE)
+message("prevalence values above 1: ", n_over_1, " (must be 0)")
+stopifnot(n_over_1 == 0)
+
+message("highest prevalence by cause after the odds transform:")
+print(as.data.frame(
+  manchester_diseases_lsoa %>%
+    filter(measure == "Prevalence") %>%
+    group_by(cause) %>%
+    summarise(max_prevalence = max(val_interpolated, na.rm = TRUE),
+              age_at_max = ageyr[which.max(val_interpolated)],
+              .groups = "drop") %>%
+    arrange(desc(max_prevalence))
+), row.names = FALSE, digits = 4)
+
+# ---- Cost of the transform: departure from mean preservation ----
+# Under the multiplicative form the population-weighted mean of the
+# disaggregated rate reproduced the regional rate exactly. The odds
+# transform is non-linear, so it no longer does. Report the size.
+prev_drift <- manchester_diseases_lsoa %>%
+  filter(measure == "Prevalence") %>%
+  group_by(cause, sex, ageyr) %>%
+  summarise(mean_lsoa = mean(val_interpolated, na.rm = TRUE),
+            p_nw      = dplyr::first(rate_1 / RR_used),
+            .groups   = "drop") %>%
+  filter(is.finite(p_nw), p_nw > 0) %>%
+  group_by(cause) %>%
+  summarise(max_drift_pct = 100 * max(abs(mean_lsoa / p_nw - 1), na.rm = TRUE),
+            median_drift_pct = 100 * median(abs(mean_lsoa / p_nw - 1), na.rm = TRUE),
+            .groups = "drop") %>%
+  arrange(desc(max_drift_pct))
+
+message("departure from exact mean preservation, prevalence only:")
+print(as.data.frame(prev_drift), row.names = FALSE, digits = 4)
+message("Cancers should be near zero. High-prevalence chronic conditions will ",
+        "show a real drift -- that is the cost of bounding the result.")
+
+write_rds(manchester_diseases_lsoa,
+          here("manchester/health/processed/manchester_diseases_lsoa.RDS")) ##
+```
+
+# Combining All-cause Mortality and Disease Incidence Data
+
+```{r combine-mortality-diseases}
+diseases <- readRDS(here("manchester/health/processed/manchester_diseases_lsoa.RDS"))
+allcause <- read_csv(here("manchester/health/processed/manchester_lsoa21_mxrates_calibrated.csv"))
+
+# All-cause mortality (LSOA21)
+allcause <- allcause %>%
+  mutate(cause         = "all_cause_mortality",
+         measure       = "deaths",
+         sex           = case_when(sex == "Males"   ~ "male",
+                                   sex == "Females" ~ "female"),
+         location_code = lsoa21cd,
+         age           = as.numeric(age)) %>%
+  dplyr::select(age, sex, location_code, cause,
+                rate = rate_smooth,
+                measure) %>%
+  mutate(location_type = "lsoa")
+
+# Diseases (LSOA11; use the smoothed val_interpolated as the rate)
+diseases <- diseases %>%
+  mutate(measure = tolower(measure),
+         cause   = tolower(cause)) %>%
+  rename(age  = ageyr,
+         rate = val_interpolated) %>%
+  mutate(sex = case_when(sex == "Male"   ~ "male",
+                         sex == "Female" ~ "female")) %>%
+  dplyr::select(age, sex, location_code = lsoa_code, cause, rate, measure) %>%
+  mutate(location_type = "lsoa")
+
+incidence  <- diseases %>% filter(measure == "incidence")
+prevalence <- diseases %>% filter(measure == "prevalence") %>%
+  mutate(sex = case_when(sex == "male"   ~ 1,
+                         sex == "female" ~ 2))
+
+health_transitions_manchester <- bind_rows(allcause, incidence)
+
+# ============================================================
+# IMPORTANT -- location_code vintage is SPLIT BY MEASURE.
+#
+#   deaths     -> location_code = lsoa21cd  (LSOA21, 1,702 codes)
+#   incidence  -> location_code = lsoa_code (LSOA11, 1,673 codes)
+#   prevalence -> location_code = lsoa_code (LSOA11, 1,673 codes)
+#
+# The two only look alike because an LSOA whose boundary did not change
+# in 2021 keeps an identical code string. The 66 GM areas that DID
+# change are what expose the difference. Consumers must therefore:
+#   - join mortality on lsoa21cd directly (NO 2011->2021 mapping), and
+#   - join incidence/prevalence via the LSOA11 lookup (or, for the
+#     synthetic population, on zoneSystem.csv's LSOA11CD column).
+# Routing both through lsoa_2011_to_lsoa_2021.csv silently drops the 66
+# from each: mortality was then zero-filled by a crossing() grid, and
+# incidence lost 219,978 rows outright. See transitions_calibration.R
+# section 2a.
+# ============================================================
+counts <- health_transitions_manchester %>%
+  group_by(measure) %>%
+  summarise(n_codes = n_distinct(location_code), .groups = "drop")
+message("location_code counts by measure:")
+print(counts)
+
+# write_csv, not write.csv: the latter emits an unnamed row-number
+# column that read_csv() then names "...1".
+write_csv(prevalence,
+          here("manchester/health/processed/health_transitions_manchester_prevalence.csv"))
+write_csv(health_transitions_manchester,
+          here("manchester/health/processed/health_transitions_manchester_raw.csv"))
+
+# Compare old May 2026 file and new August 2026 file
+
+health_transitions_manchester <- read_csv(here("manchester/health/processed/health_transitions_manchester_raw.csv"))
+
+##check 
+health_transitions_manchester |>
+  group_by(cause) |>
+  summarise(
+    n         = n(),
+    mean_rate = mean(rate, na.rm = TRUE),
+    median    = median(rate, na.rm = TRUE),
+    min       = min(rate, na.rm = TRUE),
+    max       = max(rate, na.rm = TRUE),
+    n_zero    = sum(rate == 0, na.rm = TRUE),
+    n_na      = sum(is.na(rate))
+  ) |>
+  arrange(desc(mean_rate)) |>
+  print(n = Inf)
+```
+
+# Next steps
+
+## calculate PIF, if needs updating. 
+## Calibration of incidence and mortality (tansition_calibration.R)
+## Assign prevalence to synthetic population assign_prevalence.R
+
+## To do
+## add some external data validation for incidence and prevalence

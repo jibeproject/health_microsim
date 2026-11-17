@@ -2,26 +2,42 @@
 ## config/run_config.R
 ##
 ## The Java model run that the health scripts work on, set once here. Sourced
-## by scripts/run_pifs.R, scripts/transitions_calibration.R and
-## scripts/run_microsim.R, so the PIFs, the PIF-adjusted rates and the
-## microsimulation always come from the same run.
+## by data_prep/manchester/run_pifs.R, data_prep/manchester/transitions_calibration.R,
+## engine/run_microsim.R, outputs/process_all_data.R and outputs/process_exp.R,
+## so the PIFs, the PIF-adjusted rates, the microsimulation and the app's
+## health and exposure data all come from the same run. (Trips do not: see
+## outputs/process_trips.R.)
 ##
 ## For a new run, change RUN_NAME, then re-run, in order:
-##   1. scripts/run_pifs.R               PIFs from the run's reference RRs
-##   2. scripts/transitions_calibration.R  rates (rate = rate_raw x (1 - PAF))
-##   3. scripts/run_microsim.R           microsimulation
+##   0. (once per synthetic population) data_prep/manchester/assign_prevalence.R,
+##      and set BASE_PREVALENCE_FILE below to the file it writes
+##   1. data_prep/manchester/run_pifs.R                PIFs from the run's reference RRs
+##   2. data_prep/manchester/transitions_calibration.R rates (rate = rate_raw x (1 - PAF))
+##   3. engine/run_microsim.R                          microsimulation
+##   4. outputs/process_all_data.R, outputs/process_exp.R   health and exposure data for the app
+##      (process_all_data.R also needs SRC_FILE, the run's all_data parquet, set in it)
 ## The files written in steps 1 and 2 carry RUN_NAME in their names, so a
 ## script fails (file not found) rather than silently using another run's file.
+##
+## The location of the shared drive (JIBE_ROOT) is set in config/paths.R.
 ###############################################################################
 
 library(here)
+source(here("config/paths.R"))           # JIBE_ROOT, MANCHESTER_ROOT, LOCAL_DATA
 
-RUN_NAME  <- "nonTransportPA_050526"     # folder under scenOutput/ of the Java run
-JIBE_ROOT <- "X:/HealthImpact/Data/Country/UK/JIBE/manchester"
+RUN_NAME <- "health_and_accidents_140926"   # folder under scenOutput/ of the Java run
 
-RR_ROOT <- file.path(JIBE_ROOT, "scenOutput", RUN_NAME, "RR")
+RUN_DIR <- file.path(MANCHESTER_ROOT, "scenOutput", RUN_NAME)
+RR_ROOT <- file.path(RUN_DIR, "RR")
 rr_file <- function(scen) file.path(RR_ROOT, scen, "pp_rr_2021.csv")   # Java person-level RRs
 
 HEALTH_PROCESSED <- here("manchester/health/processed")
 PIFS_FILE  <- file.path(HEALTH_PROCESSED, paste0("pifs_reference_", RUN_NAME, ".csv"))                 # run_pifs.R
 RATES_FILE <- file.path(HEALTH_PROCESSED, paste0("health_transitions_manchester_", RUN_NAME, ".csv"))  # transitions_calibration.R
+
+# Diseases at the start, per person (data_prep/manchester/assign_prevalence.R writes
+# base_prevalence_id_clean_<ddmmyy>.csv): set the date of the file to use. Read by
+# run_pifs.R and run_microsim.R, so the PIFs and the microsimulation start from the
+# same people with the same diseases. It depends on the synthetic population,
+# not on the Java run.
+BASE_PREVALENCE_FILE <- file.path(HEALTH_PROCESSED, "base_prevalence_id_clean_DDMMYY.csv")
