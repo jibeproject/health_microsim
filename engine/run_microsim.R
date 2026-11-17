@@ -36,9 +36,9 @@ if (length(missing)) stop("No pp_rr_2021.csv for: ", paste(missing, collapse = "
 # from config/run_config.R). The engine uses rate_raw and calibrates it itself.
 if (!file.exists(RATES_FILE)) stop("No rates file for run ", RUN_NAME, " (", RATES_FILE,
                                    "). Run data_prep/manchester/run_pifs.R and transitions_calibration.R first.")
-ZONES_FILE <- here("manchester/synPop/sp_2021/zoneSystem.csv")
-# Diseases at the start (data_prep/manchester/assign_prevalence.R writes base_prevalence_id_clean_<ddmmyy>.csv)
-PREVALENCE_FILE <- here("manchester/health/processed/base_prevalence_id_clean_DDMMYY.csv")
+# ZONES_FILE (config/paths.R): the Manchester zone system
+# Diseases at the start: BASE_PREVALENCE_FILE (config/run_config.R), shared with run_pifs.R
+PREVALENCE_FILE <- BASE_PREVALENCE_FILE
 
 # Depression remission, derived so that depression incidence reproduces its
 # prevalence (as in UBD), by age x sex x IMD decile. Uses the depression rows of

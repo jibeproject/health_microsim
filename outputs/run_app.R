@@ -6,8 +6,9 @@
 #   Rscript outputs/run_app.R           # port 3838, host 127.0.0.1
 #   Rscript outputs/run_app.R 8000      # port 8000
 #   Rscript outputs/run_app.R 8000 0.0.0.0
-# The app reads its pre-processed .qs2 files from outputs/app/data/
-# (written by outputs/process_all_data.R, process_exp.R and process_trips.R).
+# The app reads from outputs/app/data/: run_name.txt and health_<run>.qs2
+# (outputs/process_all_data.R), exposures_<run>.qs2 (outputs/process_exp.R) and
+# trips_200826.qs2 (outputs/process_trips.R; copy it there).
 
 args <- commandArgs(trailingOnly = TRUE)
 port <- if (length(args) >= 1) as.integer(args[[1]]) else 3838

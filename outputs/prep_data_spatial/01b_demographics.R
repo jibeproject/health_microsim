@@ -20,7 +20,8 @@ invisible(lapply(pkgs, library, character.only = TRUE))
 
 pp_path   <- "outputs/prep_data_spatial/data/pp_2021.csv"
 hh_path   <- "outputs/prep_data_spatial/data/hh_2021.csv"
-zone_path <- "outputs/prep_data_spatial/data/zoneSystem.csv"
+source(here::here("config/paths.R"))   # ZONES_FILE: the Manchester zone system
+zone_path <- ZONES_FILE
 
 con <- dbConnect(duckdb::duckdb())
 on.exit(dbDisconnect(con, shutdown = TRUE), add = TRUE)

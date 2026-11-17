@@ -22,7 +22,8 @@ if (length(to_install)) install.packages(to_install)
 invisible(lapply(pkgs, library, character.only = TRUE))
 
 data_dir  <- "outputs/prep_data_spatial/data"
-zone_path <- "outputs/prep_data_spatial/data/zoneSystem.csv"
+source(here::here("config/paths.R"))   # ZONES_FILE: the Manchester zone system
+zone_path <- ZONES_FILE
 
 scenarios <- c(
   base       = "outputs/prep_data_spatial/data/pp_exposure_2021_base_041026.csv",

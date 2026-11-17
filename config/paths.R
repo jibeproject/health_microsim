@@ -24,3 +24,7 @@ LOCAL_DATA <- Sys.getenv("JIBE_LOCAL", "C:/jibe_data")   # local copies of large
 if (file.exists(here("config/paths_local.R"))) source(here("config/paths_local.R"))
 
 MANCHESTER_ROOT <- file.path(JIBE_ROOT, "manchester")
+
+# Manchester zone system (oaID -> LSOA, local authority, IMD): the one file every
+# script uses (data prep, PIFs, microsimulation, processing for the apps)
+ZONES_FILE <- here("manchester/synPop/sp_2021/zoneSystem.csv")

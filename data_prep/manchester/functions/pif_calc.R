@@ -1,12 +1,13 @@
 ### Function to calculate PIFs (scenario-specific, using multi-disease RR)
 ### + diabetes-conditional RR for coronary heart disease and stroke
 ###
-### Fixes vs previous version:
-###  - prevalence joined on LSOA11 (zones carries both LSOA11CD and lsoa21cd),
-###    not on ladcd (which silently produced all-NA prevalence -> all disease
-###    statuses 0 -> multimorbidity RR collapsed to 1)
-###  - allocate_disease() uses an explicit disease list + intersect() instead of
-###    the fragile positional range copd:stroke
+### calculate_pif(synth_pop, baseline_file): synth_pop is a Java pp_rr file
+### (id, age, gender, zone, rr_* columns); baseline_file is assign_prevalence.R's
+### base_prevalence_id_clean_<date>.csv.
+###
+### Fixes vs previous versions:
+###  - diseases at the start are read from assign_prevalence.R's baseline file
+###    (same people and diseases as the microsimulation), not drawn here
 ###  - adds diabetes-conditional RR for coronary_heart_disease and stroke,
 ###    mirroring the multi-disease RR for all_cause_mortality
 ###  - PIF formula unchanged: explicit summing form 1 - (N / sum_rr)
@@ -19,48 +20,22 @@ library(data.table)
 library(here)
 library(stringr)
 
-calculate_pif <- function(synth_pop) {
-  
+calculate_pif <- function(synth_pop, baseline_file) {
+
   # ------------------------------------------------------------
-  # 1. Read lookup tables
+  # 1. Geography: zones carries oaID (-> zone), lsoa21cd, ladcd, ladnm, imd10
   # ------------------------------------------------------------
-  # synth_pop <-  read_csv("X:/HealthImpact/Data/Country/UK/JIBE/manchester/scenOutput/nonTransportPA_050526/RR/reference/pp_rr_2021.csv")
-  # zones carries oaID (-> zone), lsoa21cd, ladcd, ladnm, AND LSOA11CD.
-  # LSOA11CD is the key that matches the prevalence file's location_code.
   zones <- read_csv(
-    here("manchester/synPop/sp_2021/zoneSystem.csv"),
+    if (exists("ZONES_FILE")) ZONES_FILE else here("manchester/synPop/sp_2021/zoneSystem.csv"),
     show_col_types = FALSE
   ) %>%
     rename(zone = oaID)
-  
-  # Disease prevalence (LSOA11-level; location_code is E01... LSOA11 codes)
-  prevalence <- read.csv(
-    here("manchester/health/processed/health_transitions_manchester_prevalence.csv")
-  ) %>%
-    mutate(
-      prob = 1 - exp(-rate),                       # rates -> probabilities
-      sex  = case_when(
-        sex == 1 ~ "male",
-        sex == 2 ~ "female",
-        TRUE     ~ as.character(sex)
-      ),
-      # normalise cause names so pivoted column names are predictable
-      # (curly apostrophe -> straight; head_and_neck -> head_neck)
-      cause = str_replace_all(cause, "\u2019", "'"),
-      cause = str_replace_all(cause, "head_and_neck_cancer", "head_neck_cancer")
-    ) %>%
-    rename(location = location_code)
-  
-  # ------------------------------------------------------------
-  # 2. Attach geography (incl. LSOA11CD) and prevalence to synth pop
-  # ------------------------------------------------------------
-  
+
   synth_pop <- synth_pop %>%
-    left_join(zones, by = c("zone" = "zone"))
-  
-  synth_pop_wprob <- synth_pop %>%
+    left_join(zones, by = c("zone" = "zone")) %>%
     rename(sex = gender) %>%
     mutate(
+      id  = as.character(id),
       sex = case_when(
         sex == 1 ~ "male",
         sex == 2 ~ "female",
@@ -71,61 +46,60 @@ calculate_pif <- function(synth_pop) {
       # table (handled via the pooled fallback in calibration).
       imd_decile = suppressWarnings(as.integer(imd10))
     ) %>%
-    # KEEP LSOA11CD (and lsoa21cd) so we can join prevalence correctly
-    select(id, age, sex, ladcd, ladnm, lsoa21cd, LSOA11CD, imd_decile,
-           starts_with("rr")) %>%
-    rownames_to_column() %>%
-    left_join(
-      prevalence %>%
-        pivot_wider(
-          id_cols     = c(age, sex, location),
-          names_from  = cause,
-          values_from = prob
-        ),
-      by = c("age", "sex", "LSOA11CD" = "location")   # <- THE FIX (was ladcd)
-    )
-  
+    select(id, age, sex, ladcd, ladnm, lsoa21cd, imd_decile,
+           starts_with("rr"))
+
   # ------------------------------------------------------------
-  # 3. Allocate disease statuses (0/1) and clean sex-specific cancers
+  # 2. Diseases at the start, from assign_prevalence.R
+  #    (base_prevalence_id_clean_<date>.csv: one row per person with at
+  #    least one disease; id, diseases space-separated). These are the same
+  #    people with the same diseases as the microsimulation starts with, so
+  #    the multimorbidity and diabetes parts of the PIFs match it. (Earlier
+  #    versions drew diseases here from the prevalence probabilities, a
+  #    different draw from assign_prevalence.R's.)
   # ------------------------------------------------------------
-  
-  set.seed(123)
-  
-  # Explicit disease list (robust to column order / missing causes).
-  # Excludes all_cause_mortality (not a disease state) and myeloma
-  # (dropped downstream). diabetes IS included -> needed for the
-  # diabetes-conditional CHD/stroke RR below.
+  # Excludes all_cause_mortality (not a disease state) and myeloma.
+  # diabetes IS included -> needed for the diabetes-conditional CHD/stroke RR.
   disease_vars_all <- c(
     "copd", "all_cause_dementia", "bladder_cancer", "breast_cancer",
     "colon_cancer", "coronary_heart_disease", "depression", "diabetes",
     "endometrial_cancer", "esophageal_cancer", "gastric_cardia_cancer",
     "head_neck_cancer", "liver_cancer", "lung_cancer", "myeloid_leukemia",
-    "parkinson's_disease", "stroke"
+    "parkinson", "stroke"
   )
-  
-  allocate_disease <- function(df) {
-    dv <- intersect(disease_vars_all, names(df))   # only those present
-    df %>%
-      mutate(
-        across(
-          all_of(dv),
-          ~ ifelse(runif(n()) < .x, 1L, 0L),
-          .names = "{.col}_status"
-        )
-      )
-  }
-  
-  synth_pop_prev <- allocate_disease(synth_pop_wprob) %>%
-    select(
-      id, age, sex, ladcd, ladnm, lsoa21cd, LSOA11CD, imd_decile,
-      ends_with("_status"),
-      starts_with("RR")
-    ) %>%
-    mutate(
-      endometrial_cancer_status = ifelse(sex == "male", 0L, endometrial_cancer_status),
-      breast_cancer_status      = ifelse(sex == "male", 0L, breast_cancer_status)
-    )
-  
+
+  if (!file.exists(baseline_file))
+    stop("Baseline prevalence file not found: ", baseline_file,
+         ". Run data_prep/manchester/assign_prevalence.R first.")
+  baseline <- read_csv(baseline_file, show_col_types = FALSE,
+                       col_types = cols(.default = col_character())) %>%
+    select(id, diseases) %>%
+    separate_rows(diseases, sep = "\\s+") %>%
+    mutate(diseases = str_replace_all(diseases, "\u2019", "'"),
+           diseases = str_replace(diseases, "^parkinson'?s_disease$", "parkinson"),
+           diseases = str_replace(diseases, "^head_and_neck_cancer$", "head_neck_cancer")) %>%
+    filter(diseases %in% disease_vars_all) %>%
+    distinct()
+
+  n_match <- n_distinct(baseline$id[baseline$id %in% synth_pop$id])
+  if (n_match == 0)
+    stop("No person in ", baseline_file, " is in the RR file: wrong population?")
+  message(format(n_match, big.mark = ","), " people start with at least one disease (",
+          sprintf("%.1f%%", 100 * n_match / nrow(synth_pop)), " of the population)")
+
+  status <- baseline %>%
+    mutate(value = 1L) %>%
+    pivot_wider(id_cols = id, names_from = diseases, values_from = value,
+                names_glue = "{diseases}_status", values_fill = 0L)
+
+  synth_pop_prev <- synth_pop %>%
+    left_join(status, by = "id") %>%
+    mutate(across(ends_with("_status"), ~ coalesce(.x, 0L)))
+  if (!"diabetes_status" %in% names(synth_pop_prev)) synth_pop_prev$diabetes_status <- 0L
+  for (cc in c("endometrial_cancer_status", "breast_cancer_status"))
+    if (cc %in% names(synth_pop_prev))
+      synth_pop_prev[[cc]][synth_pop_prev$sex == "male"] <- 0L
+
   # Use full sample (no sub-sampling here)
   sample <- synth_pop_prev
   

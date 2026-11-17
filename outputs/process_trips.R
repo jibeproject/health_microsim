@@ -20,7 +20,7 @@ require(purrr)
 source(here::here("config/paths.R"))
 dir <- MANCHESTER_ROOT
 
-zone <- read_csv(paste0(dir,"/input/zoneSystem.csv"))
+zone <- read_csv(ZONES_FILE)   # config/paths.R
 
 trips_ref <- read_csv(paste0(dir,"/scenOutput/base/2021/microData/trips.csv")) |> mutate(scen = "reference")
 

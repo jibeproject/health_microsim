@@ -23,11 +23,11 @@ Run every script from the project folder (open `health_microsim.Rproj`). Paths i
 ## Manchester: from health data to microsimulation
 
 1. `data_prep/manchester/health_data_Manchester.Rmd`: GBD, ONS and NDRS data → `health_transitions_manchester_raw.csv` and `health_transitions_manchester_prevalence.csv` (in `manchester/health/processed/`).
-2. Set `RUN_NAME` in `config/run_config.R` to the Java run, then:
+2. `data_prep/manchester/assign_prevalence.R`: diseases at the start, per person → `base_prevalence_id_clean_<date>.csv`; set `BASE_PREVALENCE_FILE` in `config/run_config.R` to it. Done once per synthetic population; the PIFs and the microsimulation both start from this file.
+3. Set `RUN_NAME` in `config/run_config.R` to the Java run, then:
    1. `data_prep/manchester/run_pifs.R`: PIFs from the run's reference RRs (`RR/reference/pp_rr_2021.csv`) → `pifs_reference_<RUN_NAME>.csv`
    2. `data_prep/manchester/transitions_calibration.R`: rates by LSOA, `rate` = `rate_raw` × (1 − PAF) → `health_transitions_manchester_<RUN_NAME>.csv` (stops if the PIFs come from another run)
-   3. `data_prep/manchester/assign_prevalence.R`: diseases at the start, per person → `base_prevalence_id_clean_<date>.csv`
-3. `engine/run_microsim.R`: the microsimulation, for every scenario of the run. Outputs go to `output/microsim/<RUN_NAME>/scenario_<name>/`.
+4. `engine/run_microsim.R`: the microsimulation, for every scenario of the run. Outputs go to `output/microsim/<RUN_NAME>/scenario_<name>/`.
 
 File names carry the run's name, so a step fails (file not found) instead of silently using another run's file.
 
@@ -41,5 +41,5 @@ Checks on synthetic data: `Rscript engine/tests/test_microsim_engine.R` (needs o
 
 ## Apps
 
-- `outputs/app/combined_app.R` reads the `.qs2` files in `outputs/app/data/`, written by `outputs/process_all_data.R`, `process_exp.R` and `process_trips.R`. Start it with `Rscript outputs/run_app.R`.
+- `outputs/app/combined_app.R` reads `outputs/app/data/`: `run_name.txt` and `health_<run>.qs2` (written by `outputs/process_all_data.R`), `exposures_<run>.qs2` (`outputs/process_exp.R`) and `trips_200826.qs2` (`outputs/process_trips.R`; copy it there). It shows the run named in `run_name.txt`, so health and exposures always come from the same run. Start it with `Rscript outputs/run_app.R`.
 - `outputs/app_spatial/app.R` reads the `.rds` files next to it, built by the scripts in `outputs/prep_data_spatial/`. Deploy with `outputs/app_spatial/app_deploy.R`.

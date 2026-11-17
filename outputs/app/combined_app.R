@@ -39,7 +39,11 @@ data_path <- function(f) {
   hit[1]
 }
 
-pc <- qs2::qs_read(data_path("all_data_processed_092326.qs2"))
+# The run to show, written by outputs/process_all_data.R. Health and exposure
+# data are read for that run only, so the two always come from the same run.
+RUN_NAME <- trimws(readLines(data_path("run_name.txt"), n = 1L, warn = FALSE))
+message("Showing run ", RUN_NAME)
+pc <- qs2::qs_read(data_path(paste0("health_", RUN_NAME, ".qs2")))
 
 SCALING <- 1L
 
@@ -127,8 +131,9 @@ label_exposure <- function(x) {
   )
 }
 
-exp <- qs2::qs_read(data_path("exp_092426.qs2"))
+exp <- qs2::qs_read(data_path(paste0("exposures_", RUN_NAME, ".qs2")))   # from outputs/process_exp.R
 
+# Trips do not follow RUN_NAME (see outputs/process_trips.R): update this name if trips are re-run
 trips <- qs2::qs_read(data_path("trips_200826.qs2"))
 
 # ---- Distance and time tables ---------------------------------------------

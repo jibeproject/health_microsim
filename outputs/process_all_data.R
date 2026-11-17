@@ -10,7 +10,7 @@ source(here::here("config/run_config.R"))
 message("Health outputs from run ", RUN_NAME)
 
 # ZONES_CSV  <- "/media/ali/Expansion/backup_tabea/manchester-main/input/zoneSystem.csv"
-ZONES_CSV <- here::here("manchester/health/processed/zoneSystem.csv")
+ZONES_CSV <- ZONES_FILE   # config/paths.R
 zones    <- readr::read_csv(ZONES_CSV, show_col_types = FALSE)
 # ---- Geography and deprivation groupings ---------------------------------
 # NOTE ON COLUMN NAMES: the columns below keep their original names `ladnm`
@@ -704,9 +704,14 @@ pc <- mget(c(
   "asr_lad_all_per_cycle","asr_lad_all_avg_1_30",
   "asr_healthy_years_overall","asr_healthy_years_overall_avg_1_30"
 ))
-precomp_path <- here::here("outputs/app/data/precomputed_100%V6.qs2")
-message("Saving precomputed cache: ", precomp_path)
-#saveRDS(pc, precomp_path, compress = "xz")
+# The app's health data: outputs/app/data/health_<RUN_NAME>.qs2, plus
+# run_name.txt, which tells the app which run to show (it reads
+# health_<run>.qs2 and exposures_<run>.qs2, from process_exp.R, for that run).
+app_data <- here::here("outputs/app/data")
+dir.create(app_data, recursive = TRUE, showWarnings = FALSE)
+precomp_path <- file.path(app_data, paste0("health_", RUN_NAME, ".qs2"))
+message("Saving the app's health data: ", precomp_path)
 qs2::qs_save(pc, precomp_path)
+writeLines(RUN_NAME, file.path(app_data, "run_name.txt"))
 
 DBI::dbDisconnect(con, shutdown = TRUE)

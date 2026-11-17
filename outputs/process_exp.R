@@ -11,7 +11,7 @@ inp_dir <- file.path(RUN_DIR, "microData")
 
 inp_exp_dir = MANCHESTER_ROOT
 
-zones <- read_csv(file.path(MANCHESTER_ROOT, "input/zoneSystem.csv"))
+zones <- read_csv(ZONES_FILE)   # config/paths.R
 # NB: IMD is collapsed to quintiles further down via (imd10 + 1) %/% 2, which
 # is the same mapping as ceiling(imd10 / 2) used in process_all_data.R.
 # Do NOT re-enable the line below or the values are quintiled twice.
@@ -207,6 +207,12 @@ exp <- bind_rows(base_exp, green_exp, ss_exp, gd_exp)
 # which LADs each area contains, without hardcoding the mapping in two places.
 #attr(exp, "area_lookup") <- area_lookup
 
-#qs2::qs_save(exp, "app/data/exp_050826.qs2")
-# Copy this file to outputs/app/data/ for the app (it reads exp_092426.qs2)
-qs2::qs_save(exp, file.path(RUN_DIR, "processed", "exp_092426.qs2"))
+# The app's exposure data: outputs/app/data/exposures_<RUN_NAME>.qs2 (the app
+# reads it for the run in run_name.txt, written by process_all_data.R), and a
+# copy in the run's processed/ folder on the shared drive.
+app_data <- here::here("outputs/app/data")
+dir.create(app_data, recursive = TRUE, showWarnings = FALSE)
+exp_file <- paste0("exposures_", RUN_NAME, ".qs2")
+qs2::qs_save(exp, file.path(app_data, exp_file))
+qs2::qs_save(exp, file.path(RUN_DIR, "processed", exp_file))
+message("Saved ", file.path(app_data, exp_file))

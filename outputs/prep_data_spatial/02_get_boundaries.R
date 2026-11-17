@@ -9,7 +9,8 @@ to_install <- pkgs[!pkgs %in% rownames(installed.packages())]
 if (length(to_install)) install.packages(to_install)
 invisible(lapply(pkgs, library, character.only = TRUE))
 
-zones    <- readr::read_csv("outputs/prep_data_spatial/data/zoneSystem.csv", show_col_types = FALSE)
+source(here::here("config/paths.R"))   # ZONES_FILE: the Manchester zone system
+zones    <- readr::read_csv(ZONES_FILE, show_col_types = FALSE)
 gm_lsoas <- unique(zones$lsoa21cd)
 
 # LSOA21 BGC (generalised, clipped) FeatureServer, layer 0.

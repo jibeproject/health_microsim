@@ -9,6 +9,8 @@
 ## outputs/process_trips.R.)
 ##
 ## For a new run, change RUN_NAME, then re-run, in order:
+##   0. (once per synthetic population) data_prep/manchester/assign_prevalence.R,
+##      and set BASE_PREVALENCE_FILE below to the file it writes
 ##   1. data_prep/manchester/run_pifs.R                PIFs from the run's reference RRs
 ##   2. data_prep/manchester/transitions_calibration.R rates (rate = rate_raw x (1 - PAF))
 ##   3. engine/run_microsim.R                          microsimulation
@@ -32,3 +34,10 @@ rr_file <- function(scen) file.path(RR_ROOT, scen, "pp_rr_2021.csv")   # Java pe
 HEALTH_PROCESSED <- here("manchester/health/processed")
 PIFS_FILE  <- file.path(HEALTH_PROCESSED, paste0("pifs_reference_", RUN_NAME, ".csv"))                 # run_pifs.R
 RATES_FILE <- file.path(HEALTH_PROCESSED, paste0("health_transitions_manchester_", RUN_NAME, ".csv"))  # transitions_calibration.R
+
+# Diseases at the start, per person (data_prep/manchester/assign_prevalence.R writes
+# base_prevalence_id_clean_<ddmmyy>.csv): set the date of the file to use. Read by
+# run_pifs.R and run_microsim.R, so the PIFs and the microsimulation start from the
+# same people with the same diseases. It depends on the synthetic population,
+# not on the Java run.
+BASE_PREVALENCE_FILE <- file.path(HEALTH_PROCESSED, "base_prevalence_id_clean_DDMMYY.csv")
