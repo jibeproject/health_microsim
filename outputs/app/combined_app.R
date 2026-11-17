@@ -27,7 +27,8 @@ suppressPackageStartupMessages({
 data_path <- function(f) {
   cands <- c(
     file.path("data", f),                    # wd = the app folder (runApp)
-    file.path("app", "data", f),             # wd = the project root
+    file.path("outputs", "app", "data", f),  # wd = the project root
+    file.path("app", "data", f),             # wd = outputs/
     file.path("..", "app", "data", f)        # wd = a sibling of app/
   )
   hit <- cands[file.exists(cands)]

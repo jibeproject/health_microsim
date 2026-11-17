@@ -51,12 +51,12 @@ library(base)       # Read RDS files
 library(plotly)     # Interactive plots
 library(htmlwidgets)# Save interactive plots
 library(esquisse)
-# Set root directory one level up from current directory
-knitr::opts_knit$set(root.dir = dirname(getwd()))
+# Run every chunk from the project root (here() resolves from there too)
+knitr::opts_knit$set(root.dir = here::here())
 
 # Functions
-source("functions/interpolation.R") 
-source("functions/gbd_process.R")
+source(here::here("data_prep/manchester/functions/interpolation.R"))
+source(here::here("data_prep/manchester/functions/gbd_process.R"))
 
 
 # Avoid scientific notation
@@ -1151,7 +1151,7 @@ missing_causes <- setdiff(expected_causes, unique(gbdp$cause))
 if (length(missing_causes)) {
   stop("Cause(s) missing from gbd_process() output: ",
        paste(missing_causes, collapse = ", "),
-       "\nCheck the whitelist in functions/gbd_process.R against the ",
+       "\nCheck the whitelist in data_prep/manchester/functions/gbd_process.R against the ",
        "labels actually present in england_northwest.csv.")
 }
 

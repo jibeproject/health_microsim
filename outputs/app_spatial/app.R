@@ -29,7 +29,7 @@ app_dir <- tryCatch(
   error = function(e) getwd()
 )
 
-data_dir <- "app_spatial"
+data_dir <- "outputs/app_spatial"
 
 
 med  <- readRDS("exposure_medians_by_lsoa.rds")   # list(wide, long)

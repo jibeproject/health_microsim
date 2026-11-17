@@ -121,7 +121,7 @@ synth_pop_denom <- synth_pop %>%
 # (see the note above), so no location_code ever matched a LAD code.
 # Every prevalence column came back NA, every disease status resolved
 # to 0, and the baseline population was assigned no disease at all.
-# This mirrors the same fix already applied in functions/pif_calc.R.
+# This mirrors the same fix already applied in functions/pif_calc.R (data_prep/manchester).
 #
 # [FIX 2] pivot_wider() silently returns LIST-COLUMNS when the
 # id_cols x names_from combination is not unique -- it packs the

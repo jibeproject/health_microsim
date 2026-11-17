@@ -5,9 +5,10 @@ library(qs2)
 library(dplyr)   
 library(DBI)
 library(duckdb)
+source(here::here("config/paths.R"))   # MANCHESTER_ROOT (shared drive), LOCAL_DATA (local copies)
 
 # ZONES_CSV  <- "/media/ali/Expansion/backup_tabea/manchester-main/input/zoneSystem.csv"
-ZONES_CSV <- "manchester/health/processed/zoneSystem.csv"
+ZONES_CSV <- here::here("manchester/health/processed/zoneSystem.csv")
 zones    <- readr::read_csv(ZONES_CSV, show_col_types = FALSE)
 # ---- Geography and deprivation groupings ---------------------------------
 # NOTE ON COLUMN NAMES: the columns below keep their original names `ladnm`
@@ -46,9 +47,9 @@ lads <- lads_raw |> mutate(ladnm = unname(AREA_MAP[ladnm]))
 
 # ---- Paths ---------------------------------------------------------------
 # Local copy of the partitioned dataset (scen=*/ladcd=*/part-0.parquet) in local drive (to avoind network issues)
-PARQUET  <- "C:/jibe_data/all_data_220726.parquet"
+PARQUET  <- file.path(LOCAL_DATA, "all_data_220726.parquet")
 
-SRC_DIR  <- "X:/HealthImpact/Data/Country/UK/JIBE/manchester/scenOutput/normalization_fix_052226/processed"
+SRC_DIR  <- file.path(MANCHESTER_ROOT, "scenOutput/normalization_fix_052226/processed")
 SRC_FILE <- "all_data_220726.parquet"
 
 # ---- One-off copy from the network share ---------------------------------
@@ -692,7 +693,7 @@ pc <- mget(c(
   "asr_lad_all_per_cycle","asr_lad_all_avg_1_30",
   "asr_healthy_years_overall","asr_healthy_years_overall_avg_1_30"
 ))
-precomp_path <- "app/data/precomputed_100%V6.qs2"
+precomp_path <- here::here("outputs/app/data/precomputed_100%V6.qs2")
 message("Saving precomputed cache: ", precomp_path)
 #saveRDS(pc, precomp_path, compress = "xz")
 qs2::qs_save(pc, precomp_path)

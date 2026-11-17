@@ -2,24 +2,26 @@
 ## config/run_config.R
 ##
 ## The Java model run that the health scripts work on, set once here. Sourced
-## by scripts/run_pifs.R, scripts/transitions_calibration.R and
-## scripts/run_microsim.R, so the PIFs, the PIF-adjusted rates and the
+## by data_prep/manchester/run_pifs.R, data_prep/manchester/transitions_calibration.R
+## and engine/run_microsim.R, so the PIFs, the PIF-adjusted rates and the
 ## microsimulation always come from the same run.
 ##
 ## For a new run, change RUN_NAME, then re-run, in order:
-##   1. scripts/run_pifs.R               PIFs from the run's reference RRs
-##   2. scripts/transitions_calibration.R  rates (rate = rate_raw x (1 - PAF))
-##   3. scripts/run_microsim.R           microsimulation
+##   1. data_prep/manchester/run_pifs.R                PIFs from the run's reference RRs
+##   2. data_prep/manchester/transitions_calibration.R rates (rate = rate_raw x (1 - PAF))
+##   3. engine/run_microsim.R                          microsimulation
 ## The files written in steps 1 and 2 carry RUN_NAME in their names, so a
 ## script fails (file not found) rather than silently using another run's file.
+##
+## The location of the shared drive (JIBE_ROOT) is set in config/paths.R.
 ###############################################################################
 
 library(here)
+source(here("config/paths.R"))           # JIBE_ROOT, MANCHESTER_ROOT, LOCAL_DATA
 
-RUN_NAME  <- "nonTransportPA_050526"     # folder under scenOutput/ of the Java run
-JIBE_ROOT <- "X:/HealthImpact/Data/Country/UK/JIBE/manchester"
+RUN_NAME <- "nonTransportPA_050526"      # folder under scenOutput/ of the Java run
 
-RR_ROOT <- file.path(JIBE_ROOT, "scenOutput", RUN_NAME, "RR")
+RR_ROOT <- file.path(MANCHESTER_ROOT, "scenOutput", RUN_NAME, "RR")
 rr_file <- function(scen) file.path(RR_ROOT, scen, "pp_rr_2021.csv")   # Java person-level RRs
 
 HEALTH_PROCESSED <- here("manchester/health/processed")

@@ -1,5 +1,5 @@
 ###############################################################################
-## functions/microsim_engine.R
+## engine/microsim_engine.R
 ##
 ## Individual-level health microsimulation for the JIBE health model: a closed
 ## cohort (the 2021 synthetic population) followed for n_cycles annual cycles,
@@ -17,7 +17,7 @@
 ##
 ## Inputs (all read by run_microsim()):
 ##   rates      : rate_raw by lsoa21cd x sex x age (0-100) x cause, as written by
-##                scripts/transitions_calibration.R. all_cause_mortality rows are
+##                data_prep/manchester/transitions_calibration.R. all_cause_mortality rows are
 ##                deaths; every other cause is incidence. rate_raw, not rate: the
 ##                engine does the PIF adjustment itself, every cycle (below).
 ##   zones      : zoneSystem.csv (oaID -> lsoa21cd, ladcd, ladnm, imd10)
@@ -26,7 +26,7 @@
 ##                for a cause is the product of the selected exposures' columns.
 ##   prevalence : diseases held at the start, one row per person with at least
 ##                one disease: id, diseases (space-separated), as written by
-##                scripts/assign_prevalence.R
+##                data_prep/manchester/assign_prevalence.R
 ##   remission  : optional, table of remission rates (see derive_remission())
 ##
 ## Each cycle: all-cause mortality -> disease onsets (alphabetical) -> remission.

@@ -2,12 +2,13 @@
 suppressPackageStartupMessages({
   library(tidyverse)
 })
+source(here::here("config/paths.R"))   # MANCHESTER_ROOT: the Manchester folder on the shared drive
 
-inp_dir <- "Z:/HealthImpact/Data/Country/UK/JIBE/manchester/scenOutput/health_and_accidents_140926/microData"
+inp_dir <- file.path(MANCHESTER_ROOT, "scenOutput/health_and_accidents_140926/microData")
 
-inp_exp_dir = "Z:/HealthImpact/Data/Country/UK/JIBE/manchester"
+inp_exp_dir = MANCHESTER_ROOT
 
-zones <- read_csv("Z:/HealthImpact/Data/Country/UK/JIBE/manchester/input/zoneSystem.csv")
+zones <- read_csv(file.path(MANCHESTER_ROOT, "input/zoneSystem.csv"))
 # NB: IMD is collapsed to quintiles further down via (imd10 + 1) %/% 2, which
 # is the same mapping as ceiling(imd10 / 2) used in process_all_data.R.
 # Do NOT re-enable the line below or the values are quintiled twice.
@@ -102,7 +103,7 @@ calc_quantiles_grouped <- function(data, group_var = NULL) {
 # `scen_dir` = FOLDER to read from, when it differs from the label. The 22/07
 #              goDutch rerun lives in goDutch_220726/ but must still be
 #              labelled "goDutch" downstream.
-get_exp_summary <- function(inp_dir, inp_exp_dir = "Z:/HealthImpact/Data/Country/UK/JIBE/manchester",
+get_exp_summary <- function(inp_dir, inp_exp_dir = MANCHESTER_ROOT,
                             zones, scen = "base", scen_dir = scen) {
   #scen <- 'reference'
   ref_dir <- file.path(inp_dir, scen_dir, "microData")
@@ -204,4 +205,4 @@ exp <- bind_rows(base_exp, green_exp, ss_exp, gd_exp)
 #attr(exp, "area_lookup") <- area_lookup
 
 #qs2::qs_save(exp, "app/data/exp_050826.qs2")
-qs2::qs_save(exp, "Z:/HealthImpact/Data/Country/UK/JIBE/manchester/scenOutput/health_and_accidents_140926/processed/exp_092426.qs2")
+qs2::qs_save(exp, file.path(MANCHESTER_ROOT, "scenOutput/health_and_accidents_140926/processed/exp_092426.qs2"))

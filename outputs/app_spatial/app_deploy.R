@@ -1,5 +1,5 @@
 rsconnect::deployApp(
-  appDir  = "app_spatial",
+  appDir  = "outputs/app_spatial",
   appName = "healthmicrosim",   # reuse the existing slot
   appFiles = c(
     "app.R",

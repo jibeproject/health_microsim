@@ -13,7 +13,7 @@
 #
 # Produces:  data/exposure_medians_by_lsoa.rds  (used by the app)
 # NOTE: summaries are computed on ALL AGES (no age filter), matching
-#       scripts/process_exp.R which generated the reference export CSV.
+#       outputs/process_exp.R which generated the reference export CSV.
 # =============================================================================
 
 pkgs <- c("duckdb", "DBI", "dplyr", "readr", "tidyr")
@@ -21,14 +21,14 @@ to_install <- pkgs[!pkgs %in% rownames(installed.packages())]
 if (length(to_install)) install.packages(to_install)
 invisible(lapply(pkgs, library, character.only = TRUE))
 
-data_dir  <- "prep_data_spatial/data"
-zone_path <- "prep_data_spatial/data/zoneSystem.csv"
+data_dir  <- "outputs/prep_data_spatial/data"
+zone_path <- "outputs/prep_data_spatial/data/zoneSystem.csv"
 
 scenarios <- c(
-  base       = "prep_data_spatial/data/pp_exposure_2021_base_041026.csv",
-  goDutch    = "prep_data_spatial/data/pp_exposure_2021_goDutch_041026.csv",
-  green      = "prep_data_spatial/data/pp_exposure_2021_green_041026.csv",
-  safeStreet = "prep_data_spatial/data/pp_exposure_2021_safeStreet_041026.csv"
+  base       = "outputs/prep_data_spatial/data/pp_exposure_2021_base_041026.csv",
+  goDutch    = "outputs/prep_data_spatial/data/pp_exposure_2021_goDutch_041026.csv",
+  green      = "outputs/prep_data_spatial/data/pp_exposure_2021_green_041026.csv",
+  safeStreet = "outputs/prep_data_spatial/data/pp_exposure_2021_safeStreet_041026.csv"
 )
 
 pctile_metrics <- c(
@@ -68,7 +68,7 @@ mean_exprs <- vapply(mean_metrics, function(m)
 agg_sql <- paste(c(pctile_exprs, mean_exprs), collapse = ",\n  ")
 
 summarise_one <- function(label, csv_file) {
-  path <- csv_file   # scenarios already hold full paths under prep_data_spatial/data
+  path <- csv_file   # scenarios already hold full paths under outputs/prep_data_spatial/data
   if (!file.exists(path)) {
     warning("Missing file for '", label, "': ", path, " — skipped.")
     return(NULL)
@@ -101,11 +101,11 @@ long <- summ |>
                       names_sep = "__",
                       values_to = "value")
 
-if (!dir.exists("app_spatial")) dir.create("app_spatial")
+if (!dir.exists("outputs/app_spatial")) dir.create("outputs/app_spatial")
 saveRDS(list(wide = summ, long = long),
-        "app_spatial/exposure_medians_by_lsoa.rds")
+        "outputs/app_spatial/exposure_medians_by_lsoa.rds")
 
-message("Done. Saved app_spatial/exposure_medians_by_lsoa.rds")
+message("Done. Saved outputs/app_spatial/exposure_medians_by_lsoa.rds")
 message("Rows (LSOA x scenario): ", nrow(summ))
 message("Percentile metrics: ", paste(pctile_metrics, collapse = ", "))
 message("Mean-only metrics:  ", paste(mean_metrics, collapse = ", "))

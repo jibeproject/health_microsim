@@ -7,7 +7,7 @@
 # LSOA medians to get the LAD median. Mirrors 01_preprocess_medians.R but groups
 # by LAD instead of LSOA.
 #
-# Produces:  app_spatial/lad_metrics_by_scenario.rds  (list(wide, long))
+# Produces:  outputs/app_spatial/lad_metrics_by_scenario.rds  (list(wide, long))
 #            long cols: ladcd, ladnm, n_people, scenario, metric, stat, value
 # =============================================================================
 
@@ -16,13 +16,13 @@ to_install <- pkgs[!pkgs %in% rownames(installed.packages())]
 if (length(to_install)) install.packages(to_install)
 invisible(lapply(pkgs, library, character.only = TRUE))
 
-zone_path <- "prep_data_spatial/data/zoneSystem.csv"
+zone_path <- "outputs/prep_data_spatial/data/zoneSystem.csv"
 
 scenarios <- c(
-  base       = "prep_data_spatial/data/pp_exposure_2021_base_220526.csv",
-  goDutch    = "prep_data_spatial/data/pp_exposure_2021_goDutch_260526.csv",
-  green      = "prep_data_spatial/data/pp_exposure_2021_green_260526.csv",
-  safeStreet = "prep_data_spatial/data/pp_exposure_2021_safeStreet_260526.csv"
+  base       = "outputs/prep_data_spatial/data/pp_exposure_2021_base_220526.csv",
+  goDutch    = "outputs/prep_data_spatial/data/pp_exposure_2021_goDutch_260526.csv",
+  green      = "outputs/prep_data_spatial/data/pp_exposure_2021_green_260526.csv",
+  safeStreet = "outputs/prep_data_spatial/data/pp_exposure_2021_safeStreet_260526.csv"
 )
 
 # which metrics get percentiles vs mean-only (MUST match 01_preprocess_medians.R)
@@ -134,10 +134,10 @@ long <- summ |>
                       names_sep = "__",
                       values_to = "value")
 
-if (!dir.exists("app_spatial")) dir.create("app_spatial", recursive = TRUE)
+if (!dir.exists("outputs/app_spatial")) dir.create("outputs/app_spatial", recursive = TRUE)
 saveRDS(list(wide = summ, long = long),
-        "app_spatial/lad_metrics_by_scenario.rds")
-message("Saved app_spatial/lad_metrics_by_scenario.rds")
+        "outputs/app_spatial/lad_metrics_by_scenario.rds")
+message("Saved outputs/app_spatial/lad_metrics_by_scenario.rds")
 message("Rows (LAD x scenario): ", nrow(summ), " | long rows: ", nrow(long))
 print(utils::head(long, 12))
 
@@ -152,8 +152,8 @@ gm_long <- gm_summ |>
                       names_sep = "__",
                       values_to = "value")
 saveRDS(list(wide = gm_summ, long = gm_long),
-        "app_spatial/gm_metrics_by_scenario.rds")
-message("Saved app_spatial/gm_metrics_by_scenario.rds (", nrow(gm_long), " long rows)")
+        "outputs/app_spatial/gm_metrics_by_scenario.rds")
+message("Saved outputs/app_spatial/gm_metrics_by_scenario.rds (", nrow(gm_long), " long rows)")
 print(utils::head(gm_long, 12))
 
 # ---- GM-wide BY GENDER ------------------------------------------------------
@@ -166,8 +166,8 @@ gmg_long <- gmg |>
                       names_sep = "__",
                       values_to = "value")
 saveRDS(list(wide = gmg, long = gmg_long),
-        "app_spatial/gm_metrics_by_gender.rds")
-message("Saved app_spatial/gm_metrics_by_gender.rds (", nrow(gmg_long), " long rows)")
+        "outputs/app_spatial/gm_metrics_by_gender.rds")
+message("Saved outputs/app_spatial/gm_metrics_by_gender.rds (", nrow(gmg_long), " long rows)")
 
 # ---- LAD BY GENDER ----------------------------------------------------------
 ladg <- dplyr::bind_rows(lapply(names(scenarios),
@@ -179,6 +179,6 @@ ladg_long <- ladg |>
                       names_sep = "__",
                       values_to = "value")
 saveRDS(list(wide = ladg, long = ladg_long),
-        "app_spatial/lad_metrics_by_gender.rds")
-message("Saved app_spatial/lad_metrics_by_gender.rds (", nrow(ladg_long), " long rows)")
+        "outputs/app_spatial/lad_metrics_by_gender.rds")
+message("Saved outputs/app_spatial/lad_metrics_by_gender.rds (", nrow(ladg_long), " long rows)")
 print(utils::head(ladg_long, 12))

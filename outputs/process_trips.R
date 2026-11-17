@@ -8,9 +8,9 @@ require(plotly)
 require(qs2)
 require(purrr)
 
-# Change the path as needed, currently set to Manchester folder
-
-dir <- "/run/user/1001/gvfs/smb-share:server=ifs-prod-1152-cifs.ifs.uis.private.cam.ac.uk,share=cedar-grp-drive/HealthImpact/Data/Country/UK/JIBE/manchester"
+# Manchester folder on the shared drive (set in config/paths.R)
+source(here::here("config/paths.R"))
+dir <- MANCHESTER_ROOT
 
 zone <- read_csv(paste0(dir,"/input/zoneSystem.csv"))
 
@@ -22,7 +22,7 @@ trips_green <-read_csv(paste0(dir,"/scenOutput/green/2021/microData/trips.csv"))
 
 trips_goDutch <- read_csv(paste0(dir,"/scenOutput/goDutch/2021/microData/trips.csv")) |> mutate(scen = "goDutch")
 
-pp <- read_csv("/scenOutput/normalization_fix_052226/exposures/reference/pp_exposure_2021_base_220526.csv") |> 
+pp <- read_csv(file.path(dir, "scenOutput/normalization_fix_052226/exposures/reference/pp_exposure_2021_base_220526.csv")) |> 
   left_join(zone  |> 
               rename(zone = oaID) |> 
               dplyr::select(zone, ladnm, ladcd, lsoa21cd, imd10))
@@ -141,7 +141,7 @@ arrow::write_dataset(dataset = trips, path = paste0(dir, "/scenOutput/trips/trip
 ## Creating Visualizations
 
 # Base path to trips parquet dataset
-trips_path <- "Z:/HealthImpact/Data/Country/UK/JIBE/manchester/scenOutput/trips/trips_200826.parquet/"
+trips_path <- file.path(dir, "scenOutput/trips/trips_200826.parquet/")
 
 
 # Open once as an Arrow dataset (lazy)
@@ -462,4 +462,4 @@ combined_list <- set_names(
   object_names
 )
 
-qs2::qs_save(combined_list, "Z:/HealthImpact/Data/Country/UK/JIBE/manchester/scenOutput/trips/trips_200826.qs2")
+qs2::qs_save(combined_list, file.path(dir, "scenOutput/trips/trips_200826.qs2"))

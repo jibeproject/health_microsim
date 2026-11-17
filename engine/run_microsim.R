@@ -1,12 +1,12 @@
 ###############################################################################
-## scripts/run_microsim.R
+## engine/run_microsim.R
 ##
-## Runs the health microsimulation (functions/microsim_engine.R, "with_mm"
+## Runs the health microsimulation (engine/microsim_engine.R, "with_mm"
 ## mortality) for the reference and the other scenarios of one Java model run.
 ## Run from the project folder (open health_microsim.Rproj).
 ##
 ## The Java run (RUN_NAME) is set in config/run_config.R. For a new run, change
-## it there and re-run scripts/run_pifs.R and scripts/transitions_calibration.R
+## it there and re-run data_prep/manchester/run_pifs.R and transitions_calibration.R
 ## first: the rates file below carries the run's name, so this script stops if
 ## it has not been made for that run.
 ##
@@ -18,7 +18,7 @@
 
 library(data.table)
 library(here)
-source(here("functions/microsim_engine.R"))
+source(here("engine/microsim_engine.R"))
 source(here("config/run_config.R"))      # RUN_NAME, rr_file(), RATES_FILE
 
 # 1. Java model run ==============================================================
@@ -32,12 +32,12 @@ missing   <- SCENARIOS[!file.exists(rr_file(SCENARIOS))]
 if (length(missing)) stop("No pp_rr_2021.csv for: ", paste(missing, collapse = ", "))
 
 # 2. Health inputs ===============================================================
-# Transition rates by LSOA for this run (scripts/transitions_calibration.R, file name
+# Transition rates by LSOA for this run (data_prep/manchester/transitions_calibration.R, file name
 # from config/run_config.R). The engine uses rate_raw and calibrates it itself.
 if (!file.exists(RATES_FILE)) stop("No rates file for run ", RUN_NAME, " (", RATES_FILE,
-                                   "). Run scripts/run_pifs.R and scripts/transitions_calibration.R first.")
+                                   "). Run data_prep/manchester/run_pifs.R and transitions_calibration.R first.")
 ZONES_FILE <- here("manchester/synPop/sp_2021/zoneSystem.csv")
-# Diseases at the start (scripts/assign_prevalence.R writes base_prevalence_id_clean_<ddmmyy>.csv)
+# Diseases at the start (data_prep/manchester/assign_prevalence.R writes base_prevalence_id_clean_<ddmmyy>.csv)
 PREVALENCE_FILE <- here("manchester/health/processed/base_prevalence_id_clean_DDMMYY.csv")
 
 # Depression remission, derived so that depression incidence reproduces its

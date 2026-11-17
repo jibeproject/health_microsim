@@ -53,11 +53,11 @@ library(rjson)
 library(ggforce)
 library(here) # to get files from the current working directory
 
-# set root directory one level up from currentdirectory
-knitr::opts_knit$set(root.dir = dirname(getwd()))
+# Run every chunk from the project root (here() resolves from there too)
+knitr::opts_knit$set(root.dir = here::here())
 
 # functions
-source("docs/functions/interpolation.R")
+source(here::here("data_prep/melbourne/functions/interpolation.R"))
 
 # Avoid scientific notation
 options("scipen"=100, "digits"=4)

@@ -34,7 +34,7 @@ source(here("config/run_config.R"))
 # Paths + constants
 # ----------------------------
 PATHS <- list(
-  pifs           = PIFS_FILE,   # pifs_reference_<RUN_NAME>.csv, from scripts/run_pifs.R
+  pifs           = PIFS_FILE,   # pifs_reference_<RUN_NAME>.csv, from data_prep/manchester/run_pifs.R
   lsoa_map       = here("manchester/health/original/ons/lsoa_2011_to_lsoa_2021.csv"),
   trans_raw      = "manchester/health/processed/health_transitions_manchester_raw.csv",
   zones          = here("manchester/synPop/sp_2021/zoneSystem.csv"),
@@ -125,7 +125,7 @@ safe_name <- function(x) str_replace_all(x, "[^A-Za-z0-9]+", "_")
 # now emits "[95,100)" directly and caps ages >= 100 into it.
 if (!file.exists(PATHS$pifs)) {
   stop("No PIFs for run ", RUN_NAME, " (", PATHS$pifs, "). ",
-       "Run scripts/run_pifs.R first.")
+       "Run data_prep/manchester/run_pifs.R first.")
 }
 pifs <- read_csv(PATHS$pifs, show_col_types = FALSE) %>%
   rename(cause = outcome) %>%
@@ -136,7 +136,7 @@ if ("run_name" %in% names(pifs)) {
   if (!all(pifs$run_name == RUN_NAME)) {
     stop(PATHS$pifs, " was made from run ",
          paste(unique(pifs$run_name), collapse = ", "),
-         ", not ", RUN_NAME, ". Re-run scripts/run_pifs.R.")
+         ", not ", RUN_NAME, ". Re-run data_prep/manchester/run_pifs.R.")
   }
   pifs <- select(pifs, -run_name)
 }
@@ -144,7 +144,7 @@ message("Adjusting rates with the PIFs of run ", RUN_NAME)
 
 if (!"imd_decile" %in% names(pifs)) {
   stop("pifs CSV ('", PATHS$pifs, "') has no imd_decile column. ",
-       "Regenerate it with scripts/run_pifs.R (stratified by ",
+       "Regenerate it with data_prep/manchester/run_pifs.R (stratified by ",
        "sex_age_group x imd_decile, plus pooled imd_decile = NA ",
        "rows), then rerun.")
 }

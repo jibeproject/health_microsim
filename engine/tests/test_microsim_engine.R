@@ -1,14 +1,14 @@
 ###############################################################################
-## tests/test_microsim_engine.R
+## engine/tests/test_microsim_engine.R
 ##
-## Checks functions/microsim_engine.R on small synthetic inputs where the
+## Checks engine/microsim_engine.R on small synthetic inputs where the
 ## right answer is known. Run from the project folder:
-##   Rscript tests/test_microsim_engine.R
+##   Rscript engine/tests/test_microsim_engine.R
 ## Needs only data.table (outputs are written as .csv.gz, so arrow is not needed).
 ###############################################################################
 
 suppressPackageStartupMessages(library(data.table))
-source("functions/microsim_engine.R")
+source("engine/microsim_engine.R")
 
 n_fail <- 0L
 check <- function(ok, what) {

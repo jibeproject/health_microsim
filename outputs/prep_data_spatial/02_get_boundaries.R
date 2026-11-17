@@ -9,7 +9,7 @@ to_install <- pkgs[!pkgs %in% rownames(installed.packages())]
 if (length(to_install)) install.packages(to_install)
 invisible(lapply(pkgs, library, character.only = TRUE))
 
-zones    <- readr::read_csv("prep_data_spatial/data/zoneSystem.csv", show_col_types = FALSE)
+zones    <- readr::read_csv("outputs/prep_data_spatial/data/zoneSystem.csv", show_col_types = FALSE)
 gm_lsoas <- unique(zones$lsoa21cd)
 
 # LSOA21 BGC (generalised, clipped) FeatureServer, layer 0.
@@ -62,9 +62,9 @@ if (nrow(lsoa_sf) == 0)
 # standardise the join column name to lowercase to match the exposure data
 names(lsoa_sf)[names(lsoa_sf) == "LSOA21CD"] <- "lsoa21cd"
 
-if (!dir.exists("app_spatial")) dir.create("app_spatial", recursive = TRUE)
-saveRDS(lsoa_sf, "app_spatial/gm_lsoa_boundaries.rds")
-message("Saved app_spatial/gm_lsoa_boundaries.rds (", nrow(lsoa_sf), " LSOAs)")
+if (!dir.exists("outputs/app_spatial")) dir.create("outputs/app_spatial", recursive = TRUE)
+saveRDS(lsoa_sf, "outputs/app_spatial/gm_lsoa_boundaries.rds")
+message("Saved outputs/app_spatial/gm_lsoa_boundaries.rds (", nrow(lsoa_sf), " LSOAs)")
 
 # =============================================================================
 # LAD21 boundaries for the 10 Greater Manchester local authority districts.
@@ -122,5 +122,5 @@ if (nrow(lad_sf) == 0)
 names(lad_sf)[names(lad_sf) == "LAD21CD"] <- "lad21cd"
 names(lad_sf)[names(lad_sf) == "LAD21NM"] <- "lad21nm"
 
-saveRDS(lad_sf, "app_spatial/gm_lad_boundaries.rds")
-message("Saved app_spatial/gm_lad_boundaries.rds (", nrow(lad_sf), " LADs)")
+saveRDS(lad_sf, "outputs/app_spatial/gm_lad_boundaries.rds")
+message("Saved outputs/app_spatial/gm_lad_boundaries.rds (", nrow(lad_sf), " LADs)")

@@ -18,9 +18,9 @@ to_install <- pkgs[!pkgs %in% rownames(installed.packages())]
 if (length(to_install)) install.packages(to_install)
 invisible(lapply(pkgs, library, character.only = TRUE))
 
-pp_path   <- "prep_data_spatial/data/pp_2021.csv"
-hh_path   <- "prep_data_spatial/data/hh_2021.csv"
-zone_path <- "prep_data_spatial/data/zoneSystem.csv"
+pp_path   <- "outputs/prep_data_spatial/data/pp_2021.csv"
+hh_path   <- "outputs/prep_data_spatial/data/hh_2021.csv"
+zone_path <- "outputs/prep_data_spatial/data/zoneSystem.csv"
 
 con <- dbConnect(duckdb::duckdb())
 on.exit(dbDisconnect(con, shutdown = TRUE), add = TRUE)
@@ -91,9 +91,9 @@ lsoa_profile <- prof |>
     pct_66plus   = 100 * age_66plus / n_people
   )
 
-if (!dir.exists("app_spatial")) dir.create("app_spatial", recursive = TRUE)
-saveRDS(lsoa_profile, "app_spatial/lsoa_profile.rds")
-message("Saved app_spatial/lsoa_profile.rds (", nrow(lsoa_profile), " LSOAs)")
+if (!dir.exists("outputs/app_spatial")) dir.create("outputs/app_spatial", recursive = TRUE)
+saveRDS(lsoa_profile, "outputs/app_spatial/lsoa_profile.rds")
+message("Saved outputs/app_spatial/lsoa_profile.rds (", nrow(lsoa_profile), " LSOAs)")
 print(utils::head(lsoa_profile))
 
 # ---- roll LSOA -> LAD -------------------------------------------------------
@@ -147,6 +147,6 @@ lad_imd <- lsoa_profile |>
 lad_profile <- lad_core |>
   dplyr::left_join(lad_imd, by = "ladcd")
 
-saveRDS(lad_profile, "app_spatial/lad_profile.rds")
-message("Saved app_spatial/lad_profile.rds (", nrow(lad_profile), " LADs)")
+saveRDS(lad_profile, "outputs/app_spatial/lad_profile.rds")
+message("Saved outputs/app_spatial/lad_profile.rds (", nrow(lad_profile), " LADs)")
 print(utils::head(lad_profile))
