@@ -1093,8 +1093,9 @@ The main transformations are:
     cause.
 2.  Adjust colon-and-rectum cancer to colon-only (×2/3, American Cancer
     Society).
-3.  Adjust tracheal-bronchus-lung cancer to lung-only (×0.54, GBD vs
-    England-specific lung incidence).
+3.  Use tracheal-bronchus-lung cancer (C33-C34) as lung cancer, unscaled
+    (as in the UBD model). An earlier factor of 0.54 was removed: it divided
+    male-only NHS England lung registrations by GBD both-sexes incidence.
 4.  Interpolate from 5-year age groups to single year of age.
 5.  Compute NDRS NW quintile RRs and map to LSOAs via IMD quintile.
 6.  Apply NDRS RR (cancers) or mortality RR (other diseases) to

@@ -87,20 +87,23 @@ gbd_process <- function(data) {
       cause == "Parkinson's disease" ~ "parkinson's_disease",
       .default = cause
     )) %>%
+    # Colon cancer: GBD colon and rectum cancer x 2/3 (colon share of colorectal
+    # cancers, American Cancer Society), in val, rate_1 and val1yr alike.
+    # Lung cancer: GBD tracheal, bronchus and lung cancer (C33-C34) is used as
+    # is (factor 1), as in the UBD model (common.R, GBD_SCALE). The factor 0.54
+    # used before was wrong: it divided male-only NHS England lung cancer
+    # registrations by GBD both-sexes incidence, so it cut lung cancer
+    # incidence and prevalence by 46% at every age.
     mutate(val = case_when(
-      cause == "colon_cancer" ~ val * 2/3,    # colon-only (American Cancer Society)
-      cause == "lung_cancer"  ~ val * 0.54,   # lung-only (England vs GBD totals)
+      cause == "colon_cancer" ~ val * 2/3,
       TRUE                    ~ val
     ),
-    # keep rate_1 / val1yr consistent with the adjusted val for these two
     rate_1 = case_when(
       cause == "colon_cancer" ~ rate_1 * 2/3,
-      cause == "lung_cancer"  ~ rate_1 * 0.54,
       TRUE                    ~ rate_1
     ),
     val1yr = case_when(
       cause == "colon_cancer" ~ val1yr * 2/3,
-      cause == "lung_cancer"  ~ val1yr * 0.54,
       TRUE                    ~ val1yr
     ))
   
