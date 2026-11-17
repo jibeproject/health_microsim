@@ -33,3 +33,5 @@ po/*~
 rsconnect/
 # Data folder
 data
+# Microsimulation outputs (scripts/run_microsim.R)
+output/
