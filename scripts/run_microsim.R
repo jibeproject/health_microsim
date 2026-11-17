@@ -5,8 +5,10 @@
 ## mortality) for the reference and the other scenarios of one Java model run.
 ## Run from the project folder (open health_microsim.Rproj).
 ##
-## To run a newer Java model run, change RUN_NAME. Everything else is read from
-## that run's folder (one pp_rr_2021.csv per scenario under RR/).
+## The Java run (RUN_NAME) is set in config/run_config.R. For a new run, change
+## it there and re-run scripts/run_pifs.R and scripts/transitions_calibration.R
+## first: the rates file below carries the run's name, so this script stops if
+## it has not been made for that run.
 ##
 ## Time and memory, full Greater Manchester population (2.8 million people,
 ## 30 cycles; tested on a 4-core machine): about 6-8 minutes per scenario and
@@ -17,12 +19,10 @@
 library(data.table)
 library(here)
 source(here("functions/microsim_engine.R"))
+source(here("config/run_config.R"))      # RUN_NAME, rr_file(), RATES_FILE
 
 # 1. Java model run ==============================================================
-RUN_NAME  <- "nonTransportPA_050526"     # folder under scenOutput/: changes with each run
-JIBE_ROOT <- "X:/HealthImpact/Data/Country/UK/JIBE/manchester"
-RR_ROOT   <- file.path(JIBE_ROOT, "scenOutput", RUN_NAME, "RR")
-rr_file   <- function(scen) file.path(RR_ROOT, scen, "pp_rr_2021.csv")
+message("Java run: ", RUN_NAME)
 
 # Scenarios: every folder under RR/, with the reference first. To run only
 # some, list them instead, e.g. SCENARIOS <- c("reference", "green").
@@ -32,8 +32,10 @@ missing   <- SCENARIOS[!file.exists(rr_file(SCENARIOS))]
 if (length(missing)) stop("No pp_rr_2021.csv for: ", paste(missing, collapse = ", "))
 
 # 2. Health inputs ===============================================================
-# Transition rates by LSOA (scripts/transitions_calibration.R); the engine uses rate_raw
-RATES_FILE <- here("manchester/health/processed/health_transitions_manchester_280826.csv")
+# Transition rates by LSOA for this run (scripts/transitions_calibration.R, file name
+# from config/run_config.R). The engine uses rate_raw and calibrates it itself.
+if (!file.exists(RATES_FILE)) stop("No rates file for run ", RUN_NAME, " (", RATES_FILE,
+                                   "). Run scripts/run_pifs.R and scripts/transitions_calibration.R first.")
 ZONES_FILE <- here("manchester/synPop/sp_2021/zoneSystem.csv")
 # Diseases at the start (scripts/assign_prevalence.R writes base_prevalence_id_clean_<ddmmyy>.csv)
 PREVALENCE_FILE <- here("manchester/health/processed/base_prevalence_id_clean_DDMMYY.csv")
