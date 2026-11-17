@@ -9,14 +9,17 @@ library(tidyverse)
 library(here)
 
 
-# Synthetic population baseline
-synth_pop <- read_csv(
-  here("manchester/simulationResults/ForPaper/1_reference/health/04_exposure_and_rr/pp_rr_2021.csv"),
-  show_col_types = FALSE)
+# Synthetic population baseline: the reference scenario's person file of the
+# Java run set in config/run_config.R (only id, age, gender and zone are used,
+# which are the same in every run of the same synthetic population)
+source(here("config/run_config.R"))      # RUN_NAME, rr_file(), ZONES_FILE
+message("Population from run ", RUN_NAME, ": ", rr_file("reference"))
+synth_pop <- read_csv(rr_file("reference"), show_col_types = FALSE,
+                      col_select = c(id, age, gender, zone))
 
 # Zones data
 
-zones <- read_csv(here("manchester/synPop/sp_2021/zoneSystem.csv"),
+zones <- read_csv(ZONES_FILE,
                   show_col_types = FALSE)
 # Some vintages of zoneSystem.csv already call this column `zone`.
 if ("oaID" %in% names(zones)) zones <- rename(zones, zone = oaID)

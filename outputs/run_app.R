@@ -8,7 +8,8 @@
 #   Rscript outputs/run_app.R 8000 0.0.0.0
 # The app reads from outputs/app/data/: run_name.txt and health_<run>.qs2
 # (outputs/process_all_data.R), exposures_<run>.qs2 (outputs/process_exp.R) and
-# trips_200826.qs2 (outputs/process_trips.R; copy it there).
+# trips_200826.qs2 (outputs/process_trips.R; copy it there), and the Maps tab
+# from outputs/app/maps/ (built by outputs/prep_data_spatial/).
 
 args <- commandArgs(trailingOnly = TRUE)
 port <- if (length(args) >= 1) as.integer(args[[1]]) else 3838

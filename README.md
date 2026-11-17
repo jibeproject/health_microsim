@@ -11,7 +11,7 @@ Health data preparation, an individual-level health microsimulation, and the pro
 | `data_prep/melbourne/` | The same for Melbourne (`health_data_Melbourne.Rmd`, `assign_prevalence_Melbourne.R`), from Australian sources |
 | `engine/` | The microsimulation (`microsim_engine.R`), its run script (`run_microsim.R`) and checks (`tests/`) |
 | `erf/` | Exposure-response functions for PM2.5, NO2, NDVI and noise (used by the Java model) |
-| `outputs/` | Processing of the Java model outputs (`data_prep_shiny.R`, `process_all_data.R`, `process_exp.R`, `process_trips.R`) and the apps: `app/` (health, exposures, trips; `run_app.R` starts it) and `app_spatial/` (maps; built by `prep_data_spatial/`) |
+| `outputs/` | Processing of the Java model outputs (`data_prep_shiny.R`, `process_all_data.R`, `process_exp.R`, `process_trips.R`) and the app (`app/`: travel, exposures, health and maps; `run_app.R` starts it). `prep_data_spatial/` builds the data for the Maps tab |
 | `archive/` | Earlier versions and one-off analyses, kept for reference |
 
 Run every script from the project folder (open `health_microsim.Rproj`). Paths inside the project use `here()`; paths on the shared drive come from `config/paths.R`.
@@ -39,7 +39,9 @@ The app's health and exposure data follow the same `RUN_NAME`: `outputs/process_
 
 Checks on synthetic data: `Rscript engine/tests/test_microsim_engine.R` (needs only `data.table`).
 
-## Apps
+## The app
 
-- `outputs/app/combined_app.R` reads `outputs/app/data/`: `run_name.txt` and `health_<run>.qs2` (written by `outputs/process_all_data.R`), `exposures_<run>.qs2` (`outputs/process_exp.R`) and `trips_200826.qs2` (`outputs/process_trips.R`; copy it there). It shows the run named in `run_name.txt`, so health and exposures always come from the same run. Start it with `Rscript outputs/run_app.R`.
-- `outputs/app_spatial/app.R` reads the `.rds` files next to it, built by the scripts in `outputs/prep_data_spatial/`. Deploy with `outputs/app_spatial/app_deploy.R`.
+One app, `outputs/app/combined_app.R`, with tabs for travel, personal exposures, health and maps. Start it with `Rscript outputs/run_app.R`; deploy it with `outputs/app/deploy.R` (set `APP_NAME` there).
+
+- `outputs/app/data/`: `run_name.txt` and `health_<run>.qs2` (written by `outputs/process_all_data.R`), `exposures_<run>.qs2` (`outputs/process_exp.R`) and `trips_200826.qs2` (`outputs/process_trips.R`; copy it there). The app shows the run named in `run_name.txt`, so health and exposures always come from the same run.
+- `outputs/app/maps/`: the Maps tab's data (exposures and population per LSOA, boundaries), built by the scripts in `outputs/prep_data_spatial/`. The Maps tab's code is `outputs/app/modules/maps_module.R` (formerly the separate `app_spatial` app).

@@ -17,19 +17,18 @@ suppressPackageStartupMessages({
   library(shinyWidgets)
 })
 
-# ---- Data location -------------------------------------------------------
-# 2026-08 FIX. Paths were hard-coded as "app/data/...", which fails under
-#   shiny::runApp("app/combined_app.R")
-# because runApp() sets the working directory to the app folder FIRST, so
-# "app/data/x" resolves to app/app/data/x. Writing "data/..." instead breaks
-# the opposite case, sourcing the file from the project root. This helper
-# accepts either, and says where it looked when it cannot find the file.
-data_path <- function(f) {
+# ---- File locations --------------------------------------------------------
+# The app's files sit in outputs/app/: data/ (health, exposures, trips, from
+# outputs/process_*.R), maps/ (the Maps tab's .rds files) and modules/ (the
+# Maps tab's code). runApp() sets the working directory to the app folder, but
+# the file can also be sourced from the project root or from outputs/, so
+# app_path() looks in each and says where it looked when it cannot find a file.
+app_path <- function(sub, f) {
   cands <- c(
-    file.path("data", f),                    # wd = the app folder (runApp)
-    file.path("outputs", "app", "data", f),  # wd = the project root
-    file.path("app", "data", f),             # wd = outputs/
-    file.path("..", "app", "data", f)        # wd = a sibling of app/
+    file.path(sub, f),                       # wd = the app folder (runApp, deployed)
+    file.path("outputs", "app", sub, f),     # wd = the project root
+    file.path("app", sub, f),                # wd = outputs/
+    file.path("..", "app", sub, f)           # wd = a sibling of app/
   )
   hit <- cands[file.exists(cands)]
   if (!length(hit))
@@ -38,6 +37,11 @@ data_path <- function(f) {
          "\nWorking directory is: ", getwd(), call. = FALSE)
   hit[1]
 }
+data_path <- function(f) app_path("data", f)
+maps_path <- function(f) app_path("maps", f)
+
+# The Maps tab (formerly the separate app_spatial app)
+source(app_path("modules", "maps_module.R"))
 
 # The run to show, written by outputs/process_all_data.R. Health and exposure
 # data are read for that run only, so the two always come from the same run.
@@ -355,8 +359,6 @@ theme_clean <- function() {
           plot.title = element_text(face = "bold"),
           strip.text = element_text(lineheight = 0.9))
 }
-add_zero_line <- function() geom_hline(yintercept = 0, linewidth = 0.3)
-
 pop_share <- function(df, group_vars = c("cycle","scen")) {
   df |>
     group_by(across(all_of(c(group_vars, "agegroup_cycle")))) |>
@@ -365,23 +367,6 @@ pop_share <- function(df, group_vars = c("cycle","scen")) {
     ungroup()
 }
 
-diff_vs_reference <- function(df, by = character(0), value_col = "value") {
-  ref <- df |>
-    filter(scen == "reference") |>
-    rename(value_ref = !!rlang::sym(value_col)) |>
-    select(cycle, all_of(by), value_ref)
-  df |>
-    filter(scen != "reference") |>
-    left_join(ref, by = c("cycle", by)) |>
-    mutate(diff = .data[[value_col]] - value_ref) |>
-    select(scen, cycle, all_of(by), diff)
-}
-
-get_age_levels <- function(x) if (is.factor(x)) levels(x) else sort(unique(x))
-align_age_levels <- function(w, people_age) {
-  lv <- get_age_levels(people_age)
-  w |> mutate(agegroup_cycle = factor(as.character(agegroup_cycle), levels = lv))
-}
 
 # ------------------- Precompute (with cache) ---------------------------
 death_values <- c("Death (all causes)" = "dead",
@@ -423,120 +408,127 @@ ui <- page_sidebar(
   theme = bs_theme(bootswatch = "yeti"),
   title = paste0("Travel and Health Explorer"),
   sidebar = sidebar(
-    selectInput("scen_sel", "Scenarios:", choices = all_scenarios,
-                selected = all_scenarios, multiple = TRUE),
-    selectInput("view_level", "View by:", choices = selected_views,
-                selected = "Overall"),
     conditionalPanel(
-      "input.view_level == 'LAD'",
-      selectizeInput("lad_sel", "Area(s):",
-                     choices = all_lads_nm, multiple = TRUE,
-                     options = list(placeholder = "Pick LADs (optional)"))
-    ),
-    
-    conditionalPanel(
-      #condition = "input.tabs == 'Travel & Exposures'",
-      condition = "input.main_tabs == 'Travel & Exposures' && 
-        input.inner_tabs == 'Travel Behaviour'",
-      radioButtons(
-        "metrics_picker", "Metrics:",
-        choices = c(
-          "Trip Mode Share (%)",
-          "Trip Mode Share by Distance (%)",
-          "Combined Trip Distance by Modes",
-          "Trip Duration by Mode"
-        ),
-        selected = "Trip Mode Share (%)"
-      )
-    ),
-    
-    
-    conditionalPanel(
-      condition = "input.main_tabs == 'Differences vs reference' || input.main_tabs == 'Differences per 100,000'",
-      checkboxInput("diff_table", "Table", FALSE)
-    ),
-    
-    
-    tags$hr(),
-    tabsetPanel(
-      id = "control_tabs", type = "pills",
+      "input.main_tabs != 'Maps'",
+      selectInput("scen_sel", "Scenarios:", choices = all_scenarios,
+                  selected = all_scenarios, multiple = TRUE),
+      selectInput("view_level", "View by:", choices = selected_views,
+                  selected = "Overall"),
       conditionalPanel(
-        condition = "input.main_tabs == 'Population'",
-        selectizeInput("pop_cycles", "Cycles to show (bars):",
-                       choices = pop_cycles, selected = c(2,10,MAX_CYCLE), multiple = TRUE),
-        radioButtons("pop_style", "Bar style:", c("Stacked"="stack","Side-by-side"="dodge"),
-                     inline = TRUE),
-        checkboxInput("pop_share", "Show shares (else counts)", value = TRUE)
+        "input.view_level == 'LAD'",
+        selectizeInput("lad_sel", "Area(s):",
+                       choices = all_lads_nm, multiple = TRUE,
+                       options = list(placeholder = "Pick LADs (optional)"))
       ),
-      
+    
       conditionalPanel(
-        condition = "input.main_tabs == 'Differences vs reference' || input.main_tabs == 'Differences per 100,000'",
-        radioButtons("metric_kind", "Metric:",
-                     choices = c(
-                       "Deaths postponed"             = "deaths_av",
-                       "Life years gained"          = "life_years",
-                       "Diseases/injuries prevented"  = "dis_av"
-                     ),
-                     selected = "deaths_av"),
-        sliderInput("diff_min_cycle", "Start cycle:",
-                    min = min(trend_cycles), max = max(trend_cycles),
-                    value = MIN_CYCLE, step = 1),
-        checkboxInput("diff_cumulative", "Cumulative over cycles", value = TRUE)
-      ),
-      conditionalPanel(
-        condition = "input.main_tabs == 'Average onset ages'", 
-        selectInput("avg_kind", "Average age of:", choices = c("Death"="death","Disease onset"="onset")),
-        uiOutput("avg_cause_ui")
-      ),
-      conditionalPanel(
-        condition = "input.main_tabs == 'Age Standardised Rates'",
-        selectInput(
-          "asr_mode",
-          "ASR view:",
-          choices = setNames(
-            c("bars", "avg"),
-            c(paste0("Average 1-", MAX_CYCLE, " (bars)"),
-              paste0("Average 1-", MAX_CYCLE, " (table)"))
+        #condition = "input.tabs == 'Travel & Exposures'",
+        condition = "input.main_tabs == 'Travel & Exposures' && 
+          input.inner_tabs == 'Travel Behaviour'",
+        radioButtons(
+          "metrics_picker", "Metrics:",
+          choices = c(
+            "Trip Mode Share (%)",
+            "Trip Mode Share by Distance (%)",
+            "Combined Trip Distance by Modes",
+            "Trip Duration by Mode"
           ),
-          selected = "bars"
-        ),
-        conditionalPanel(
-          condition = "input.asr_mode == 'bars'",
-          checkboxInput("asr_pct", "Show % difference vs reference", value = TRUE)
+          selected = "Trip Mode Share (%)"
         )
       ),
+    
+    
       conditionalPanel(
-        condition = "input.main_tabs == 'Travel'",
-        selectInput("trip_metric", "Travel metric:",
-                    choices = names(TRIP_SPEC),
-                    selected = names(TRIP_SPEC)[1]),
-        checkboxInput("trip_show_table", "Show table", value = FALSE),
-        checkboxInput("trip_pct", "Show change vs reference (points and %)", value = FALSE)
+        condition = "input.main_tabs == 'Differences vs reference' || input.main_tabs == 'Differences per 100,000'",
+        checkboxInput("diff_table", "Table", FALSE)
       ),
-      conditionalPanel(
-        condition = "input.main_tabs == 'Exposures'",
-        selectInput("exp_var",  "Exposure variable:", choices = NULL),
-        selectInput("exp_year", "Year:",              choices = NULL),
-        checkboxInput("exp_show_table", "Show full table", value = FALSE),
-        checkboxInput("exp_pct", "Show % change vs reference", value = FALSE)
-      ),
-      conditionalPanel(
-        condition = "input.main_tabs == 'Age Standardised Rates' || ((input.main_tabs == 'Differences vs reference' || input.main_tabs == 'Differences per 100,000') && 
-          input.metric_kind == 'dis_av')",
-        shinyWidgets::pickerInput("asr_causes", "Causes:", choices =  append(all_causes_asr, death_values),
-                                  selected = c("coronary_heart_disease","stroke"),
-                                  multiple = TRUE,
-                                  options = list(
-                                    `actions-box` = TRUE,
-                                    `deselect-all-text` = "None",
-                                    `select-all-text` = "Select all",
-                                    `none-selected-text` = "zero"
-                                  ))#,
-      )
+    
+    
+      tags$hr(),
+      tabsetPanel(
+        id = "control_tabs", type = "pills",
+        conditionalPanel(
+          condition = "input.main_tabs == 'Population'",
+          selectizeInput("pop_cycles", "Cycles to show (bars):",
+                         choices = pop_cycles, selected = c(2,10,MAX_CYCLE), multiple = TRUE),
+          radioButtons("pop_style", "Bar style:", c("Stacked"="stack","Side-by-side"="dodge"),
+                       inline = TRUE),
+          checkboxInput("pop_share", "Show shares (else counts)", value = TRUE)
+        ),
       
+        conditionalPanel(
+          condition = "input.main_tabs == 'Differences vs reference' || input.main_tabs == 'Differences per 100,000'",
+          radioButtons("metric_kind", "Metric:",
+                       choices = c(
+                         "Deaths postponed"             = "deaths_av",
+                         "Life years gained"          = "life_years",
+                         "Diseases/injuries prevented"  = "dis_av"
+                       ),
+                       selected = "deaths_av"),
+          sliderInput("diff_min_cycle", "Start cycle:",
+                      min = min(trend_cycles), max = max(trend_cycles),
+                      value = MIN_CYCLE, step = 1),
+          checkboxInput("diff_cumulative", "Cumulative over cycles", value = TRUE)
+        ),
+        conditionalPanel(
+          condition = "input.main_tabs == 'Average onset ages'", 
+          selectInput("avg_kind", "Average age of:", choices = c("Death"="death","Disease onset"="onset")),
+          uiOutput("avg_cause_ui")
+        ),
+        conditionalPanel(
+          condition = "input.main_tabs == 'Age Standardised Rates'",
+          selectInput(
+            "asr_mode",
+            "ASR view:",
+            choices = setNames(
+              c("bars", "avg"),
+              c(paste0("Average 1-", MAX_CYCLE, " (bars)"),
+                paste0("Average 1-", MAX_CYCLE, " (table)"))
+            ),
+            selected = "bars"
+          ),
+          conditionalPanel(
+            condition = "input.asr_mode == 'bars'",
+            checkboxInput("asr_pct", "Show % difference vs reference", value = TRUE)
+          )
+        ),
+        conditionalPanel(
+          condition = "input.main_tabs == 'Travel'",
+          selectInput("trip_metric", "Travel metric:",
+                      choices = names(TRIP_SPEC),
+                      selected = names(TRIP_SPEC)[1]),
+          checkboxInput("trip_show_table", "Show table", value = FALSE),
+          checkboxInput("trip_pct", "Show change vs reference (points and %)", value = FALSE)
+        ),
+        conditionalPanel(
+          condition = "input.main_tabs == 'Exposures'",
+          selectInput("exp_var",  "Exposure variable:", choices = NULL),
+          selectInput("exp_year", "Year:",              choices = NULL),
+          checkboxInput("exp_show_table", "Show full table", value = FALSE),
+          checkboxInput("exp_pct", "Show % change vs reference", value = FALSE)
+        ),
+        conditionalPanel(
+          condition = "input.main_tabs == 'Age Standardised Rates' || ((input.main_tabs == 'Differences vs reference' || input.main_tabs == 'Differences per 100,000') && 
+            input.metric_kind == 'dis_av')",
+          shinyWidgets::pickerInput("asr_causes", "Causes:", choices =  append(all_causes_asr, death_values),
+                                    selected = c("coronary_heart_disease","stroke"),
+                                    multiple = TRUE,
+                                    options = list(
+                                      `actions-box` = TRUE,
+                                      `deselect-all-text` = "None",
+                                      `select-all-text` = "Select all",
+                                      `none-selected-text` = "zero"
+                                    ))#,
+        )
+      
+      ),
+      tags$hr(),
+      downloadButton("download_csv", "Download current table (CSV)")
     ),
-    tags$hr(),
-    downloadButton("download_csv", "Download current table (CSV)")
+    conditionalPanel(
+      "input.main_tabs == 'Maps'",
+      helpText("The map's settings are in the panel next to the map.")
+    )
   ),
   navset_card_underline(
     id = "main_tabs",
@@ -570,6 +562,7 @@ ui <- page_sidebar(
                 uiOutput("plot_asrly")#, height = "85vh"),
       )
     ),
+    nav_panel("Maps", value = "Maps", maps_module$ui("maps")),
     # ---- Hidden, not deleted -------------------------------------------
     # Commented out at the request of the user; all supporting server code
     # (get_onset_ages, pop_data, output$table_avg, output$plot_poply) is
@@ -587,6 +580,7 @@ ui <- page_sidebar(
 
 # ------------------- SERVER --------------------------------------------
 server <- function(input, output, session) {
+  maps_module$server("maps")   # the Maps tab
   
   get_normalized_table <- function(df){
     scen_cols <- all_scenarios

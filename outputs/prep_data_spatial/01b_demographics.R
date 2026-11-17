@@ -92,9 +92,9 @@ lsoa_profile <- prof |>
     pct_66plus   = 100 * age_66plus / n_people
   )
 
-if (!dir.exists("outputs/app_spatial")) dir.create("outputs/app_spatial", recursive = TRUE)
-saveRDS(lsoa_profile, "outputs/app_spatial/lsoa_profile.rds")
-message("Saved outputs/app_spatial/lsoa_profile.rds (", nrow(lsoa_profile), " LSOAs)")
+if (!dir.exists("outputs/app/maps")) dir.create("outputs/app/maps", recursive = TRUE)
+saveRDS(lsoa_profile, "outputs/app/maps/lsoa_profile.rds")
+message("Saved outputs/app/maps/lsoa_profile.rds (", nrow(lsoa_profile), " LSOAs)")
 print(utils::head(lsoa_profile))
 
 # ---- roll LSOA -> LAD -------------------------------------------------------
@@ -148,6 +148,6 @@ lad_imd <- lsoa_profile |>
 lad_profile <- lad_core |>
   dplyr::left_join(lad_imd, by = "ladcd")
 
-saveRDS(lad_profile, "outputs/app_spatial/lad_profile.rds")
-message("Saved outputs/app_spatial/lad_profile.rds (", nrow(lad_profile), " LADs)")
+saveRDS(lad_profile, "outputs/app/maps/lad_profile.rds")
+message("Saved outputs/app/maps/lad_profile.rds (", nrow(lad_profile), " LADs)")
 print(utils::head(lad_profile))

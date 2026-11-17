@@ -102,11 +102,11 @@ long <- summ |>
                       names_sep = "__",
                       values_to = "value")
 
-if (!dir.exists("outputs/app_spatial")) dir.create("outputs/app_spatial")
+if (!dir.exists("outputs/app/maps")) dir.create("outputs/app/maps")
 saveRDS(list(wide = summ, long = long),
-        "outputs/app_spatial/exposure_medians_by_lsoa.rds")
+        "outputs/app/maps/exposure_medians_by_lsoa.rds")
 
-message("Done. Saved outputs/app_spatial/exposure_medians_by_lsoa.rds")
+message("Done. Saved outputs/app/maps/exposure_medians_by_lsoa.rds")
 message("Rows (LSOA x scenario): ", nrow(summ))
 message("Percentile metrics: ", paste(pctile_metrics, collapse = ", "))
 message("Mean-only metrics:  ", paste(mean_metrics, collapse = ", "))

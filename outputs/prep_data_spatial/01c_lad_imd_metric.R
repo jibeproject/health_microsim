@@ -10,7 +10,7 @@
 # Why population-weighted: each (LAD x quintile) group is the set of *people*
 # living in that LAD's LSOAs of that quintile, so larger LSOAs count more.
 #
-# Produces:  outputs/app_spatial/lad_imd_metric.rds
+# Produces:  outputs/app/maps/lad_imd_metric.rds
 # =============================================================================
 
 pkgs <- c("dplyr", "tidyr")
@@ -19,8 +19,8 @@ if (length(to_install)) install.packages(to_install)
 invisible(lapply(pkgs, library, character.only = TRUE))
 
 # inputs produced by the earlier stages
-med  <- readRDS("outputs/app_spatial/exposure_medians_by_lsoa.rds")   # list(wide, long)
-lsoa <- readRDS("outputs/app_spatial/lsoa_profile.rds")               # has ladcd/ladnm/imd_quintile
+med  <- readRDS("outputs/app/maps/exposure_medians_by_lsoa.rds")   # list(wide, long)
+lsoa <- readRDS("outputs/app/maps/lsoa_profile.rds")               # has ladcd/ladnm/imd_quintile
 
 long <- med$long   # lsoa21cd, lsoa21nm, n_people, scenario, metric, stat, value
 
@@ -42,7 +42,7 @@ lad_imd_metric <- keyed |>
     .groups  = "drop"
   )
 
-if (!dir.exists("outputs/app_spatial")) dir.create("outputs/app_spatial", recursive = TRUE)
-saveRDS(lad_imd_metric, "outputs/app_spatial/lad_imd_metric.rds")
-message("Saved outputs/app_spatial/lad_imd_metric.rds (", nrow(lad_imd_metric), " rows)")
+if (!dir.exists("outputs/app/maps")) dir.create("outputs/app/maps", recursive = TRUE)
+saveRDS(lad_imd_metric, "outputs/app/maps/lad_imd_metric.rds")
+message("Saved outputs/app/maps/lad_imd_metric.rds (", nrow(lad_imd_metric), " rows)")
 print(utils::head(lad_imd_metric, 10))
