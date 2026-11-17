@@ -41,7 +41,7 @@ Checks on synthetic data: `Rscript engine/tests/test_microsim_engine.R` (needs o
 
 ## The app
 
-One app, `outputs/app/combined_app.R`, with tabs for travel, personal exposures, health and maps. Start it with `Rscript outputs/run_app.R`; deploy it with `outputs/app/deploy.R` (set `APP_NAME` there).
+One app, `outputs/app/combined_app.R`, with tabs for travel, personal exposures, health and maps. Start it with `Rscript outputs/run_app.R`; deploy it with `outputs/app/deploy.R` (as `manchester-health-model` on shinyapps.io).
 
 - `outputs/app/data/`: `run_name.txt` and `health_<run>.qs2` (written by `outputs/process_all_data.R`), `exposures_<run>.qs2` (`outputs/process_exp.R`) and `trips_200826.qs2` (`outputs/process_trips.R`; copy it there). The app shows the run named in `run_name.txt`, so health and exposures always come from the same run.
 - `outputs/app/maps/`: the Maps tab's data (exposures and population per LSOA, boundaries), built by the scripts in `outputs/prep_data_spatial/`. The Maps tab's code is `outputs/app/modules/maps_module.R` (formerly the separate `app_spatial` app).

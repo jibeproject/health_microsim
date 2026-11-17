@@ -9,9 +9,8 @@
 ## trips file. Other runs' files in data/ are left out.
 ###############################################################################
 
-APP_NAME <- ""   # shinyapps.io name to deploy to; an existing name replaces that app
-
-if (!nzchar(APP_NAME)) stop("Set APP_NAME at the top of outputs/app/deploy.R first.")
+APP_NAME  <- "manchester-health-model"   # shinyapps.io name (part of the URL): letters, numbers, - and _ only
+APP_TITLE <- "Manchester health model"   # title shown on shinyapps.io
 
 app_dir <- here::here("outputs/app")
 run     <- trimws(readLines(file.path(app_dir, "data", "run_name.txt"), n = 1L, warn = FALSE))
@@ -23,6 +22,6 @@ files   <- c("combined_app.R",
 missing <- files[!file.exists(file.path(app_dir, files))]
 if (length(missing)) stop("Missing before deploying: ", paste(missing, collapse = ", "))
 
-message("Deploying run ", run, " as '", APP_NAME, "'")
+message("Deploying run ", run, " as '", APP_NAME, "' (", APP_TITLE, ")")
 rsconnect::deployApp(appDir = app_dir, appPrimaryDoc = "combined_app.R",
-                     appFiles = files, appName = APP_NAME)
+                     appFiles = files, appName = APP_NAME, appTitle = APP_TITLE)
