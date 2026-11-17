@@ -8,9 +8,10 @@
 ## To run a newer Java model run, change RUN_NAME. Everything else is read from
 ## that run's folder (one pp_rr_2021.csv per scenario under RR/).
 ##
-## Time: a 10% sample (284,000 people, 30 cycles) takes about 1 minute per
-## scenario, so expect about ten times that for the full population. Set
-## sample_prop = 0.1 below for a quick test.
+## Time and memory, full Greater Manchester population (2.8 million people,
+## 30 cycles; tested on a 4-core machine): about 6-8 minutes per scenario and
+## 7 GB of memory at peak. A 10% sample (sample_prop = 0.1 below) takes about
+## 1 minute per scenario.
 ###############################################################################
 
 library(data.table)
