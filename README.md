@@ -31,6 +31,8 @@ Run every script from the project folder (open `health_microsim.Rproj`). Paths i
 
 File names carry the run's name, so a step fails (file not found) instead of silently using another run's file.
 
+The app's health and exposure data follow the same `RUN_NAME`: `outputs/process_all_data.R` reads the run's `processed/` folder (set `SRC_FILE` there to the run's all_data parquet) and `outputs/process_exp.R` its `microData/` folder. Trips do not: `outputs/process_trips.R` reads the travel model runs in `scenOutput/<scenario>/2021/` and must be updated by hand if trips are re-run (see the note at its top).
+
 ## The microsimulation engine
 
 `engine/microsim_engine.R` is ported from the UBD model (`run_micro_opt.R`, "with_mm" mortality structure): each year, all-cause mortality (rate × exposure RR × multimorbidity RR), then disease onsets (rate × exposure RR, × diabetes RR for CHD and stroke), then remission (depression, derived from its incidence and prevalence). Exposure RRs are read from the Java model's `pp_rr_2021.csv` files. Rates are calibrated every cycle by age × sex × IMD decile so that the reference scenario reproduces the input rates (`rate_raw`); the other scenarios reuse the reference factors. The header of the file describes the method, inputs and outputs in full.

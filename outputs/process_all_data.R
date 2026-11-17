@@ -5,7 +5,9 @@ library(qs2)
 library(dplyr)   
 library(DBI)
 library(duckdb)
-source(here::here("config/paths.R"))   # MANCHESTER_ROOT (shared drive), LOCAL_DATA (local copies)
+# The Java run (RUN_NAME, RUN_DIR), the shared drive and LOCAL_DATA (local copies)
+source(here::here("config/run_config.R"))
+message("Health outputs from run ", RUN_NAME)
 
 # ZONES_CSV  <- "/media/ali/Expansion/backup_tabea/manchester-main/input/zoneSystem.csv"
 ZONES_CSV <- here::here("manchester/health/processed/zoneSystem.csv")
@@ -46,15 +48,24 @@ if (length(unmapped))
 lads <- lads_raw |> mutate(ladnm = unname(AREA_MAP[ladnm]))
 
 # ---- Paths ---------------------------------------------------------------
-# Local copy of the partitioned dataset (scen=*/ladcd=*/part-0.parquet) in local drive (to avoind network issues)
-PARQUET  <- file.path(LOCAL_DATA, "all_data_220726.parquet")
-
-SRC_DIR  <- file.path(MANCHESTER_ROOT, "scenOutput/normalization_fix_052226/processed")
+# The partitioned dataset (scen=*/ladcd=*/part-0.parquet) from data_prep_shiny.R,
+# in the run's processed/ folder. SRC_FILE is its name there: set it for each run.
+SRC_DIR  <- file.path(RUN_DIR, "processed")
 SRC_FILE <- "all_data_220726.parquet"
 
+# Local copy (to avoid network issues), in a folder per run so runs do not mix
+PARQUET  <- file.path(LOCAL_DATA, RUN_NAME, SRC_FILE)
+
 # ---- One-off copy from the network share ---------------------------------
-# set to true if results changed
+# set to true if results changed; done anyway when there is no local copy of this run yet
 COPY_FROM_SOURCE <- FALSE
+if (!dir.exists(PARQUET)) {
+  if (!dir.exists(file.path(SRC_DIR, SRC_FILE)))
+    stop("No ", SRC_FILE, " in ", SRC_DIR, ". Set SRC_FILE to the all_data parquet of run ", RUN_NAME,
+         ". The folder has: ", paste(list.files(SRC_DIR), collapse = ", "))
+  message("No local copy of run ", RUN_NAME, " yet: copying it from the shared drive.")
+  COPY_FROM_SOURCE <- TRUE
+}
 
 if (COPY_FROM_SOURCE) {
   src_path <- file.path(SRC_DIR, SRC_FILE)

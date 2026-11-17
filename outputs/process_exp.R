@@ -2,9 +2,12 @@
 suppressPackageStartupMessages({
   library(tidyverse)
 })
-source(here::here("config/paths.R"))   # MANCHESTER_ROOT: the Manchester folder on the shared drive
+# The Java run (RUN_NAME, RUN_DIR) and the Manchester folder (MANCHESTER_ROOT)
+source(here::here("config/run_config.R"))
+message("Exposures from run ", RUN_NAME)
 
-inp_dir <- file.path(MANCHESTER_ROOT, "scenOutput/health_and_accidents_140926/microData")
+# Exposures per scenario: <run>/microData/<scenario>/microData/pp_exposure_<year>.csv
+inp_dir <- file.path(RUN_DIR, "microData")
 
 inp_exp_dir = MANCHESTER_ROOT
 
@@ -205,4 +208,5 @@ exp <- bind_rows(base_exp, green_exp, ss_exp, gd_exp)
 #attr(exp, "area_lookup") <- area_lookup
 
 #qs2::qs_save(exp, "app/data/exp_050826.qs2")
-qs2::qs_save(exp, file.path(MANCHESTER_ROOT, "scenOutput/health_and_accidents_140926/processed/exp_092426.qs2"))
+# Copy this file to outputs/app/data/ for the app (it reads exp_092426.qs2)
+qs2::qs_save(exp, file.path(RUN_DIR, "processed", "exp_092426.qs2"))

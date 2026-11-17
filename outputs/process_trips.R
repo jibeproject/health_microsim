@@ -8,6 +8,14 @@ require(plotly)
 require(qs2)
 require(purrr)
 
+# NOTE: trips do NOT follow RUN_NAME (config/run_config.R), unlike the health
+# and exposure data. They come from the travel model runs in
+# scenOutput/<scenario>/2021/microData/trips.csv (base, safeStreet, green,
+# goDutch), with the reference exposures of normalization_fix_052226, and are
+# written as scenOutput/trips/trips_200826.{parquet,qs2}. If trips are re-run,
+# update the paths below, the output date (200826) and the file name the app
+# reads (outputs/app/combined_app.R: trips_200826.qs2).
+
 # Manchester folder on the shared drive (set in config/paths.R)
 source(here::here("config/paths.R"))
 dir <- MANCHESTER_ROOT
