@@ -29,8 +29,8 @@ keywords:
   - Greater Manchester
   - Melbourne
 authors:
-  - given-names: Belén
-    family-names: Zapata-Diomedi
+  - given-names: Ali
+    family-names: Abbas
     affiliation: "IMS Epidemiology, Institute of Metabolic Science, University of Cambridge"
   - given-names: Marina
     family-names: Berdikhanova
@@ -44,6 +44,7 @@ authors:
   - given-names: Carl
     family-names: Higgs
     affiliation: "RMIT University"
-  - given-names: Ali
-    family-names: Abbas
-    affiliation: "MRC Epidemiology Unit, Institute of Metabolic Science, University of Cambridge"
+ - given-names: Belén
+    family-names: Zapata-Diomedi
+    affiliation: "IMS Epidemiology, Institute of Metabolic Science, University of Cambridge"
+
