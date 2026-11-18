@@ -50,7 +50,8 @@ One app, `outputs/app/combined_app.R`, with tabs for travel, personal exposures,
 
 If you use this code, please cite it (GitHub's "Cite this repository" button gives the same citation in APA and BibTeX, from `CITATION.cff`):
 
-> Zapata-Diomedi B., Berdikhanova M., Jackson C., Pemberton S., Higgs C., Abbas A. (2026). *JIBE health microsimulation: health data preparation, microsimulation engine and outputs for Greater Manchester and Melbourne* (version 1.0.0). https://github.com/jibeproject/health_microsim
+>Abbas, A., Rakhimova, M., Jackson, C., Pemberton, S., Higgs, C., & Zapata-Diomedi, B. (2026). *JIBE health microsimulation: health data preparation, microsimulation engine and outputs for Greater Manchester and Melbourne* (Version 1.0.0) [Computer software]. https://github.com/jibeproject/health_microsim
+
 
 ```bibtex
 @misc{zapatadiomedi2026jibehealth,
