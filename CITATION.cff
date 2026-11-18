@@ -44,7 +44,6 @@ authors:
   - given-names: Carl
     family-names: Higgs
     affiliation: "RMIT University"
- - given-names: Belén
+  - given-names: Belén
     family-names: Zapata-Diomedi
     affiliation: "IMS Epidemiology, Institute of Metabolic Science, University of Cambridge"
-
