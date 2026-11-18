@@ -45,3 +45,21 @@ One app, `outputs/app/combined_app.R`, with tabs for travel, personal exposures,
 
 - `outputs/app/data/`: `run_name.txt` and `health_<run>.qs2` (written by `outputs/process_all_data.R`), `exposures_<run>.qs2` (`outputs/process_exp.R`) and `trips_200826.qs2` (`outputs/process_trips.R`; copy it there). The app shows the run named in `run_name.txt`, so health and exposures always come from the same run.
 - `outputs/app/maps/`: the Maps tab's data (exposures and population per LSOA, boundaries), built by the scripts in `outputs/prep_data_spatial/`. The Maps tab's code is `outputs/app/modules/maps_module.R` (formerly the separate `app_spatial` app).
+
+## How to cite
+
+If you use this code, please cite it (GitHub's "Cite this repository" button gives the same citation in APA and BibTeX, from `CITATION.cff`):
+
+> Zapata-Diomedi B., Abbas A., Berdikhanova M., Jackson C., Pemberton S., Higgs C. (2026). *JIBE health microsimulation: health data preparation, microsimulation engine and outputs for Greater Manchester and Melbourne* (version 1.0.0). https://github.com/jibeproject/health_microsim
+
+```bibtex
+@misc{zapatadiomedi2026jibehealth,
+  author  = {Zapata-Diomedi, Belén and Abbas, Ali and Berdikhanova, Marina and Jackson, Christopher and Pemberton, Steve and Higgs, Carl},
+  title   = {{JIBE} health microsimulation: health data preparation, microsimulation engine and outputs for {Greater Manchester} and {Melbourne}},
+  year    = {2026},
+  version = {1.0.0},
+  url     = {https://github.com/jibeproject/health_microsim}
+}
+```
+
+Once the UBD paper is published, please cite the paper as well.

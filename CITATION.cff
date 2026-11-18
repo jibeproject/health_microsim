@@ -1,0 +1,49 @@
+# How to cite this repository. GitHub shows it as "Cite this repository" on the
+# repository page, and Zenodo uses it for the DOI of each release.
+# When the UBD paper is published, add it under "preferred-citation" (type:
+# article, with its authors, title, journal, year and doi) so that it becomes
+# the citation GitHub suggests, and keep this entry for the software itself.
+cff-version: 1.2.0
+message: "If you use this software, please cite it as below."
+type: software
+title: "JIBE health microsimulation: health data preparation, microsimulation engine and outputs for Greater Manchester and Melbourne"
+version: 1.0.0
+date-released: 2026-11-18
+license: GPL-3.0
+repository-code: "https://github.com/jibeproject/health_microsim"
+abstract: >-
+  Health data preparation (disease incidence, mortality and prevalence rates)
+  for Greater Manchester and Melbourne, an individual-level health
+  microsimulation driven by the exposures (physical activity, air pollution,
+  noise and greenspace) of the JIBE transport and land-use model, and the
+  processing and interactive app for the model's health, exposure and travel
+  outputs.
+keywords:
+  - health impact assessment
+  - microsimulation
+  - transport
+  - physical activity
+  - air pollution
+  - noise
+  - greenspace
+  - Greater Manchester
+  - Melbourne
+authors:
+  - given-names: Belén
+    family-names: Zapata-Diomedi
+    affiliation: "MRC Epidemiology Unit, Institute of Metabolic Science, University of Cambridge"
+  - given-names: Ali
+    family-names: Abbas
+    affiliation: "MRC Epidemiology Unit, Institute of Metabolic Science, University of Cambridge"
+  - given-names: Marina
+    family-names: Berdikhanova
+    affiliation: "MRC Epidemiology Unit, Institute of Metabolic Science, University of Cambridge"
+  - given-names: Christopher
+    family-names: Jackson
+    affiliation: "MRC Biostatistics Unit, University of Cambridge"
+  - given-names: Steve
+    family-names: Pemberton
+    affiliation: "RMIT University"
+  - given-names: Carl
+    family-names: Higgs
+    affiliation: "RMIT University"
