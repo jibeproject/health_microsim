@@ -54,7 +54,8 @@ If you use this code, please cite it (GitHub's "Cite this repository" button giv
 
 ```bibtex
 @misc{zapatadiomedi2026jibehealth,
-  author  = {Zapata-Diomedi, Belén and Berdikhanova, Marina and Jackson, Christopher and Pemberton, Steve and Higgs, Carl and Abbas, Ali},
+
+  author  = {Abbas, Ali and Berdikhanova, Marina and Jackson, Christopher and Pemberton, Steve and Higgs, Carl and Zapata-Diomedi, Belén},
   title   = {{JIBE} health microsimulation: health data preparation, microsimulation engine and outputs for {Greater Manchester} and {Melbourne}},
   year    = {2026},
   version = {1.0.0},
